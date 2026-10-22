@@ -79,6 +79,14 @@ export const identityRepo = {
     return rows.map((row) => row.id);
   },
 
+  /** True when the department exists and neither it nor any ancestor (path prefix) has a status other than active. */
+  async isOrgUnitActive(orgId: string): Promise<boolean> {
+    const org = await identityRepo.getOrgUnit(orgId);
+    if (!org || org.status !== "active") return false;
+    const inactive = await one<{ id: string }>("SELECT id FROM org_units WHERE LEFT(?, CHAR_LENGTH(path)) = path AND status <> 'active' LIMIT 1", [String(org.path ?? "")]);
+    return !inactive;
+  },
+
   // SSO role mappings / credentials
   async listRoleMappings(): Promise<Record<string, unknown>[]> {
     return query("SELECT * FROM oidc_role_mappings ORDER BY agent_role_code");

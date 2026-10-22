@@ -328,6 +328,9 @@ export async function verifyConnectorPrincipal(token: string, cfg: ConnectorConf
 
 export async function principalForConnector(payload: ConnectorPrincipal): Promise<Principal> {
   const user = await repos.getUserByIdpSubject(payload.subject);
-  if (!user) throw new ForgeError("CON-4706", "Connector 主体未在 Forge 登记", 403);
+  // Disabled/deleted users and users of a disabled or missing department (or disabled parent) get exactly the same
+  // error as an unregistered subject, so the response does not reveal which case applied.
+  const usable = user !== null && user.status === "active" && (user.org_unit_id === null || (await repos.isOrgUnitActive(user.org_unit_id)));
+  if (!usable) throw new ForgeError("CON-4706", "Connector 主体未在 Forge 登记", 403);
   return toPrincipal(user);
 }

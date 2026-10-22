@@ -672,6 +672,7 @@ kb.view kb.manage eval.view eval.manage
 | GET | `/connector/audit` | 本地 Connector 事件（脱敏） | `connector.manage` |
 
 - Connector 配置由 Agent 平台签名下发，管理 API 不提供修改签名配置、替换公钥或绕过验签的接口。
+- `/integration/v1` 的 Connector 主体（当前实现）：验签通过后按 `subject` 查 `users.idp_subject`。找不到用户、用户 `status` 不是 `active`（停用、已删除）、用户所属部门不存在或它本身或任一上级部门 `status` 不是 `active`，一律返回完全相同的 `403 CON-4706「Connector 主体未在 Forge 登记」`，不区分原因。没有所属部门（`org_unit_id` 为空）的用户不受部门检查影响。
 - 生产 SSO 模式切换为 `disabled` 需要平台管理员 + 二次确认；默认禁止。
 - 应急管理员与 SSO 状态均写审计。
 
