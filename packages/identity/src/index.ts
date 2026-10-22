@@ -309,11 +309,18 @@ export async function verifyConnectorPrincipal(token: string, cfg: ConnectorConf
   if (cfg.AGENT_CONNECTOR_LEGACY_FALLBACK_ENABLED) {
     throw new ForgeError("CON-4704", "Connector legacy fallback 必须关闭", 503);
   }
-  const verified = await jwtVerify(token, await connectorPublicKey(cfg), {
-    issuer: cfg.CONNECTOR_PRINCIPAL_ISSUER,
-    audience: cfg.CONNECTOR_PRINCIPAL_AUDIENCE,
-  });
-  const payload = verified.payload as unknown as ConnectorPrincipal;
+  const publicKey = await connectorPublicKey(cfg);
+  let rawPayload: JWTPayload;
+  try {
+    ({ payload: rawPayload } = await jwtVerify(token, publicKey, {
+      issuer: cfg.CONNECTOR_PRINCIPAL_ISSUER,
+      audience: cfg.CONNECTOR_PRINCIPAL_AUDIENCE,
+    }));
+  } catch {
+    // Bad signature, expired, wrong issuer/audience or malformed token: a client error, not a 500.
+    throw new ForgeError("CON-4707", "Connector 令牌无效或已过期", 401);
+  }
+  const payload = rawPayload as unknown as ConnectorPrincipal;
   if (!payload.subject || !payload.principalType) throw new ForgeError("CON-4701", "Principal 缺少主体", 401);
   if (payload.environment !== cfg.AGENT_CONNECTOR_ENVIRONMENT) throw new ForgeError("CON-4705", "运行环境不匹配", 401);
   return payload;

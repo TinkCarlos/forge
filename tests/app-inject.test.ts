@@ -75,11 +75,9 @@ describe("buildApp({ config }) override: connector verification without env vars
     expect(res.json().error.code).toBe("CON-4705");
   });
 
-  it("token signed by a different key is rejected (currently surfaces as 500 SYS-9001)", async () => {
-    // jose's signature error is not a ForgeError, so the global error handler maps it to 500.
-    // This pins current behavior; switching it to 401 is a separate, deliberate change.
+  it("token signed by a different key is rejected with 401 CON-4707", async () => {
     const res = await callAgents(await sign(otherPrivateKey, { ...baseClaims, subject: "someone" }));
-    expect(res.statusCode).toBe(500);
-    expect(res.json().error.code).toBe("SYS-9001");
+    expect(res.statusCode).toBe(401);
+    expect(res.json().error.code).toBe("CON-4707");
   });
 });
