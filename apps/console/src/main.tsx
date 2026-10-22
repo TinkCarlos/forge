@@ -1,6 +1,14 @@
 import { StrictMode } from 'react'
 import ReactDOM from 'react-dom/client'
-import { MotionConfig } from 'motion/react'
+import { MotionConfig, MotionGlobalConfig } from 'motion/react'
+
+// 「减少动态效果」：MotionConfig 的 reducedMotion='user' 只去掉位移、仍会淡入，
+// 这里让 motion 直接跳到终态（页面切换、列表入场、登录卡片都停），并跟随系统设置实时切换。
+const reduceQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
+MotionGlobalConfig.skipAnimations = reduceQuery.matches
+reduceQuery.addEventListener('change', (e) => {
+  MotionGlobalConfig.skipAnimations = e.matches
+})
 import { QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider, createRouter } from '@tanstack/react-router'
 import { toast } from 'sonner'
@@ -56,7 +64,7 @@ if (!rootElement.innerHTML) {
         <ThemeProvider>
           <FontProvider>
             <DirectionProvider>
-              {/* 系统开启「减少动态效果」时，motion 自动只保留透明度变化 */}
+              {/* 减少动态效果时 motion 跳过动画，见文件顶部 MotionGlobalConfig */}
               <MotionConfig reducedMotion='user'>
                 <RouterProvider router={router} />
               </MotionConfig>
