@@ -316,9 +316,9 @@ function stat(label, value, sub) {
 async function renderAgents() {
   const data = await api("/admin/api/agents");
   state.agents = data.items ?? [];
-  const details = await Promise.all(state.agents.map((agent) => api(`/admin/api/agents/${agent.id}`).catch(() => null)));
-  state.agents.forEach((agent, index) => {
-    agent.draft = (details[index]?.versions ?? []).find((version) => version.status === "draft") ?? null;
+  // 列表接口自带 draftVersion（3db19c1），不再逐个请求详情。
+  state.agents.forEach((agent) => {
+    agent.draft = agent.draftVersion ?? null;
   });
   $("#content").innerHTML = `
     <div class="card">
