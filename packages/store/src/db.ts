@@ -3,6 +3,15 @@ import { config } from "@forge/core";
 
 const dbUrl = new URL(config.DATABASE_URL);
 
+// AC / OPS-026i: second line of defence behind the vitest globalSetup. Only active under vitest (VITEST is set by the
+// runner); refuses to create the pool for a database not ending with _test, before any connection is opened.
+if (process.env.VITEST) {
+  const database = decodeURIComponent(dbUrl.pathname.replace(/^\//, "")).trim();
+  if (!database.endsWith("_test")) {
+    throw new Error(`[test DB guard] 测试进程拒绝连接库「${database || "(空)"}」：库名必须以 _test 结尾（请用 TEST_DATABASE_URL 指向测试库）。`);
+  }
+}
+
 export const pool: Pool = mysql.createPool({
   host: dbUrl.hostname,
   port: Number(dbUrl.port || 3306),
