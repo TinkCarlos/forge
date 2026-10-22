@@ -8,7 +8,7 @@
 
 | 项 | 值 |
 | --- | --- |
-| 接入资料目录 | `<internal-docs>/sso登陆和调度系统agent接入文档` |
+| 接入资料目录 | `<internal-docs>/sso-connector/` |
 | 协议版本 | Connector Contract `1.0` |
 | Node SDK | `@your-org/agent-connector` 0.2.0，`agent-connector-0.2.0.tgz` |
 | Node 制品 SHA256 | `eaf28f8ab99bfbb085a0078777f4ce923ad70e1044a8af7e7d8a82d6cdda20a3`（10,218 bytes） |

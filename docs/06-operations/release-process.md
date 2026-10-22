@@ -2,17 +2,17 @@
 
 版本：1.0　日期：2026-10-21　状态：待评审
 
-> 本文是 Forge 项目的发布执行标准。基础设施与发布方式**以公司现有线上发布文档为准**；本文只补充 Forge 特有的数据库迁移、SSO/Connector、Temporal Worker、权限种子与验收门槛。后续所有 Forge 版本按本文执行并留档。
+> 本文是 Forge 项目的发布执行标准。基础设施与发布方式**以现有线上发布规范为准**；本文只补充 Forge 特有的数据库迁移、SSO/Connector、Temporal Worker、权限种子与验收门槛。后续所有 Forge 版本按本文执行并留档。
 
 ## 1. 上游权威文档
 
 | 文档 | 用途 |
 | --- | --- |
-| `<internal-docs>/线上发布文档/vibecoding项目部署文档参考.md` | 区域 A K8s、CI、镜像仓库、共享存储、Nginx、MySQL 的基础设施与流程 |
-| `<internal-docs>/线上发布文档/vibecoding-新项目改造部署通用参考.md` | 新项目目录、Dockerfile、K8s、Secret、PVC、Nginx、CI 规范 |
-| `<internal-docs>/线上发布文档/nginx-release-region-a/` | 统一 Nginx 网关配置与 CI 流水线配置（先 `nginx -t` 校验，再写 共享存储，再滚动重启） |
-| `<internal-docs>/线上发布文档/nginx-release-region-b/`、`nginx-release-region-c/` | 区域 B环境对应流程（按项目所在集群选择） |
-| `<internal-docs>/sso登陆和调度系统agent接入文档/` | SSO、Agent Connector 0.2.0 接入与验收 |
+| `<internal-docs>/release/project-deploy-guide.md` | 区域 A K8s、CI、镜像仓库、共享存储、Nginx、MySQL 的基础设施与流程 |
+| `<internal-docs>/release/new-project-deploy-guide.md` | 新项目目录、Dockerfile、K8s、Secret、PVC、Nginx、CI 规范 |
+| `<internal-docs>/release/nginx-region-a/` | 统一 Nginx 网关配置与 CI 流水线配置（先 `nginx -t` 校验，再写共享存储，再滚动重启） |
+| `<internal-docs>/release/nginx-region-b/`、`nginx-region-c/` | 区域 B 环境对应流程（按项目所在集群选择） |
+| `<internal-docs>/sso-connector/` | SSO、Agent Connector 0.2.0 接入与验收 |
 
 **冲突处理**：基础设施（K8s/CI/镜像仓库/共享存储/Nginx/Secret/PVC）以上游文档为准；Forge 应用层的迁移、SSO/Connector、Worker 顺序、权限种子与验收以本文为准。若上游文档更新，本文对应章节必须同步修订。
 
@@ -256,12 +256,12 @@
 
 | Forge 发布环节 | 上游参考 |
 | --- | --- |
-| 镜像构建/推送/滚动更新 | `vibecoding-新项目改造部署通用参考.md` 第 3、8 节 |
+| 镜像构建/推送/滚动更新 | `new-project-deploy-guide.md` 第 3、8 节 |
 | K8s Deployment/Service/健康检查/资源限制 | 同上第 4 节 |
 | Secret 与 PVC/共享存储 | 同上第 5、6 节 |
-| Nginx 路由与发布 | 同上第 7 节；`nginx-release-region-a/CI 流水线配置` |
-| 首次部署步骤 | 同上第 9 节；`vibecoding项目部署文档参考.md` 第六节 |
+| Nginx 路由与发布 | 同上第 7 节；`nginx-region-a/CI 流水线配置` |
+| 首次部署步骤 | 同上第 9 节；`project-deploy-guide.md` 第六节 |
 | 日常运维/回滚/排障 | 同上第 10、11 节 |
-| SSO/Connector 接入与验收 | `sso登陆和调度系统agent接入文档/` |
+| SSO/Connector 接入与验收 | `sso-connector/` |
 
 > 本文不是基础设施的替代文档。执行人必须同时打开对应上游文档；若上游流程变化，以最新上游为准并更新本文。
