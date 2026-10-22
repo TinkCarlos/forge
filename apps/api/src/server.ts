@@ -14,12 +14,10 @@ import {
   encryptSecret,
   errors,
   ForgeError,
-  hasPermission,
   hashApiKey,
   hashPassword,
   parseJson,
   ROLE_PERMISSIONS,
-  ulidWithPrefix,
   type Principal,
   type Role,
 } from "@forge/core";
@@ -57,16 +55,15 @@ import {
   resolveIdempotentCreate,
   startRuntime,
   waitForRun,
-  type emit as emitEvent,
 } from "@forge/runtime";
 import {
-  healthCheck,
   parseJsonValue,
   repos,
   type AgentRow,
   type AgentVersionRow,
   type RunRow,
 } from "@forge/store";
+import healthRoutes from "./routes/health.js";
 
 const app = Fastify({
   logger: {
@@ -276,11 +273,7 @@ app.addHook("preHandler", async (request) => {
 
 // ---------- health / auth ----------
 
-app.get("/healthz", async () => ({ status: "ok", service: "forge", version: "0.1.0" }));
-app.get("/readyz", async (_request, reply) => {
-  const db = await healthCheck();
-  reply.status(db ? 200 : 503).send({ status: db ? "ready" : "not_ready", database: db });
-});
+await app.register(healthRoutes);
 
 app.get("/auth/config", async () => ({
   localLogin: config.ALLOW_LOCAL_LOGIN,
