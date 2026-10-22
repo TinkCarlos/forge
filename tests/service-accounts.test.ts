@@ -157,6 +157,13 @@ describe("schedule binding to a service account", () => {
 
 describe("manual schedule run (POST /admin/api/schedules/:id/run)", () => {
   const ACCOUNT_ORG = "01J0000000000000000000SVC1";
+  beforeAll(async () => {
+  // Service accounts need an existing, active department since schedule identities are re-read live (S-45).
+  await execute("INSERT IGNORE INTO org_units (id, parent_id, `key`, name, path) VALUES (?, NULL, ?, 'IT svc org', ?)", [ACCOUNT_ORG, `it-${ACCOUNT_ORG.slice(-4).toLowerCase()}-${suffix}`, `/it-${ACCOUNT_ORG.slice(-4).toLowerCase()}-${suffix}/`]);
+  });
+  afterAll(async () => {
+    await execute("DELETE FROM org_units WHERE id = ? AND `key` LIKE ?", [ACCOUNT_ORG, `%-${suffix}`]);
+  });
   const account = async (status: "active" | "disabled"): Promise<string> => {
     const id = await repos.createServiceAccount({ key: `it-sa-run-${suffix}-${createdAccounts.length}`, name: "IT run-as", orgUnitId: ACCOUNT_ORG, role: "operator", dataScope: "org", createdBy: ADMIN_ID });
     if (status === "disabled") await repos.updateServiceAccount(id, { status: "disabled" });

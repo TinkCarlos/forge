@@ -51,6 +51,16 @@ export const schedulesRepo = {
       [errorCode.slice(0, 16), id],
     );
   },
+  /**
+   * Transient trigger failure (e.g. database error while resolving the identity): count it and keep the code, but the
+   * schedule stays active; only this occurrence is skipped (next_run_at moves to the next cron slot).
+   */
+  async recordScheduleTriggerError(id: string, errorCode: string, nextRunAt: Date | null): Promise<void> {
+    await execute(
+      "UPDATE schedules SET next_run_at = ?, failure_count = failure_count + 1, last_error_code = ? WHERE id = ?",
+      [nextRunAt, errorCode.slice(0, 16), id],
+    );
+  },
   /** True while a run triggered by this schedule is still in flight (used by concurrency_policy = 'skip'). */
   async hasInFlightScheduleRun(scheduleId: string): Promise<boolean> {
     const row = await one<{ id: string }>(

@@ -521,6 +521,8 @@ POST /admin/v1/schedules
 - `versionPolicy`：`latest_published`（默认）或 `pinned` + `agentVersionId`。
 - `concurrencyPolicy`：`skip`（默认）、`queue`、`cancel_previous`。
 - 服务账号停用、Agent 停用或无权限 → 自动暂停并返回 `SCD-4801` 原因。
+- 触发时运行身份实时校验（S-45，自动触发和手动 run 都一样）：绑定服务账号的，服务账号须为 active，且所属部门及每一级上级部门都启用；未绑定服务账号的存量任务，按任务行上的用户（`subject_type = 'user'` 取 `subject_id`，否则取 `created_by`）做和会话认证相同的校验（用户 active、部门链全部启用）。不满足时：自动触发暂停任务并记 `SCD-4801`；手动 run 返回 `409 SCD-4801`；都不建 Run。
+- 校验时查库出错：自动触发只把本次记为失败（`last_error_code = SCD-4803`、`failure_count + 1`），任务保持 active，`next_run_at` 推到下一个 cron 时间；手动 run 返回 `503 SYS-9003`；都不建 Run。
 - `run` 创建 Run 后返回 `{ "runId": "run_...", "trigger": "schedule" }`；并发 skip 时返回 409 `SCD-4802`。
 - 绑定 platform_admin 服务账号 → 400 SCD-4804；存量任务触发时同码自动暂停。手动 run 先按调用者数据范围查任务，查不到 → 404（platform_admin 除外）。
 - `GET /schedules/{id}`：先校验 `schedule.view`（无权限 → 403），再按列表同一数据范围查任务；其他部门的任务与不存在的任务返回完全相同的 404（platform_admin / dataScope all 可读任意部门）。响应不包 `items`，直接是列表里那一项。

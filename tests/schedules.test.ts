@@ -64,6 +64,8 @@ beforeAll(async () => {
   });
   created.versions.push(versionId);
   await repos.publishAgentVersion(agentId, versionId);
+  // Service accounts need an existing, active department since schedule identities are re-read live (S-45).
+  await execute("INSERT IGNORE INTO org_units (id, parent_id, `key`, name, path) VALUES (?, NULL, ?, 'IT svc org', ?)", [ACCOUNT_ORG, `it-${ACCOUNT_ORG.slice(-4).toLowerCase()}-${suffix}`, `/it-${ACCOUNT_ORG.slice(-4).toLowerCase()}-${suffix}/`]);
   activeAccountId = await repos.createServiceAccount({ key: `it-sch-svc-${suffix}`, name: "IT Svc Active", orgUnitId: ACCOUNT_ORG, role: "operator", dataScope: "org", createdBy: ADMIN_ID });
   disabledAccountId = await repos.createServiceAccount({ key: `it-sch-svc-off-${suffix}`, name: "IT Svc Disabled", orgUnitId: ORG, createdBy: ADMIN_ID });
   await repos.updateServiceAccount(disabledAccountId, { status: "disabled" });
@@ -77,6 +79,7 @@ afterAll(async () => {
     await execute("DELETE FROM schedules WHERE id = ?", [id]);
   }
   for (const id of created.accounts) await execute("DELETE FROM service_accounts WHERE id = ?", [id]);
+  await execute("DELETE FROM org_units WHERE id = ? AND `key` LIKE ?", [ACCOUNT_ORG, `%-${suffix}`]);
   for (const id of created.versions) await execute("DELETE FROM agent_versions WHERE id = ?", [id]);
   for (const id of created.agents) {
     await execute("DELETE FROM threads WHERE agent_id = ?", [id]);

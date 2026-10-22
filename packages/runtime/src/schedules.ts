@@ -1,5 +1,5 @@
 import { CronExpressionParser } from "cron-parser";
-import { ForgeError, type DataScope, type Principal, type Role } from "@forge/core";
+import { errors, ForgeError, type DataScope, type Principal, type Role } from "@forge/core";
 import { parseJsonValue, repos, type ServiceAccountRow } from "@forge/store";
 import { createQueuedRun } from "./loop.js";
 
@@ -50,6 +50,32 @@ export function buildScheduleIdentity(schedule: Record<string, unknown>, account
   };
 }
 
+/**
+ * Live identity check for a schedule (S-45). Throws:
+ * - SCD-4801 (409) when the identity is unusable: bound service account missing/disabled or any department on its chain
+ *   inactive; legacy schedule whose user (subject_type 'user' -> subject_id, otherwise created_by) is missing, disabled,
+ *   deleted or has an inactive department on its chain (same rule as session auth / loadActivePrincipal);
+ * - SCD-4804 (409) for a platform_admin service account;
+ * - SYS-9003 (503) when the database lookup itself fails (not "unusable").
+ */
+export async function resolveScheduleIdentity(schedule: Record<string, unknown>): Promise<Principal> {
+  const lookup = async <T>(fn: () => Promise<T>): Promise<T> => {
+    try {
+      return await fn();
+    } catch {
+      throw errors.unavailable("身份校验暂时不可用，请稍后重试");
+    }
+  };
+  if (schedule.service_account_id) {
+    const account = await lookup(() => repos.getActiveServiceAccountById(String(schedule.service_account_id)));
+    return buildScheduleIdentity(schedule, account);
+  }
+  const userId = String(schedule.subject_type ?? "") === "user" ? schedule.subject_id : schedule.created_by;
+  const user = userId ? await lookup(() => repos.getActiveUserById(String(userId))) : null;
+  if (!user) throw new ForgeError(SCHEDULE_PAUSED_CODE, "定时任务的运行身份不可用", 409);
+  return buildScheduleIdentity(schedule, null);
+}
+
 /** Triggers one due schedule row. Failures are recorded on the schedule (failure_count, last_error_code) and stop it. */
 export async function triggerSchedule(schedule: Record<string, unknown>, now = new Date()): Promise<ScheduleTriggerResult> {
   const scheduleId = String(schedule.id);
@@ -60,28 +86,34 @@ export async function triggerSchedule(schedule: Record<string, unknown>, now = n
       await repos.recordScheduleFailure(scheduleId, SCHEDULE_PAUSED_CODE);
       return { kind: "paused", code: SCHEDULE_PAUSED_CODE };
     }
-    let account: ServiceAccountRow | null = null;
-    if (schedule.service_account_id) {
-      // A disabled/missing service account pauses the schedule.
-      account = await repos.getServiceAccount(String(schedule.service_account_id));
-      if (!account || account.status !== "active") {
-        await repos.recordScheduleFailure(scheduleId, SCHEDULE_PAUSED_CODE);
-        return { kind: "paused", code: SCHEDULE_PAUSED_CODE };
-      }
-    }
+    const nextRunAt = () =>
+      CronExpressionParser.parse(String(schedule.cron), { currentDate: now, tz: String(schedule.timezone ?? "Asia/Shanghai") }).next().toDate();
     let principal: Principal;
     try {
-      principal = buildScheduleIdentity(schedule, account);
+      principal = await resolveScheduleIdentity(schedule);
     } catch (error) {
-      // Identity refused (unusable or platform_admin account): pause like a disabled account.
+      // Identity refused (unusable account/user/department chain, or platform_admin account): pause.
       if (error instanceof ForgeError && (error.code === SCHEDULE_PAUSED_CODE || error.code === SCHEDULE_FORBIDDEN_ROLE_CODE)) {
         await repos.recordScheduleFailure(scheduleId, error.code);
         return { kind: "paused", code: error.code };
       }
+      // Database error during the identity lookup: fail only this trigger, keep the schedule active.
+      if (error instanceof ForgeError && error.code === "SYS-9003") {
+        let next: Date | null = null;
+        try {
+          next = nextRunAt();
+        } catch {
+          next = null;
+        }
+        try {
+          await repos.recordScheduleTriggerError(scheduleId, SCHEDULE_TRIGGER_FAILED_CODE, next);
+        } catch {
+          // database still down: nothing recorded; the row stays due and is retried on the next tick
+        }
+        return { kind: "failed", code: SCHEDULE_TRIGGER_FAILED_CODE };
+      }
       throw error;
     }
-    const nextRunAt = () =>
-      CronExpressionParser.parse(String(schedule.cron), { currentDate: now, tz: String(schedule.timezone ?? "Asia/Shanghai") }).next().toDate();
     // concurrency_policy: only 'skip' (the default) is implemented; other values currently behave as before (always enqueue).
     if (String(schedule.concurrency_policy ?? "skip") === "skip" && (await repos.hasInFlightScheduleRun(scheduleId))) {
       await repos.updateSchedule(scheduleId, { next_run_at: nextRunAt() });

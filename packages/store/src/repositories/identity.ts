@@ -120,6 +120,20 @@ export const identityRepo = {
   async getServiceAccount(id: string): Promise<ServiceAccountRow | null> {
     return one<ServiceAccountRow>("SELECT * FROM service_accounts WHERE id = ?", [id]);
   },
+  /**
+   * Service account by id only if it is active AND its department chain is usable (same rule as getActiveUserById:
+   * no department, or the department exists and neither it nor any ancestor is inactive). Else null. One query.
+   */
+  async getActiveServiceAccountById(id: string): Promise<ServiceAccountRow | null> {
+    if (!id) return null;
+    return one<ServiceAccountRow>(
+      `SELECT s.* FROM service_accounts s LEFT JOIN org_units o ON o.id = s.org_unit_id
+       WHERE s.id = ? AND s.status = 'active'
+         AND (s.org_unit_id IS NULL OR (o.id IS NOT NULL AND NOT EXISTS (
+           SELECT 1 FROM org_units a WHERE LEFT(o.path, CHAR_LENGTH(a.path)) = a.path AND a.status <> 'active')))`,
+      [id],
+    );
+  },
   async getServiceAccountByKey(key: string): Promise<ServiceAccountRow | null> {
     return one<ServiceAccountRow>("SELECT * FROM service_accounts WHERE `key` = ?", [key]);
   },

@@ -2,7 +2,7 @@ import { type FastifyInstance, type FastifyRequest } from "fastify";
 import type { Session } from "@forge/identity";
 import { CronExpressionParser } from "cron-parser";
 import { errors, ForgeError, type Principal } from "@forge/core";
-import { buildScheduleIdentity, createQueuedRun } from "@forge/runtime";
+import { createQueuedRun, resolveScheduleIdentity } from "@forge/runtime";
 import { inOrgScope, maskArgsDeep, orgScopeIds } from "@forge/governance";
 import { parseJsonValue, repos } from "@forge/store";
 import {
@@ -161,12 +161,8 @@ export default async function adminScheduleRoutes(app: FastifyInstance): Promise
     if (!agent?.published_version_id) throw errors.invalid("Agent 尚未发布");
     // Manual "run now" executes as the schedule's identity (bound service account, or the legacy service identity),
     // never as the clicking user; the clicking user only needs schedule.run (checked above).
-    let account = null;
-    if (schedule.service_account_id) {
-      account = await repos.getServiceAccount(String(schedule.service_account_id));
-      if (!account || account.status !== "active") throw new ForgeError("SCD-4801", "服务账号已停用，不能运行定时任务", 409);
-    }
-    const principal = buildScheduleIdentity(schedule, account);
+    // Identity re-read live (S-45): unusable -> 409 SCD-4801 / SCD-4804, database error -> 503 SYS-9003.
+    const principal = await resolveScheduleIdentity(schedule);
     if (String(schedule.concurrency_policy ?? "skip") === "skip" && (await repos.hasInFlightScheduleRun(String(schedule.id)))) {
       throw new ForgeError("SCD-4802", "该定时任务已有运行中的 Run（并发策略 skip）", 409);
     }
