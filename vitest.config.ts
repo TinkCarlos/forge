@@ -2,6 +2,9 @@ import { defineConfig } from "vitest/config";
 import path from "node:path";
 
 const root = import.meta.dirname;
+// OPS-026: tests use TEST_DATABASE_URL only. It is passed to the workers as DATABASE_URL, which wins over .env
+// (dotenv never overrides an existing variable). tests/global-setup.ts refuses to run without it or on a non-_test DB.
+const testDatabaseUrl = process.env.TEST_DATABASE_URL?.trim() ?? "";
 
 export default defineConfig({
   resolve: {
@@ -18,6 +21,8 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    globalSetup: ["tests/global-setup.ts"],
+    env: { DATABASE_URL: testDatabaseUrl },
     testTimeout: 30000,
     hookTimeout: 30000,
     pool: "forks",

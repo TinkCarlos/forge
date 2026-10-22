@@ -1,10 +1,14 @@
 import mysql from "mysql2/promise";
 import { config } from "@forge/core";
+import { requireScriptDatabase } from "./db-guard.js";
 
 if (config.NODE_ENV === "production" || process.env.FORGE_ALLOW_RESET !== "true") {
   console.error("Refusing to reset: set FORGE_ALLOW_RESET=true and never run in production.");
   process.exit(1);
 }
+
+// OPS-026: dropping a database not named *_test / *_ux also needs --confirm-db=<name> (checked before connecting).
+requireScriptDatabase(config.DATABASE_URL, "reset");
 
 const url = new URL(config.DATABASE_URL);
 const database = url.pathname.replace(/^\//, "");

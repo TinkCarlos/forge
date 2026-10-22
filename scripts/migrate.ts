@@ -2,6 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import mysql, { type Connection } from "mysql2/promise";
 import { config } from "@forge/core";
+import { requireScriptDatabase } from "./db-guard.js";
+
+// OPS-026: writing to a database not named *_test / *_ux needs --confirm-db=<name>.
+requireScriptDatabase(config.DATABASE_URL, "migrate");
 
 const dbUrl = new URL(config.DATABASE_URL);
 const connection = await mysql.createConnection({

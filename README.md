@@ -58,11 +58,14 @@ curl -X POST "http://localhost:3100/open/v1/agents/mcp-agent/runs" \
 
 ```bash
 pnpm typecheck
-pnpm test          # 单元 + 真实 MySQL 集成测试
+pnpm test          # 单元 + 真实 MySQL 集成测试；必须设置 TEST_DATABASE_URL 且库名以 _test 结尾（OPS-026）
 pnpm smoke         # 端到端：MCP、审批、OpenAPI、定时任务、开放 API、数据权限、能力包
 pnpm smoke:edit    # 编辑流程：Agent 新版本、MCP/Skill/模型/应用/定时任务修改
 pnpm smoke:sso     # Mock OIDC + Agent Principal 验签
 ```
+
+测试库守卫（OPS-026）：`pnpm test` 只认 `TEST_DATABASE_URL`，不会继承 `.env` 里的 `DATABASE_URL`；没设置或库名不以 `_test` 结尾时直接报错退出（`_ux` 等其他库名同样拒绝，没有绕过开关）。例如 `TEST_DATABASE_URL=mysql://forge:***@127.0.0.1:3306/forge_test pnpm test`（库可以先用 `pnpm smoke:isolated` 建好）。`pnpm db:migrate`、`pnpm db:seed`（以及 `scripts/reset.ts`）写入不以 `_test` 或 `_ux` 结尾的库（包括开发库 `forge`）前，必须带上与目标库名完全一致的参数，例如 `pnpm db:migrate --confirm-db=forge`、`pnpm db:seed --confirm-db=forge`；`--yes` 之类的通用开关和环境变量都不算确认。`pnpm db:reset` 对 `forge` 会在第一步就被拒绝（参数传不到 reset），需要时分三步手动执行：`FORGE_ALLOW_RESET=true pnpm exec tsx scripts/reset.ts --confirm-db=forge`、`pnpm db:migrate --confirm-db=forge`、`pnpm db:seed --confirm-db=forge`。`pnpm smoke:isolated` 用的是 `forge_test`，不受影响。
+
 
 `pnpm smoke` 需要 API 在 `http://127.0.0.1:3100` 运行；MCP/OpenAPI 用例需要先运行 `pnpm mock:services`。
 

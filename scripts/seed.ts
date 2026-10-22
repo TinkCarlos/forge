@@ -1,5 +1,9 @@
 import { config, hashPassword } from "@forge/core";
 import { execute, one, query } from "@forge/store";
+import { requireScriptDatabase } from "./db-guard.js";
+
+// OPS-026: writing to a database not named *_test / *_ux needs --confirm-db=<name>.
+requireScriptDatabase(config.DATABASE_URL, "seed");
 
 const ROOT_ORG = "01J00000000000000000000000";
 const ADMIN_ID = "01J00000000000000000000001";
