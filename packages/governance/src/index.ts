@@ -50,3 +50,5 @@ export async function visibleAgentOrgIds(principal: Principal): Promise<string[]
   if (!principal.orgUnitId) return [];
   return repos.orgSubtreeIds(principal.orgUnitId);
 }
+
+export { buildArgsPreview, SENSITIVE_ARG_KEY, ARGS_PREVIEW_VALUE_MAX, ARGS_PREVIEW_TOTAL_MAX } from "./args-preview.js";

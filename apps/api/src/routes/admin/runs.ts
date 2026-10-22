@@ -1,6 +1,6 @@
 import { type FastifyInstance } from "fastify";
 import { errors } from "@forge/core";
-import { assertRunAccess, runFilterFor } from "@forge/governance";
+import { assertRunAccess, buildArgsPreview, runFilterFor } from "@forge/governance";
 import { cancelRun, executeRun } from "@forge/runtime";
 import { repos } from "@forge/store";
 import {
@@ -63,21 +63,19 @@ export default async function adminRunRoutes(app: FastifyInstance): Promise<void
     return { ok: true };
   });
 
+  // Pending approvals visible to the caller. Scope is applied in SQL so `total` and pages match what the caller can see.
+  // No `page`/`pageSize` -> `{ items }` (first 100, as before). With either -> `{ items, page, pageSize, total }`.
+  // Raw tool arguments never leave the server: only `tool_name` and the masked `args_preview`.
   app.get("/admin/api/approvals", async (request) => {
     const session = await admin(request, "approval.view");
-    const approvals = await repos.listApprovals("pending");
-    const visible = [];
-    for (const approval of approvals) {
-      const run = await repos.getRun(approval.run_id);
-      if (!run) continue;
-      try {
-        await assertRunAccess(session.principal, run);
-        visible.push(approval);
-      } catch {
-        // hide inaccessible approvals
-      }
-    }
-    return { items: visible };
+    const query = request.query as Record<string, unknown>;
+    const paged = query.page !== undefined || query.pageSize !== undefined;
+    const page = paged ? positiveInt(query.page, 1, "page") : 1;
+    const pageSize = paged ? Math.min(positiveInt(query.pageSize, 20, "pageSize"), 100) : 100;
+    const scope = await runFilterFor(session.principal);
+    const { rows, total } = await repos.listApprovalsVisible({ status: "pending", scope, limit: pageSize, offset: (page - 1) * pageSize });
+    const items = rows.map(({ tool_key, tool_args, ...row }) => ({ ...row, tool_name: tool_key ?? null, args_preview: tool_key == null ? null : buildArgsPreview(tool_args) }));
+    return paged ? { items, page, pageSize, total } : { items };
   });
 
   app.post("/admin/api/approvals/:id/decide", async (request) => {
@@ -95,4 +93,11 @@ export default async function adminRunRoutes(app: FastifyInstance): Promise<void
     void executeRun(approval.run_id);
     return { ok: true };
   });
+}
+
+function positiveInt(raw: unknown, fallback: number, name: string): number {
+  if (raw === undefined || raw === "") return fallback;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 1) throw errors.invalid(`${name} 必须是正整数`);
+  return value;
 }

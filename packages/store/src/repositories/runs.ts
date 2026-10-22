@@ -239,6 +239,46 @@ export const runsRepo = {
       params,
     );
   },
+  /**
+   * Pending-style approval list with the caller's run visibility applied in SQL (mirrors canAccessRun):
+   * appId key present -> r.app_id = appId (missing appId -> nothing); orgIds [] -> nothing, else r.org_unit_id IN (...)
+   * (NULL org never matches); subjectType/subjectId -> exact match; {} -> everything.
+   * Returns the page plus the total visible count; tool fields come from a LEFT JOIN on tool_calls.
+   */
+  async listApprovalsVisible(input: {
+    status: string;
+    scope: { orgIds?: string[] | null; subjectType?: string; subjectId?: string; appId?: string };
+    limit: number;
+    offset: number;
+  }): Promise<{ rows: Array<ApprovalRow & { agent_id: string; agent_name: string; tool_key: string | null; tool_args: unknown }>; total: number }> {
+    const { scope } = input;
+    const where: string[] = ["a.status = ?"];
+    const params: unknown[] = [input.status];
+    if ("appId" in scope) {
+      if (!scope.appId) return { rows: [], total: 0 };
+      where.push("r.app_id = ?");
+      params.push(scope.appId);
+    }
+    if (Array.isArray(scope.orgIds)) {
+      if (scope.orgIds.length === 0) return { rows: [], total: 0 };
+      where.push(`r.org_unit_id IN (${scope.orgIds.map(() => "?").join(",")})`);
+      params.push(...scope.orgIds);
+    }
+    if (scope.subjectType !== undefined) { where.push("r.subject_type = ?"); params.push(scope.subjectType); }
+    if (scope.subjectId !== undefined) { where.push("r.subject_id = ?"); params.push(scope.subjectId); }
+    const from = `FROM approvals a JOIN runs r ON r.id = a.run_id JOIN agents ag ON ag.id = r.agent_id
+       LEFT JOIN tool_calls tc ON tc.id = a.tool_call_id
+       WHERE ${where.join(" AND ")}`;
+    const counted = await one<{ total: number }>(`SELECT COUNT(*) AS total ${from}`, params);
+    const limit = Math.min(Math.max(Math.floor(input.limit), 1), 100);
+    const offset = Math.max(Math.floor(input.offset), 0);
+    const rows = await query<ApprovalRow & { agent_id: string; agent_name: string; tool_key: string | null; tool_args: unknown }>(
+      `SELECT a.*, r.agent_id AS agent_id, ag.name AS agent_name, tc.tool_key AS tool_key, tc.args_json AS tool_args
+       ${from} ORDER BY a.created_at DESC, a.id DESC LIMIT ? OFFSET ?`,
+      [...params, limit, offset],
+    );
+    return { rows, total: Number(counted?.total ?? 0) };
+  },
   async decideApproval(id: string, decision: "approved" | "rejected", decidedBy: string, comment: string): Promise<boolean> {
     const result = await execute(
       "UPDATE approvals SET status = ?, decided_by = ?, decided_at = CURRENT_TIMESTAMP(3), comment = ? WHERE id = ? AND status = 'pending'",

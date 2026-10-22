@@ -428,6 +428,27 @@ If-Match: "rev-2"
 - 超时由工作流处理，API 返回 `APR-2102`。
 - 审批参数只在服务端脱敏后展示；不返回秘密。
 
+待审批列表（当前实现）：`GET /admin/api/approvals`，权限 `approval.view`，只返回 `status = pending` 的审批。
+
+- 不带分页参数：响应 `{ items }`，最多 100 条（兼容旧调用方）。
+- 带 `page` 或 `pageSize` 任意一个：响应 `{ items, page, pageSize, total }`。`page` 从 1 开始，默认 1；`pageSize` 默认 20，最大 100（超过按 100）；非正整数返回 `400`。
+- 数据范围在 SQL 里过滤，和 `GET /runs/{id}` 的可见性一致：`all` 看全部；`org` 只看本部门及下级部门的 Run；`self` 只看 `subject_type = user` 且主体是自己的 Run；应用身份只看本应用的 Run。`total` 是调用者可见的条数，侧栏角标直接用它。
+- 排序 `created_at` 倒序，同一时间按 `id` 倒序。
+- 每条保留原有字段（`id`、`run_id`、`tool_call_id`、`status`、`risk_level`、`expires_at`、`decided_by`、`decided_at`、`comment`、`created_at`、`agent_name`），新增：
+  - `agent_id`；
+  - `tool_name`：对应 `tool_calls.tool_key`，找不到工具调用时为 `null`；
+  - `args_preview`：服务端生成的参数摘要，形如 `to=a@b.com, subject=周报, api_key=***`，没有工具调用时为 `null`。键名匹配 `password|token|secret|key|authorization`（不区分大小写，任意层级）的值一律写成 `***`；其他每个值截到 80 字符；整串不超过 300 字符，截断处以 `…` 结尾。键的顺序以数据库 JSON 存储顺序为准。
+- 响应里永远不包含原始参数（`args_json`）。
+
+```json
+{
+  "items": [{ "id": "apr_…", "run_id": "run_…", "tool_call_id": "tcl_…", "status": "pending", "risk_level": "high",
+              "expires_at": "…", "decided_by": null, "decided_at": null, "comment": null, "created_at": "…",
+              "agent_id": "…", "agent_name": "合同助手", "tool_name": "mail.send", "args_preview": "to=a@b.com, api_key=***" }],
+  "page": 1, "pageSize": 20, "total": 37
+}
+```
+
 ## 10. 定时任务
 
 | 方法 | 路径 | 说明 | 权限 |
