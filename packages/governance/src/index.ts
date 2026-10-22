@@ -51,4 +51,4 @@ export async function visibleAgentOrgIds(principal: Principal): Promise<string[]
   return repos.orgSubtreeIds(principal.orgUnitId);
 }
 
-export { buildArgsPreview, SENSITIVE_ARG_KEY, ARGS_PREVIEW_VALUE_MAX, ARGS_PREVIEW_TOTAL_MAX } from "./args-preview.js";
+export { buildArgsPreview, isSecretValue, isSensitiveKey, keySegments, maskUrlQuery, SENSITIVE_KEY_SEGMENTS, SENSITIVE_QUERY_PARAMS, ARGS_PREVIEW_VALUE_MAX, ARGS_PREVIEW_TOTAL_MAX } from "./args-preview.js";

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ARGS_PREVIEW_TOTAL_MAX, ARGS_PREVIEW_VALUE_MAX, buildArgsPreview } from "../packages/governance/src/args-preview.js";
+import { ARGS_PREVIEW_TOTAL_MAX, ARGS_PREVIEW_VALUE_MAX, buildArgsPreview, isSensitiveKey, keySegments, maskUrlQuery } from "../packages/governance/src/args-preview.js";
 
 describe("buildArgsPreview", () => {
   it("null/undefined args -> null", () => {
@@ -40,5 +40,50 @@ describe("buildArgsPreview", () => {
     expect(buildArgsPreview([1, 2])).toBe("[1, 2]");
     expect(buildArgsPreview({})).toBe("");
     expect(buildArgsPreview({ a: { b: { c: { d: { e: { f: 1 } } } } } })).toBe("a={b={c={d={e={…}}}}}");
+  });
+
+  it("key masking by word segment: api_key/apiKey/accessToken/X-Api-Key hit; keyword/monkey/tokenizer do not", () => {
+    expect(keySegments("APIKey")).toEqual(["api", "key"]);
+    expect(keySegments("X-Api-Key")).toEqual(["x", "api", "key"]);
+    expect(keySegments("oauth2AccessToken")).toEqual(["oauth", "2", "access", "token"]);
+    for (const key of ["api_key", "apiKey", "APIKey", "accessToken", "X-Api-Key", "password", "DB_PASSWORD", "client.secret", "Authorization", "key", "token2"]) {
+      expect(isSensitiveKey(key), key).toBe(true);
+    }
+    for (const key of ["keyword", "monkey", "tokenizer", "passwords_reset_count", "secretary", "keys", "author"]) {
+      expect(isSensitiveKey(key), key).toBe(false);
+    }
+    expect(buildArgsPreview({ keyword: "合同", monkey: "m", tokenizer: "bpe", "X-Api-Key": "abc123" })).toBe("keyword=合同, monkey=m, tokenizer=bpe, X-Api-Key=***");
+  });
+
+  it("value masking: Bearer/Basic/sk-/ghp_/xox/JWT under any key, at any depth, in arrays", () => {
+    const jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2lnbmF0dXJl";
+    const preview = buildArgsPreview({
+      header: "Bearer abc.def",
+      auth2: "  basic dXNlcjpwYXNz",
+      openai: "sk-proj-123",
+      gh: "ghp_ABCDEF",
+      slack: "xoxb-1-2-3",
+      jwt,
+      nested: { list: ["ok", "sk-inner-999", { deep: jwt }] },
+      plain: "eyJ not a jwt",
+      skip: "skill",
+    })!;
+    expect(preview).toBe("header=***, auth2=***, openai=***, gh=***, slack=***, jwt=***, nested={list=[ok, ***, {deep=***}]}, plain=eyJ not a jwt, skip=skill");
+    for (const raw of ["abc.def", "dXNlcjpwYXNz", "sk-proj-123", "ghp_ABCDEF", "xoxb-1-2-3", "c2lnbmF0dXJl", "sk-inner-999"]) expect(preview).not.toContain(raw);
+    expect(buildArgsPreview("Bearer top-level")).toBe("***");
+  });
+
+  it("URL query masking keeps the rest of the URL, then truncates to 80", () => {
+    expect(maskUrlQuery("https://x.test/cb?a=1&token=T0K&Signature=S1G&access_token=AT&keep=yes#frag")).toBe("https://x.test/cb?a=1&token=***&Signature=***&access_token=***&keep=yes#frag");
+    expect(maskUrlQuery("https://x.test/p?KEY=k1&sig=s&secret=z&q=key")).toBe("https://x.test/p?KEY=***&sig=***&secret=***&q=key");
+    expect(maskUrlQuery("ftp://x.test/?token=t")).toBe("ftp://x.test/?token=t");
+    expect(maskUrlQuery("not a url ?token=t")).toBe("not a url ?token=t");
+    const preview = buildArgsPreview({ callback: "https://hooks.example.com/notify?id=42&sig=deadbeefcafebabe", links: [`http://a.test/?q=1&key=K3Y${"x".repeat(100)}`] })!;
+    expect(preview.startsWith("callback=https://hooks.example.com/notify?id=42&sig=***, links=[http://a.test/?q=1&key=***")).toBe(true);
+    expect(preview).not.toContain("deadbeefcafebabe");
+    expect(preview).not.toContain("K3Y");
+    const long = buildArgsPreview({ u: `https://a.test/${"p".repeat(100)}?token=zzz` })!;
+    expect(Array.from(long.slice(2))).toHaveLength(ARGS_PREVIEW_VALUE_MAX);
+    expect(long).not.toContain("zzz");
   });
 });

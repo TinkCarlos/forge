@@ -46,7 +46,7 @@ GET /admin/v1/session
 | 内容类型 | `application/json; charset=utf-8`；上传 `multipart/form-data` |
 | ID | ULID，带资源前缀（`agt_`、`run_`、`pkg_`、`ins_` 等） |
 | 时间 | ISO 8601 UTC |
-| 分页 | `?cursor=&limit=`（默认 20，最大 100）；响应 `{ items, nextCursor }` |
+| 分页 | 管理端列表用 `?page=&pageSize=`（`page` 从 1 开始；`pageSize` 默认 20，最大 100）；响应 `{ items, page, pageSize, total }`。`cursor` / `nextCursor` 只用于开放平台接口（见 open-platform.md） |
 | 筛选 | `q`、`status`、`orgId`、`type`、`from`、`to`；具体见各资源 |
 | 排序 | `sort=field:asc|desc`；仅白名单字段 |
 | 乐观并发 | 资源含 `revision`；更新带 `If-Match: "rev-3"`；冲突 `409 CFG-8503` |
@@ -437,7 +437,11 @@ If-Match: "rev-2"
 - 每条保留原有字段（`id`、`run_id`、`tool_call_id`、`status`、`risk_level`、`expires_at`、`decided_by`、`decided_at`、`comment`、`created_at`、`agent_name`），新增：
   - `agent_id`；
   - `tool_name`：对应 `tool_calls.tool_key`，找不到工具调用时为 `null`；
-  - `args_preview`：服务端生成的参数摘要，形如 `to=a@b.com, subject=周报, api_key=***`，没有工具调用时为 `null`。键名匹配 `password|token|secret|key|authorization`（不区分大小写，任意层级）的值一律写成 `***`；其他每个值截到 80 字符；整串不超过 300 字符，截断处以 `…` 结尾。键的顺序以数据库 JSON 存储顺序为准。
+  - `args_preview`：服务端生成的参数摘要，形如 `to=a@b.com, subject=周报, api_key=***`，嵌套对象写成 `k={a=1, b=***}`，数组写成 `[x, y]`；没有工具调用时为 `null`。脱敏规则（任意层级，数组元素同样适用）：
+    - **按键名**：把键名按 `_`、`-`、`.`、驼峰、连续大写缩写、字母和数字的边界拆成小写的词，任何一个词等于 `password`、`token`、`secret`、`key`、`authorization` 时，整个值写成 `***`。例如 `api_key`、`apiKey`、`APIKey`、`X-Api-Key`、`accessToken` 会脱敏，`keyword`、`monkey`、`tokenizer` 不会。
+    - **按值**：字符串去掉首尾空白后，以 `Bearer `、`Basic `（不区分大小写）、`sk-`、`ghp_`、`xox` 开头，或形如 JWT（`^eyJ[\w-]*\.[\w-]*\.[\w-]*$`）时，不论键名是什么都写成 `***`。
+    - **URL 查询参数**：`http`/`https` 地址里名为 `token`、`access_token`、`key`、`secret`、`sig`、`signature`（不区分大小写）的参数值写成 `***`，地址其余部分原样保留。
+    - 脱敏之后，每个值截到 80 字符；整串不超过 300 字符，截断处以 `…` 结尾。键的顺序以数据库 JSON 存储顺序为准。
 - 响应里永远不包含原始参数（`args_json`）。
 
 ```json

@@ -21,6 +21,8 @@ const sessions: Session[] = [];
 const orgAApprovals: string[] = [];
 let orgBApproval = "";
 let noToolApproval = "";
+let valueSecretApproval = "";
+const JWT = `eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIke30ifQ.${randomBytes(8).toString("hex")}`;
 
 const headersFor = (orgUnitId: string): Record<string, string> => {
   const session = createSession({ type: "user", id: `it-apr-op-${suffix}-${sessions.length}`, name: "IT Approver", role: "operator", orgUnitId, dataScope: "org" });
@@ -52,6 +54,8 @@ beforeAll(async () => {
   noToolApproval = await pendingApproval(ORG_A, { a: 1 });
   await execute("UPDATE approvals SET tool_call_id = ? WHERE id = ?", [id26("TCLMISSING"), noToolApproval]);
   orgBApproval = await pendingApproval(ORG_B, { nested: { password: SECRET }, note: "other dept" }, "crm.update");
+  // Secrets only recognisable by value (innocent key names), incl. a URL query param.
+  valueSecretApproval = await pendingApproval(ORG_A, { headers: [`Bearer ${SECRET}-b`], gh: `ghp_${SECRET}`, jwt: JWT, callback: `https://hooks.test/x?id=1&sig=${SECRET}-sig` }, "http.call");
 });
 
 afterAll(async () => {
@@ -79,23 +83,23 @@ describe("GET /admin/api/approvals", () => {
     const res = await list(headersFor(ORG_A));
     expect(res.status).toBe(200);
     expect(Object.keys(res.body)).toEqual(["items"]);
-    expect(res.body.items.map((i) => i.id).sort()).toEqual([...orgAApprovals, noToolApproval].sort());
+    expect(res.body.items.map((i) => i.id).sort()).toEqual([...orgAApprovals, noToolApproval, valueSecretApproval].sort());
   });
 
   it("paginates with page/pageSize and total counts only what the caller can see", async () => {
     const headers = headersFor(ORG_A);
     const first = await list(headers, "?page=1&pageSize=3");
     expect(first.status).toBe(200);
-    expect(first.body).toMatchObject({ page: 1, pageSize: 3, total: 4 });
+    expect(first.body).toMatchObject({ page: 1, pageSize: 3, total: 5 });
     expect(first.body.items).toHaveLength(3);
     const second = await list(headers, "?page=2&pageSize=3");
-    expect(second.body).toMatchObject({ page: 2, pageSize: 3, total: 4 });
-    expect(second.body.items).toHaveLength(1);
+    expect(second.body).toMatchObject({ page: 2, pageSize: 3, total: 5 });
+    expect(second.body.items).toHaveLength(2);
     const ids = [...first.body.items, ...second.body.items].map((i) => i.id);
-    expect(new Set(ids).size).toBe(4);
+    expect(new Set(ids).size).toBe(5);
     expect(ids).not.toContain(orgBApproval);
     const defaults = await list(headers, "?page=1");
-    expect(defaults.body).toMatchObject({ page: 1, pageSize: 20, total: 4 });
+    expect(defaults.body).toMatchObject({ page: 1, pageSize: 20, total: 5 });
     expect((await list(headers, "?pageSize=500")).body.pageSize).toBe(100);
     expect((await list(headers, "?page=0")).status).toBe(400);
     expect((await list(headers, "?pageSize=abc")).status).toBe(400);
@@ -127,6 +131,16 @@ describe("GET /admin/api/approvals", () => {
     expect(adminRes.raw).not.toContain(SECRET);
     const b = adminRes.body.items.find((i) => i.id === orgBApproval);
     if (b) expect(b).toMatchObject({ tool_name: "crm.update", args_preview: "note=other dept, nested={password=***}" });
-    expect(adminRes.body.total).toBeGreaterThanOrEqual(5);
+    expect(adminRes.body.total).toBeGreaterThanOrEqual(6);
+  });
+
+  it("value-based secrets (Bearer, ghp_, JWT, URL sig) never appear in the response", async () => {
+    const res = await list(headersFor(ORG_A), "?page=1&pageSize=20");
+    const item = res.body.items.find((i) => i.id === valueSecretApproval)!;
+    expect(item.tool_name).toBe("http.call");
+    const parts = item.args_preview!.split(", ").sort();
+    expect(parts).toEqual(["callback=https://hooks.test/x?id=1&sig=***", "gh=***", "headers=[***]", "jwt=***"]);
+    expect(res.raw).not.toContain(SECRET);
+    expect(res.raw).not.toContain(JWT);
   });
 });
