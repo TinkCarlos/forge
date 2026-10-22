@@ -165,6 +165,7 @@
 | I-MDL-08 | #23/#24 | — | 不存在 id | 404 RUN-7001；成功时审计 `provider.update`/`model.update` | P2 | |
 | I-MDL-09 | #25 | provider 无模型 | test | 400「Provider 还没有模型」；不存在 id → 404 | P2 | |
 | I-MDL-10 | #25 | PRE-MOCK 上游不通 | test | 200 `ok:false`；`error` 不含内网地址、apiKey | P1 | |
+| I-MDL-11 | #21～#25 | org_admin、builder 各一 | 分别建 / 改 provider、建 / 改 model、调 test | 均 **403**「角色缺少权限: model.manage」，不改动（Provider / 模型只有 PA 能写，C 方案）【待 Cursor Jackson 拍板】 | P1 | **已知缺陷 K-10**：现状两角色持有 `model.manage`，均 200 |
 
 ### 6.3 MCP（I-MCP，#26~#29）
 
@@ -286,7 +287,7 @@
 | I-PLG-01 | #67 | — | resources 中 mcp 缺 url（前面 agent 合法） | 400，且之前资源回滚、无残留 | P1 | **已知缺陷**（S-29）：现状残留且无审计 |
 | I-PLG-02 | #67 | — | 同 (key,version) 再装；model key 重复 | upsert 行为记录；重复 model → 409 | P2 | 后者**已知缺陷**：现状 500 |
 | I-PLG-03 | #68 | PA | uninstall 不存在 id | 404，不写审计 | P2 | **已知缺陷**：现状 200 且写审计 |
-| I-PLG-04 | #68 POST `/admin/api/plugins/:id/uninstall` | 部门 B 装的插件；调用者为部门 A 的 org_admin | 卸载该插件 | **404**，与不存在相同，不写审计（按插件 owner 所在部门子树判定，范围外 404） | P2 | **缺陷候选**：现状不按部门判定。注意：`plugin.uninstall` 现状仅 PA 有，OA 会先得 403——执行前需确认 OA 是否获授该权限【待架构师确认】 |
+| I-PLG-04 | #68 POST `/admin/api/plugins/:id/uninstall` | 部门 B 装的插件；调用者为部门 A 的 org_admin | 卸载该插件 | **403 POL-2001**「角色缺少权限: plugin.uninstall」，不卸载、不写审计 → pass | P2 | 现状卸载是**全局的，不按部门判定**（后端确认）。修复提交 **P**（排在 O 之后）会加上按插件安装时记录的 owner 部门及其子部门判定，范围外 404，PA 不受限，权限映射不动。P 的单元测试覆盖四种情况：① 非 PA 但有卸载权限的身份卸载外部门插件 → 404；② 卸载本部门插件成功；③ PA 卸载任意部门插件成功；④ org_admin 卸载 → 403（§16，待后端提交） |
 | I-SA-01 | #70 | PA | 不传 name | 400 CFG-8501 | P2 | |
 | I-SA-02 | #70 | — | 非法 role | 400 CFG-8501 | P2 | |
 | I-SA-03 | #70 | — | `dataScope:"self"` | 400 CFG-8501 | P2 | |
