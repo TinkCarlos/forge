@@ -279,6 +279,11 @@ export const runsRepo = {
     );
     return { rows, total: Number(counted?.total ?? 0) };
   },
+  /** Marks a still pending approval as expired (no longer operable). Returns whether a row changed. */
+  async expirePendingApproval(id: string): Promise<boolean> {
+    const result = await execute("UPDATE approvals SET status = 'expired', decided_at = CURRENT_TIMESTAMP(3) WHERE id = ? AND status = 'pending'", [id]);
+    return result.affectedRows === 1;
+  },
   async decideApproval(id: string, decision: "approved" | "rejected", decidedBy: string, comment: string): Promise<boolean> {
     const result = await execute(
       "UPDATE approvals SET status = ?, decided_by = ?, decided_at = CURRENT_TIMESTAMP(3), comment = ? WHERE id = ? AND status = 'pending'",

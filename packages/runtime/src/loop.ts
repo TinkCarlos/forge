@@ -307,6 +307,11 @@ export async function executeRun(runId: string, workerId = currentWorkerId()): P
 /** Run already finished: the operation (cancel, approval decision) is no longer possible. 409. */
 export const RUN_FINISHED_CODE = "RUN-7005";
 
+/** True when the Run is in a terminal status (succeeded / failed / cancelled / budget_exhausted). */
+export function isRunFinished(status: string): boolean {
+  return TERMINAL.includes(status);
+}
+
 /**
  * Requests cancellation. A Run that already finished cannot be cancelled: 409 RUN-7005「Run 已结束，不能取消」
  * (#79 / I-RUN-06), the same for admin, open and integration; callers write their audit only after this returns.

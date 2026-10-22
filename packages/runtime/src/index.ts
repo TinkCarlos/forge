@@ -2,7 +2,7 @@ export { compressContext, estimateTokens } from "./context.js";
 export { emit } from "./events.js";
 export { claimNext, claimRun, currentWorkerId, leaseEligible } from "./lease.js";
 export { clampWaitSeconds, invokeStatusCode, waitForRun } from "./invoke.js";
-export { AGENT_STATUSES, assertAgentRunnable, cancelRun, createQueuedRun, RUN_FINISHED_CODE, executeRun, finalize, runClaimed } from "./loop.js";
+export { AGENT_STATUSES, assertAgentRunnable, cancelRun, createQueuedRun, RUN_FINISHED_CODE, executeRun, isRunFinished, finalize, runClaimed } from "./loop.js";
 export { createDeltaBuffer, decideAfterModelError, modelCandidates } from "./model-loop.js";
 export { repairMessage, validateOutput } from "./output.js";
 export { buildScheduleIdentity, resolveScheduleIdentity, tickSchedules, triggerSchedule, SCHEDULE_PAUSED_CODE, SCHEDULE_FORBIDDEN_ROLE_CODE, SCHEDULE_TRIGGER_FAILED_CODE, type ScheduleTriggerResult } from "./schedules.js";
