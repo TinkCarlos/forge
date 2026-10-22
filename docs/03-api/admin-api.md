@@ -465,7 +465,7 @@ If-Match: "rev-2"
 | --- | --- | --- | --- |
 | GET | `/schedules` | 列表（状态、Agent、服务账号、负责人） | `schedule.view` |
 | POST | `/schedules` | 创建；默认停用 | `schedule.manage` |
-| GET | `/schedules/{id}` | 详情、下次运行、最近结果 | `schedule.view` |
+| GET | `/schedules/{id}` | 详情：返回单个对象，字段和序列化与列表项完全一致（含 `agent_name`、`next_run_at`、`last_run_id`、`serviceAccountId`、`failureCount`、`lastErrorCode`） | `schedule.view` |
 | PATCH | `/schedules/{id}` | 修改；`If-Match` | `schedule.manage` |
 | DELETE | `/schedules/{id}` | 删除；保留历史 Run | `schedule.manage` |
 | POST | `/schedules/{id}/enable` / `disable` | 启停 | `schedule.manage` |
@@ -510,6 +510,7 @@ POST /admin/v1/schedules
 - 服务账号停用、Agent 停用或无权限 → 自动暂停并返回 `SCD-4801` 原因。
 - `run` 创建 Run 后返回 `{ "runId": "run_...", "trigger": "schedule" }`；并发 skip 时返回 409 `SCD-4802`。
 - 绑定 platform_admin 服务账号 → 400 SCD-4804；存量任务触发时同码自动暂停。手动 run 先按调用者数据范围查任务，查不到 → 404（platform_admin 除外）。
+- `GET /schedules/{id}`：先校验 `schedule.view`（无权限 → 403），再按列表同一数据范围查任务；其他部门的任务与不存在的任务返回完全相同的 404（platform_admin / dataScope all 可读任意部门）。响应不包 `items`，直接是列表里那一项。
 - Cron/时区由 Temporal 计算；控制台预览不得自行实现调度。
 - 所有操作写审计；修改/启停记录前后值。
 

@@ -39,6 +39,7 @@ POST /admin/api/runs/:id/cancel
 GET /admin/api/runs/:id/events
 GET /admin/api/schedules
 POST /admin/api/schedules
+GET /admin/api/schedules/:id
 PATCH /admin/api/schedules/:id
 POST /admin/api/schedules/:id/disable
 POST /admin/api/schedules/:id/enable

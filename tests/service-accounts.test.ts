@@ -352,6 +352,57 @@ describe("every /admin/api/schedules/:id route loads through one data scope (inv
     });
   }
 
+  describe("GET /admin/api/schedules/:id (schedule.view, list data scope, list item shape)", () => {
+    const listItem = async (headers: Record<string, string>, scheduleId: string) => {
+      const list = await app.inject({ method: "GET", url: "/admin/api/schedules", headers });
+      expect(list.statusCode).toBe(200);
+      return (list.json() as { items: Array<Record<string, unknown>> }).items.find((item) => item.id === scheduleId);
+    };
+
+    it("same org -> 200 with exactly the list item (same keys, same serialization)", async () => {
+      const scheduleId = await makeSchedule(ORG, "get-same");
+      const headers = headersFor("operator", ORG);
+      const res = await app.inject({ method: "GET", url: `/admin/api/schedules/${scheduleId}`, headers });
+      expect(res.statusCode).toBe(200);
+      const item = await listItem(headers, scheduleId);
+      expect(item).toBeDefined();
+      expect(res.json()).toEqual(item);
+      expect(Object.keys(res.json() as object)).toEqual(Object.keys(item!));
+      expect(res.json()).toMatchObject({ id: scheduleId, agent_name: "IT SA agent", serviceAccountId: expect.any(String), failureCount: 0, lastErrorCode: null });
+    });
+
+    it("other org -> 404 identical to nonexistent", async () => {
+      const scheduleId = await makeSchedule(ORG, "get-hidden");
+      const foreign = headersFor("operator", OTHER_ORG);
+      const hidden = await app.inject({ method: "GET", url: `/admin/api/schedules/${scheduleId}`, headers: foreign });
+      const missing = await app.inject({ method: "GET", url: `/admin/api/schedules/sch_missing_${suffix}`, headers: foreign });
+      expect(hidden.statusCode).toBe(404);
+      expect(missing.statusCode).toBe(404);
+      expect(errorBody(hidden)).toEqual(errorBody(missing));
+    });
+
+    it("nonexistent id (platform_admin) -> 404", async () => {
+      const res = await app.inject({ method: "GET", url: `/admin/api/schedules/sch_missing_${suffix}`, headers: adminHeaders });
+      expect(res.statusCode).toBe(404);
+    });
+
+    it("without schedule.view (auditor, same org) -> 403", async () => {
+      const scheduleId = await makeSchedule(ORG, "get-noperm");
+      const session = createSession({ type: "user", id: `it-a-${suffix}-${sessions.length}`, name: "IT auditor", role: "auditor", orgUnitId: ORG, dataScope: "org" });
+      sessions.push(session);
+      const res = await app.inject({ method: "GET", url: `/admin/api/schedules/${scheduleId}`, headers: { cookie: `forge_session=${sessionCookieValue(session)}` } });
+      expect(res.statusCode).toBe(403);
+    });
+
+    it("platform_admin (dataScope all) reads another department's schedule -> 200, same as its list item", async () => {
+      const scheduleId = await makeSchedule(OTHER_ORG, "get-admin");
+      const res = await app.inject({ method: "GET", url: `/admin/api/schedules/${scheduleId}`, headers: adminHeaders });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual(await listItem(adminHeaders, scheduleId));
+      expect(res.json()).toMatchObject({ id: scheduleId, org_unit_id: OTHER_ORG });
+    });
+  });
+
   it("platform_admin (dataScope all) manual run on another department's schedule is not scope-restricted -> 200", async () => {
     const scheduleId = await makeSchedule(OTHER_ORG, "scope-admin-run");
     const res = await app.inject({ method: "POST", url: `/admin/api/schedules/${scheduleId}/run`, headers: adminHeaders, payload: {} });

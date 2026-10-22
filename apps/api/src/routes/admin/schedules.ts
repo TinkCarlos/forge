@@ -81,6 +81,13 @@ export default async function adminScheduleRoutes(app: FastifyInstance): Promise
     return { items };
   });
 
+  // Detail: same permission and data scope as the list (invisible and nonexistent -> identical 404), same item shape.
+  scheduleByIdRoute(app, "GET", "", "schedule.view", async ({ schedule }) => {
+    const row = await repos.getScheduleListRow(String(schedule.id));
+    if (!row) throw errors.notFound("定时任务不存在");
+    return presentScheduleExtras(row);
+  });
+
   app.post("/admin/api/schedules", async (request) => {
     const session = await admin(request, "schedule.manage");
     const body = bodyOf(request);

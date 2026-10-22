@@ -1,10 +1,17 @@
 import { ulidWithPrefix } from "@forge/core";
 import { execute, json, one, query } from "../db.js";
 
+/** Row shape shared by the schedule list and GET /schedules/:id, so both serialize identically. */
+const SCHEDULE_LIST_SELECT = "SELECT s.*, a.name AS agent_name FROM schedules s JOIN agents a ON a.id = s.agent_id";
+
 export const schedulesRepo = {
   // Schedules
   async listSchedules(): Promise<Record<string, unknown>[]> {
-    return query("SELECT s.*, a.name AS agent_name FROM schedules s JOIN agents a ON a.id = s.agent_id ORDER BY s.created_at DESC");
+    return query(`${SCHEDULE_LIST_SELECT} ORDER BY s.created_at DESC`);
+  },
+  /** One schedule in exactly the list row shape (same columns, same agent join). */
+  async getScheduleListRow(id: string): Promise<Record<string, unknown> | null> {
+    return one(`${SCHEDULE_LIST_SELECT} WHERE s.id = ?`, [id]);
   },
   async getSchedule(id: string): Promise<Record<string, unknown> | null> {
     return one("SELECT * FROM schedules WHERE id = ?", [id]);
