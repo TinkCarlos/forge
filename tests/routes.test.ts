@@ -4,8 +4,9 @@ import { randomBytes } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
 import { config, hashApiKey, type Principal } from "@forge/core";
-import { createSession, destroySession, sessionCookieValue, type Session } from "@forge/identity";
+import { destroySession, sessionCookieValue, type Session } from "@forge/identity";
 import { execute, repos } from "@forge/store";
+import { cleanupRealSessions, realSession } from "./helpers/real-session.js";
 
 // Record every route as it is registered, so the route set can be compared with the baseline.
 const registered = vi.hoisted(() => [] as { method: string; url: string }[]);
@@ -54,7 +55,7 @@ beforeAll(async () => {
   adminCookie = `forge_session=${cookie!.value}`;
   adminCsrf = (login.json() as { csrfToken: string }).csrfToken;
 
-  // Low-privilege principal: in-memory session only (role "user"), nothing written to the DB.
+  // Low-privilege principal (role "user"): sessions re-read the user from the DB, so a real user row is created (removed in afterAll).
   const lowPrincipal: Principal = {
     type: "user",
     id: `it-low-${suffix}`,
@@ -63,7 +64,7 @@ beforeAll(async () => {
     orgUnitId: "01J00000000000000000000000",
     dataScope: "self",
   };
-  lowSession = createSession(lowPrincipal);
+  lowSession = await realSession(lowPrincipal);
   lowCookie = `forge_session=${sessionCookieValue(lowSession)}`;
 
   // Open-platform app whose key only has agents:read (cleaned up in afterAll; FK cascades the key).
@@ -80,6 +81,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (lowSession) destroySession(lowSession.token);
+  await cleanupRealSessions();
   if (adminCookie) await app.inject({ method: "POST", url: "/auth/logout", headers: { cookie: adminCookie } });
   if (openAppId) {
     await execute("DELETE FROM api_keys WHERE app_id = ?", [openAppId]);

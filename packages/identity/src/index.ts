@@ -16,14 +16,20 @@ import {
 } from "@forge/core";
 import { repos, parseJsonValue, type UserRow } from "@forge/store";
 
-export interface Session {
+/** What the server keeps per session: only the user id (plus CSRF token and expiry), never a principal snapshot. */
+export interface StoredSession {
   token: string;
-  principal: Principal;
+  userId: string;
   expiresAt: number;
   csrfToken: string;
 }
 
-const sessions = new Map<string, Session>();
+/** A stored session resolved for the current request: `principal` is re-read from the database (loadActivePrincipal). */
+export interface Session extends StoredSession {
+  principal: Principal;
+}
+
+const sessions = new Map<string, StoredSession>();
 const oidcStates = new Map<string, { verifier: string; nonce: string; returnTo: string; expiresAt: number }>();
 
 export function toPrincipal(user: UserRow): Principal {
@@ -37,20 +43,31 @@ export function toPrincipal(user: UserRow): Principal {
   };
 }
 
+/**
+ * Current principal of a user, read fresh from the database (one query, see repos.getActiveUserById): role, department and
+ * data scope as they are now. null when the user does not exist, is not active (disabled/deleted), or its department is
+ * missing or it or any parent department is not active. Shared by session authentication and the Connector principal.
+ */
+export async function loadActivePrincipal(userId: string): Promise<Principal | null> {
+  const user = await repos.getActiveUserById(userId);
+  return user ? toPrincipal(user) : null;
+}
+
+/** Stores only `principal.id`; the returned session carries the given principal for the login response. */
 export function createSession(principal: Principal): Session {
   const token = randomBytes(32).toString("base64url");
   const csrfToken = randomBytes(24).toString("base64url");
-  const session: Session = {
+  const stored: StoredSession = {
     token,
-    principal,
+    userId: principal.id,
     csrfToken,
     expiresAt: Date.now() + 8 * 60 * 60 * 1000,
   };
-  sessions.set(token, session);
-  return session;
+  sessions.set(token, stored);
+  return { ...stored, principal };
 }
 
-export function getSession(token: string | undefined): Session | null {
+export function getSession(token: string | undefined): StoredSession | null {
   if (!token) return null;
   const session = sessions.get(token);
   if (!session) return null;
@@ -69,7 +86,8 @@ export function sessionCookieValue(session: Session): string {
   return `${session.token}.${signSession(session.token, config.SESSION_SECRET)}`;
 }
 
-export function readSignedSessionCookie(value: string | undefined): Session | null {
+/** Signature check + stored session lookup, no database access (CSRF check, logout). */
+export function readStoredSessionCookie(value: string | undefined): StoredSession | null {
   if (!value) return null;
   const index = value.lastIndexOf(".");
   if (index < 1) return null;
@@ -79,13 +97,31 @@ export function readSignedSessionCookie(value: string | undefined): Session | nu
   return getSession(token);
 }
 
+/**
+ * Resolves the session cookie for this request: the stored session plus the principal re-read by loadActivePrincipal.
+ * When the user is no longer usable the stored session is destroyed and null is returned (callers answer 401 AUTH-1001).
+ */
+export async function readSignedSessionCookie(value: string | undefined): Promise<Session | null> {
+  const stored = readStoredSessionCookie(value);
+  if (!stored) return null;
+  const principal = await loadActivePrincipal(stored.userId);
+  if (!principal) {
+    destroySession(stored.token);
+    return null;
+  }
+  return { ...stored, principal };
+}
+
 export async function loginLocal(email: string, password: string): Promise<Principal> {
   if (!config.ALLOW_LOCAL_LOGIN) throw errors.forbidden("本地登录已关闭，请使用统一 SSO");
   const user = await repos.getUserByEmail(email);
   if (!user || !user.password_hash || !verifyPassword(password, user.password_hash)) {
     throw errors.unauthorized("邮箱或密码错误");
   }
-  return toPrincipal(user);
+  // A user whose department chain is disabled cannot log in either (same answer as a wrong password).
+  const principal = await loadActivePrincipal(user.id);
+  if (!principal) throw errors.unauthorized("邮箱或密码错误");
+  return principal;
 }
 
 export async function authenticateApiKey(rawKey: string): Promise<Principal> {
@@ -328,9 +364,9 @@ export async function verifyConnectorPrincipal(token: string, cfg: ConnectorConf
 
 export async function principalForConnector(payload: ConnectorPrincipal): Promise<Principal> {
   const user = await repos.getUserByIdpSubject(payload.subject);
-  // Disabled/deleted users and users of a disabled or missing department (or disabled parent) get exactly the same
-  // error as an unregistered subject, so the response does not reveal which case applied.
-  const usable = user !== null && user.status === "active" && (user.org_unit_id === null || (await repos.isOrgUnitActive(user.org_unit_id)));
-  if (!usable) throw new ForgeError("CON-4706", "Connector 主体未在 Forge 登记", 403);
-  return toPrincipal(user);
+  // Same check as session authentication (loadActivePrincipal). Disabled/deleted users and users of a disabled or
+  // missing department (or disabled parent) get exactly the same error as an unregistered subject.
+  const principal = user ? await loadActivePrincipal(user.id) : null;
+  if (!principal) throw new ForgeError("CON-4706", "Connector 主体未在 Forge 登记", 403);
+  return principal;
 }

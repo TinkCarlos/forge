@@ -79,12 +79,19 @@ export const identityRepo = {
     return rows.map((row) => row.id);
   },
 
-  /** True when the department exists and neither it nor any ancestor (path prefix) has a status other than active. */
-  async isOrgUnitActive(orgId: string): Promise<boolean> {
-    const org = await identityRepo.getOrgUnit(orgId);
-    if (!org || org.status !== "active") return false;
-    const inactive = await one<{ id: string }>("SELECT id FROM org_units WHERE LEFT(?, CHAR_LENGTH(path)) = path AND status <> 'active' LIMIT 1", [String(org.path ?? "")]);
-    return !inactive;
+  /**
+   * One query: the user row when the user exists, is active, and either has no department or its department exists and
+   * neither it nor any ancestor (path prefix, the department itself included) has a status other than active. Else null.
+   */
+  async getActiveUserById(id: string): Promise<UserRow | null> {
+    if (!id) return null;
+    return one<UserRow>(
+      `SELECT u.* FROM users u LEFT JOIN org_units o ON o.id = u.org_unit_id
+       WHERE u.id = ? AND u.status = 'active'
+         AND (u.org_unit_id IS NULL OR (o.id IS NOT NULL AND NOT EXISTS (
+           SELECT 1 FROM org_units a WHERE LEFT(o.path, CHAR_LENGTH(a.path)) = a.path AND a.status <> 'active')))`,
+      [id],
+    );
   },
 
   // SSO role mappings / credentials

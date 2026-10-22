@@ -2,9 +2,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
 import type { Principal } from "@forge/core";
-import { createSession, destroySession, sessionCookieValue, type Session } from "@forge/identity";
+import { destroySession, sessionCookieValue, type Session } from "@forge/identity";
 import { execute, repos } from "@forge/store";
 import { buildApp } from "../apps/api/src/app.js";
+import { cleanupRealSessions, realSession } from "./helpers/real-session.js";
 
 // Schedules and service accounts use the same department scope as runs (canAccessRun): dataScope all -> everything,
 // otherwise the caller's department plus all of its sub-departments. Approval decide: an approval whose run the caller
@@ -23,8 +24,8 @@ let app: FastifyInstance;
 let agentId = "";
 let versionId = "";
 
-function headersFor(principal: Omit<Principal, "type" | "id" | "name">): Record<string, string> {
-  const session = createSession({ type: "user", id: `it-sub-${sessions.length}`, name: "IT sub", ...principal });
+async function headersFor(principal: Omit<Principal, "type" | "id" | "name">): Promise<Record<string, string>> {
+  const session = await realSession({ name: "IT sub", ...principal });
   sessions.push(session);
   return { cookie: `forge_session=${sessionCookieValue(session)}`, "x-csrf-token": session.csrfToken };
 }
@@ -58,6 +59,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   for (const session of sessions) destroySession(session.token);
+  await cleanupRealSessions();
   for (const id of schedules) {
     await execute("DELETE FROM audit_logs WHERE resource_type = 'schedule' AND resource_id = ?", [id]);
     await execute("DELETE FROM schedules WHERE id = ?", [id]);
@@ -77,8 +79,8 @@ describe("schedules: department + sub-departments", () => {
     const childSch = await schedule(CHILD, "c");
     const parentSch = await schedule(PARENT, "p");
     const siblingSch = await schedule(SIBLING, "s");
-    const parent = headersFor({ role: "org_admin", orgUnitId: PARENT, dataScope: "org" });
-    const child = headersFor({ role: "org_admin", orgUnitId: CHILD, dataScope: "org" });
+    const parent = await headersFor({ role: "org_admin", orgUnitId: PARENT, dataScope: "org" });
+    const child = await headersFor({ role: "org_admin", orgUnitId: CHILD, dataScope: "org" });
 
     const list = ids(await app.inject({ method: "GET", url: "/admin/api/schedules", headers: parent }));
     expect(list).toEqual(expect.arrayContaining([childSch, parentSch]));
@@ -92,7 +94,7 @@ describe("schedules: department + sub-departments", () => {
   });
 
   it("binding a service account from a child department is allowed; from a sibling -> 404", async () => {
-    const parent = headersFor({ role: "org_admin", orgUnitId: PARENT, dataScope: "org" });
+    const parent = await headersFor({ role: "org_admin", orgUnitId: PARENT, dataScope: "org" });
     const childAcc = await account(CHILD, "bind-c");
     const siblingAcc = await account(SIBLING, "bind-s");
     const ok = await app.inject({ method: "POST", url: "/admin/api/schedules", headers: parent, payload: { key: `it-sub-new-${suffix}`, name: "n", agentId, cron: "0 9 * * *", timezone: "Asia/Shanghai", serviceAccountId: childAcc } });
@@ -110,8 +112,8 @@ describe("service accounts: department + sub-departments", () => {
     const childAcc = await account(CHILD, "list-c");
     const parentAcc = await account(PARENT, "list-p");
     const siblingAcc = await account(SIBLING, "list-s");
-    const parent = headersFor({ role: "platform_admin", orgUnitId: PARENT, dataScope: "org" });
-    const child = headersFor({ role: "platform_admin", orgUnitId: CHILD, dataScope: "org" });
+    const parent = await headersFor({ role: "platform_admin", orgUnitId: PARENT, dataScope: "org" });
+    const child = await headersFor({ role: "platform_admin", orgUnitId: CHILD, dataScope: "org" });
     const list = ids(await app.inject({ method: "GET", url: "/admin/api/service-accounts", headers: parent }));
     expect(list).toEqual(expect.arrayContaining([childAcc, parentAcc]));
     expect(list).not.toContain(siblingAcc);
@@ -128,7 +130,7 @@ describe("approval decide across departments", () => {
     const runId = await repos.createRun({ threadId, agentId, agentVersionId: versionId, orgUnitId: SIBLING, subjectType: "user", subjectId: ADMIN_ID, input: { text: "x" }, status: "waiting_approval" });
     const toolCallId = await repos.addToolCall({ runId, toolKey: "mail.send", args: { a: 1 }, risk: "high", status: "pending" });
     const approvalId = await repos.addApproval({ runId, toolCallId, risk: "high", timeoutSeconds: 3600 });
-    const operator = headersFor({ role: "operator", orgUnitId: PARENT, dataScope: "org" });
+    const operator = await headersFor({ role: "operator", orgUnitId: PARENT, dataScope: "org" });
     const hidden = await app.inject({ method: "POST", url: `/admin/api/approvals/${approvalId}/decide`, headers: operator, payload: { decision: "approved" } });
     const missing = await app.inject({ method: "POST", url: `/admin/api/approvals/${id26("APRNONE")}/decide`, headers: operator, payload: { decision: "approved" } });
     expect(hidden.statusCode).toBe(404);

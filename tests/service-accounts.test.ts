@@ -2,9 +2,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
 import { config, type Principal } from "@forge/core";
-import { createSession, destroySession, sessionCookieValue, type Session } from "@forge/identity";
+import { destroySession, sessionCookieValue, type Session } from "@forge/identity";
 import { execute, query, repos } from "@forge/store";
 import { buildApp } from "../apps/api/src/app.js";
+import { cleanupRealSessions, realSession } from "./helpers/real-session.js";
 
 const suffix = `${Date.now().toString(36)}${randomBytes(3).toString("hex")}`;
 const createdAccounts: string[] = [];
@@ -26,7 +27,7 @@ beforeAll(async () => {
   const cookie = login.cookies.find((c) => c.name === "forge_session")!;
   adminHeaders = { cookie: `forge_session=${cookie.value}`, "x-csrf-token": (login.json() as { csrfToken: string }).csrfToken };
   const builder: Principal = { type: "user", id: `it-builder-${suffix}`, name: "IT Builder", role: "builder", orgUnitId: "01J00000000000000000000000", dataScope: "org" };
-  builderSession = createSession(builder);
+  builderSession = await realSession(builder);
   agentId = await repos.createAgent({ key: `it-sa-agent-${suffix}`, name: "IT SA agent", ownerOrgUnitId: ORG, createdBy: ADMIN_ID });
   versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID });
   await repos.publishAgentVersion(agentId, versionId);
@@ -35,6 +36,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (builderSession) destroySession(builderSession.token);
+  await cleanupRealSessions();
   if (agentId) {
     // Runs created by manual-run tests: cancel still-queued ones so no worker picks them up, wait (bounded) for claimed ones.
     await execute("UPDATE runs SET status = 'cancelled', completed_at = UTC_TIMESTAMP(3) WHERE agent_id = ? AND status = 'queued'", [agentId]);
@@ -262,8 +264,8 @@ describe("service accounts may not be platform_admin", () => {
 
 describe("manual run respects schedule data scope", () => {
   const sessions: Session[] = [];
-  const operatorHeaders = (orgUnitId: string): Record<string, string> => {
-    const session = createSession({ type: "user", id: `it-op-${suffix}-${sessions.length}`, name: "IT Operator", role: "operator", orgUnitId, dataScope: "org" });
+  const operatorHeaders = async (orgUnitId: string): Promise<Record<string, string>> => {
+    const session = await realSession({ name: "IT Operator", role: "operator", orgUnitId, dataScope: "org" });
     sessions.push(session);
     return { cookie: `forge_session=${sessionCookieValue(session)}`, "x-csrf-token": session.csrfToken };
   };
@@ -279,7 +281,7 @@ describe("manual run respects schedule data scope", () => {
       cron: "0 9 * * 1", timezone: "Asia/Shanghai", input: { text: "x" }, createdBy: ADMIN_ID,
     });
     createdSchedules.push(scheduleId);
-    const foreign = operatorHeaders("01J0000000000000000000OTHR");
+    const foreign = await operatorHeaders("01J0000000000000000000OTHR");
     const hidden = await app.inject({ method: "POST", url: `/admin/api/schedules/${scheduleId}/run`, headers: foreign, payload: {} });
     const missing = await app.inject({ method: "POST", url: `/admin/api/schedules/sch_missing_${suffix}/run`, headers: foreign, payload: {} });
     expect(hidden.statusCode).toBe(404);
@@ -291,7 +293,7 @@ describe("manual run respects schedule data scope", () => {
     expect(strip(hidden)).toEqual(strip(missing));
     expect((await repos.listRuns({ limit: 200 })).some((r) => r.trigger_ref === scheduleId)).toBe(false);
 
-    const sameOrg = await app.inject({ method: "POST", url: `/admin/api/schedules/${scheduleId}/run`, headers: operatorHeaders(ORG), payload: {} });
+    const sameOrg = await app.inject({ method: "POST", url: `/admin/api/schedules/${scheduleId}/run`, headers: await operatorHeaders(ORG), payload: {} });
     expect(sameOrg.statusCode).toBe(200);
   });
 });
@@ -299,8 +301,8 @@ describe("manual run respects schedule data scope", () => {
 describe("every /admin/api/schedules/:id route loads through one data scope (invisible -> 404)", () => {
   const OTHER_ORG = "01J0000000000000000000OTHR";
   const sessions: Session[] = [];
-  const headersFor = (role: "builder" | "operator", orgUnitId: string): Record<string, string> => {
-    const session = createSession({ type: "user", id: `it-${role[0]}-${suffix}-${sessions.length}`, name: `IT ${role}`, role, orgUnitId, dataScope: "org" });
+  const headersFor = async (role: "builder" | "operator", orgUnitId: string): Promise<Record<string, string>> => {
+    const session = await realSession({ name: `IT ${role}`, role, orgUnitId, dataScope: "org" });
     sessions.push(session);
     return { cookie: `forge_session=${sessionCookieValue(session)}`, "x-csrf-token": session.csrfToken };
   };
@@ -336,7 +338,7 @@ describe("every /admin/api/schedules/:id route loads through one data scope (inv
     it(`${route.name}: other org -> 404 identical to nonexistent, no change, no audit; same org -> 200`, async () => {
       const scheduleId = await makeSchedule(ORG, `scope-${route.suffix.replace("/", "") || "patch"}`);
       const before = await repos.getSchedule(scheduleId);
-      const foreign = headersFor(route.role, OTHER_ORG);
+      const foreign = await headersFor(route.role, OTHER_ORG);
       const hidden = await app.inject({ method: route.method, url: `/admin/api/schedules/${scheduleId}${route.suffix}`, headers: foreign, payload: route.payload });
       const missing = await app.inject({ method: route.method, url: `/admin/api/schedules/sch_missing_${suffix}${route.suffix}`, headers: foreign, payload: route.payload });
       expect(hidden.statusCode).toBe(404);
@@ -347,7 +349,7 @@ describe("every /admin/api/schedules/:id route loads through one data scope (inv
       expect(await auditCount(scheduleId)).toBe(0);
       expect((await repos.listRuns({ limit: 200 })).some((r) => r.trigger_ref === scheduleId)).toBe(false);
 
-      const sameOrg = await app.inject({ method: route.method, url: `/admin/api/schedules/${scheduleId}${route.suffix}`, headers: headersFor(route.role, ORG), payload: route.payload });
+      const sameOrg = await app.inject({ method: route.method, url: `/admin/api/schedules/${scheduleId}${route.suffix}`, headers: await headersFor(route.role, ORG), payload: route.payload });
       expect(sameOrg.statusCode).toBe(200);
     });
   }
@@ -361,7 +363,7 @@ describe("every /admin/api/schedules/:id route loads through one data scope (inv
 
     it("same org -> 200 with exactly the list item (same keys, same serialization)", async () => {
       const scheduleId = await makeSchedule(ORG, "get-same");
-      const headers = headersFor("operator", ORG);
+      const headers = await headersFor("operator", ORG);
       const res = await app.inject({ method: "GET", url: `/admin/api/schedules/${scheduleId}`, headers });
       expect(res.statusCode).toBe(200);
       const item = await listItem(headers, scheduleId);
@@ -373,7 +375,7 @@ describe("every /admin/api/schedules/:id route loads through one data scope (inv
 
     it("other org -> 404 identical to nonexistent", async () => {
       const scheduleId = await makeSchedule(ORG, "get-hidden");
-      const foreign = headersFor("operator", OTHER_ORG);
+      const foreign = await headersFor("operator", OTHER_ORG);
       const hidden = await app.inject({ method: "GET", url: `/admin/api/schedules/${scheduleId}`, headers: foreign });
       const missing = await app.inject({ method: "GET", url: `/admin/api/schedules/sch_missing_${suffix}`, headers: foreign });
       expect(hidden.statusCode).toBe(404);
@@ -388,7 +390,7 @@ describe("every /admin/api/schedules/:id route loads through one data scope (inv
 
     it("without schedule.view (auditor, same org) -> 403", async () => {
       const scheduleId = await makeSchedule(ORG, "get-noperm");
-      const session = createSession({ type: "user", id: `it-a-${suffix}-${sessions.length}`, name: "IT auditor", role: "auditor", orgUnitId: ORG, dataScope: "org" });
+      const session = await realSession({ name: "IT auditor", role: "auditor", orgUnitId: ORG, dataScope: "org" });
       sessions.push(session);
       const res = await app.inject({ method: "GET", url: `/admin/api/schedules/${scheduleId}`, headers: { cookie: `forge_session=${sessionCookieValue(session)}` } });
       expect(res.statusCode).toBe(403);

@@ -9,7 +9,7 @@ import {
   type Principal,
 } from "@forge/core";
 import { assertPermission, maskArgsDeep, visibleAgentOrgIds } from "@forge/governance";
-import { oidcConfigured, readSignedSessionCookie, sessionCookieValue, type Session } from "@forge/identity";
+import { oidcConfigured, readSignedSessionCookie, readStoredSessionCookie, sessionCookieValue, type Session, type StoredSession } from "@forge/identity";
 import {
   parseJsonValue,
   repos,
@@ -47,12 +47,18 @@ export function jsonBody(body: Record<string, unknown>, key: string, fallback: u
   return value ?? fallback;
 }
 
-export function readSession(request: FastifyRequest): Session | null {
+/** Session with the principal re-read from the database (one query); null when missing/expired or the user is no longer usable. */
+export async function readSession(request: FastifyRequest): Promise<Session | null> {
   return readSignedSessionCookie(request.cookies.forge_session);
 }
 
+/** Stored session only (no database access): for the CSRF check and logout. */
+export function readStoredSession(request: FastifyRequest): StoredSession | null {
+  return readStoredSessionCookie(request.cookies.forge_session);
+}
+
 export async function admin(request: FastifyRequest, permission?: string): Promise<Session> {
-  const session = readSession(request);
+  const session = await readSession(request);
   if (!session) throw errors.unauthorized();
   if (permission) assertPermission(session.principal, permission);
   return session;

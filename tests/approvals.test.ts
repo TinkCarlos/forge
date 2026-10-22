@@ -2,9 +2,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { config } from "@forge/core";
-import { createSession, destroySession, sessionCookieValue, type Session } from "@forge/identity";
+import { destroySession, sessionCookieValue, type Session } from "@forge/identity";
 import { execute, repos } from "@forge/store";
 import { buildApp } from "../apps/api/src/app.js";
+import { cleanupRealSessions, realSession } from "./helpers/real-session.js";
 
 const suffix = `${Date.now().toString(36)}${randomBytes(3).toString("hex")}`;
 const ADMIN_ID = "01J00000000000000000000001";
@@ -24,8 +25,8 @@ let noToolApproval = "";
 let valueSecretApproval = "";
 const JWT = `eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIke30ifQ.${randomBytes(8).toString("hex")}`;
 
-const headersFor = (orgUnitId: string): Record<string, string> => {
-  const session = createSession({ type: "user", id: `it-apr-op-${suffix}-${sessions.length}`, name: "IT Approver", role: "operator", orgUnitId, dataScope: "org" });
+const headersFor = async (orgUnitId: string): Promise<Record<string, string>> => {
+  const session = await realSession({ name: "IT Approver", role: "operator", orgUnitId, dataScope: "org" });
   sessions.push(session);
   return { cookie: `forge_session=${sessionCookieValue(session)}`, "x-csrf-token": session.csrfToken };
 };
@@ -60,6 +61,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   for (const session of sessions) destroySession(session.token);
+  await cleanupRealSessions();
   if (agentId) {
     await execute("DELETE FROM runs WHERE agent_id = ?", [agentId]);
     await execute("DELETE FROM threads WHERE agent_id = ?", [agentId]);
@@ -80,14 +82,14 @@ const list = async (headers: Record<string, string>, qs = ""): Promise<{ status:
 
 describe("GET /admin/api/approvals", () => {
   it("without page params returns only { items } (existing callers unchanged)", async () => {
-    const res = await list(headersFor(ORG_A));
+    const res = await list(await headersFor(ORG_A));
     expect(res.status).toBe(200);
     expect(Object.keys(res.body)).toEqual(["items"]);
     expect(res.body.items.map((i) => i.id).sort()).toEqual([...orgAApprovals, noToolApproval, valueSecretApproval].sort());
   });
 
   it("paginates with page/pageSize and total counts only what the caller can see", async () => {
-    const headers = headersFor(ORG_A);
+    const headers = await headersFor(ORG_A);
     const first = await list(headers, "?page=1&pageSize=3");
     expect(first.status).toBe(200);
     expect(first.body).toMatchObject({ page: 1, pageSize: 3, total: 5 });
@@ -106,15 +108,15 @@ describe("GET /admin/api/approvals", () => {
   });
 
   it("other department sees only its own; unknown org sees nothing", async () => {
-    const b = await list(headersFor(ORG_B), "?page=1&pageSize=20");
+    const b = await list(await headersFor(ORG_B), "?page=1&pageSize=20");
     expect(b.body.total).toBe(1);
     expect(b.body.items.map((i) => i.id)).toEqual([orgBApproval]);
-    const none = await list(headersFor(id26("ITNONE")), "?page=1");
+    const none = await list(await headersFor(id26("ITNONE")), "?page=1");
     expect(none.body).toMatchObject({ total: 0, items: [] });
   });
 
   it("adds tool_name and masked args_preview; raw args never in the response", async () => {
-    const res = await list(headersFor(ORG_A), "?page=1&pageSize=20");
+    const res = await list(await headersFor(ORG_A), "?page=1&pageSize=20");
     const item = res.body.items.find((i) => i.id === orgAApprovals[0])!;
     expect(item).toMatchObject({ tool_name: "mail.send", agent_id: agentId, agent_name: "IT approvals agent", status: "pending" });
     // MySQL JSON normalises key order, so assert on the parts.
@@ -135,7 +137,7 @@ describe("GET /admin/api/approvals", () => {
   });
 
   it("value-based secrets (Bearer, ghp_, JWT, URL sig) never appear in the response", async () => {
-    const res = await list(headersFor(ORG_A), "?page=1&pageSize=20");
+    const res = await list(await headersFor(ORG_A), "?page=1&pageSize=20");
     const item = res.body.items.find((i) => i.id === valueSecretApproval)!;
     expect(item.tool_name).toBe("http.call");
     const parts = item.args_preview!.split(", ").sort();

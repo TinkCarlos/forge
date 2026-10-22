@@ -12,6 +12,7 @@ import { repos } from "@forge/store";
 import {
   bodyOf,
   readSession,
+  readStoredSession,
   setSessionCookie,
   requireBodyString,
   sessionPayload,
@@ -36,13 +37,13 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.get("/auth/session", async (request) => {
-    const session = readSession(request);
+    const session = await readSession(request);
     if (!session) throw errors.unauthorized();
     return sessionPayload(session);
   });
 
   app.post("/auth/logout", async (request, reply) => {
-    const session = readSession(request);
+    const session = readStoredSession(request);
     if (session) destroySession(session.token);
     reply.clearCookie("forge_session", { path: "/" });
     return { ok: true };
