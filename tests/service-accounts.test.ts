@@ -258,3 +258,39 @@ describe("service accounts may not be platform_admin", () => {
     expect((await repos.listRuns({ limit: 200 })).some((r) => r.trigger_ref === scheduleId)).toBe(false);
   });
 });
+
+describe("manual run respects schedule data scope", () => {
+  const sessions: Session[] = [];
+  const operatorHeaders = (orgUnitId: string): Record<string, string> => {
+    const session = createSession({ type: "user", id: `it-op-${suffix}-${sessions.length}`, name: "IT Operator", role: "operator", orgUnitId, dataScope: "org" });
+    sessions.push(session);
+    return { cookie: `forge_session=${sessionCookieValue(session)}`, "x-csrf-token": session.csrfToken };
+  };
+  afterAll(() => {
+    for (const session of sessions) destroySession(session.token);
+  });
+
+  it("operator with schedule.run in another org -> 404 (same as nonexistent); same org -> 200", async () => {
+    const accountId = await repos.createServiceAccount({ key: `it-sa-scope-${suffix}`, name: "scope", orgUnitId: ORG, createdBy: ADMIN_ID });
+    createdAccounts.push(accountId);
+    const scheduleId = await repos.createSchedule({
+      key: `it-sa-scope-sch-${suffix}`, name: "IT scope", agentId, orgUnitId: ORG, subjectType: "service", subjectId: accountId, serviceAccountId: accountId,
+      cron: "0 9 * * 1", timezone: "Asia/Shanghai", input: { text: "x" }, createdBy: ADMIN_ID,
+    });
+    createdSchedules.push(scheduleId);
+    const foreign = operatorHeaders("01J0000000000000000000OTHR");
+    const hidden = await app.inject({ method: "POST", url: `/admin/api/schedules/${scheduleId}/run`, headers: foreign, payload: {} });
+    const missing = await app.inject({ method: "POST", url: `/admin/api/schedules/sch_missing_${suffix}/run`, headers: foreign, payload: {} });
+    expect(hidden.statusCode).toBe(404);
+    expect(missing.statusCode).toBe(404);
+    const strip = (res: LightMyRequestResponse) => {
+      const { requestId: _ignored, ...rest } = (res.json() as { error: Record<string, unknown> }).error;
+      return rest;
+    };
+    expect(strip(hidden)).toEqual(strip(missing));
+    expect((await repos.listRuns({ limit: 200 })).some((r) => r.trigger_ref === scheduleId)).toBe(false);
+
+    const sameOrg = await app.inject({ method: "POST", url: `/admin/api/schedules/${scheduleId}/run`, headers: operatorHeaders(ORG), payload: {} });
+    expect(sameOrg.statusCode).toBe(200);
+  });
+});

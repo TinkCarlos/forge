@@ -23,6 +23,19 @@ async function requireUsableServiceAccount(principal: Principal, id: string) {
   return account;
 }
 
+/** Schedule data scope used by the list endpoint: dataScope all sees everything, otherwise only the caller's org. */
+function scheduleVisible(principal: Principal, schedule: Record<string, unknown>): boolean {
+  if (principal.dataScope === "all") return true;
+  return schedule.org_unit_id === principal.orgUnitId;
+}
+
+/** Loads one schedule through the same data scope as the list; invisible and nonexistent both -> 404. */
+async function loadVisibleSchedule(principal: Principal, id: string): Promise<Record<string, unknown>> {
+  const schedule = await repos.getSchedule(id);
+  if (!schedule || !scheduleVisible(principal, schedule)) throw errors.notFound("定时任务不存在");
+  return schedule;
+}
+
 /** Additive camelCase fields on top of the raw schedule row (raw snake_case keys stay for compatibility). */
 function presentScheduleExtras(schedule: Record<string, unknown>): Record<string, unknown> {
   return {
@@ -38,10 +51,7 @@ export default async function adminScheduleRoutes(app: FastifyInstance): Promise
     const session = await admin(request, "schedule.view");
     const schedules = await repos.listSchedules();
     const items = schedules
-      .filter((schedule) => {
-        if (session.principal.dataScope === "all") return true;
-        return schedule.org_unit_id === session.principal.orgUnitId;
-      })
+      .filter((schedule) => scheduleVisible(session.principal, schedule))
       .map(presentScheduleExtras);
     return { items };
   });
@@ -83,9 +93,7 @@ export default async function adminScheduleRoutes(app: FastifyInstance): Promise
 
   app.patch("/admin/api/schedules/:id", async (request) => {
     const session = await admin(request, "schedule.manage");
-    const schedule = await repos.getSchedule(param(request, "id"));
-    if (!schedule) throw errors.notFound("定时任务不存在");
-    if (session.principal.dataScope !== "all" && schedule.org_unit_id !== session.principal.orgUnitId) throw errors.notFound("定时任务不存在");
+    const schedule = await loadVisibleSchedule(session.principal, param(request, "id"));
     const body = bodyOf(request);
     const fields: Record<string, unknown> = {};
     if (body.name !== undefined) fields.name = stringBody(body, "name");
@@ -125,8 +133,7 @@ export default async function adminScheduleRoutes(app: FastifyInstance): Promise
 
   app.post("/admin/api/schedules/:id/run", async (request) => {
     const session = await admin(request, "schedule.run");
-    const schedule = await repos.getSchedule(param(request, "id"));
-    if (!schedule) throw errors.notFound("定时任务不存在");
+    const schedule = await loadVisibleSchedule(session.principal, param(request, "id"));
     const agent = await repos.getAgent(String(schedule.agent_id));
     if (!agent?.published_version_id) throw errors.invalid("Agent 尚未发布");
     // Manual "run now" executes as the schedule's identity (bound service account, or the legacy service identity),
