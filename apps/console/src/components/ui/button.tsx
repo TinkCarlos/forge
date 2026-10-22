@@ -1,6 +1,6 @@
 import { cva, type VariantProps } from "class-variance-authority";
 import { Loader2 } from "lucide-react";
-import type { ButtonHTMLAttributes } from "react";
+import { forwardRef, type ButtonHTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
@@ -23,11 +23,11 @@ const buttonVariants = cva(
 type Props = ButtonHTMLAttributes<HTMLButtonElement> & VariantProps<typeof buttonVariants> & { loading?: boolean };
 
 /** 加载时保持宽度不变：文字隐藏、spinner 居中覆盖。 */
-export function Button({ className, variant, size, loading, disabled, children, ...props }: Props) {
+export const Button = forwardRef<HTMLButtonElement, Props>(function Button({ className, variant, size, loading, disabled, children, ...props }, ref) {
   return (
-    <button className={cn(buttonVariants({ variant, size }), className)} disabled={disabled || loading} aria-busy={loading || undefined} {...props}>
+    <button ref={ref} className={cn(buttonVariants({ variant, size }), className)} disabled={disabled || loading} aria-busy={loading || undefined} {...props}>
       <span className={cn("inline-flex items-center gap-2", loading && "invisible")}>{children}</span>
       {loading && <Loader2 className="absolute h-4 w-4 animate-spin" aria-hidden />}
     </button>
   );
-}
+});
