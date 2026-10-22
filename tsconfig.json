@@ -3,7 +3,10 @@
     "target": "ES2023",
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "lib": ["ES2023", "DOM"],
+    "lib": [
+      "ES2023",
+      "DOM"
+    ],
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
@@ -14,14 +17,30 @@
     "noEmit": true,
     "baseUrl": ".",
     "paths": {
-      "@forge/core": ["packages/core/src/index.ts"],
-      "@forge/store": ["packages/store/src/index.ts"],
-      "@forge/identity": ["packages/identity/src/index.ts"],
-      "@forge/governance": ["packages/governance/src/index.ts"],
-      "@forge/models": ["packages/models/src/index.ts"],
-      "@forge/capabilities": ["packages/capabilities/src/index.ts"],
-      "@forge/runtime": ["packages/runtime/src/index.ts"],
-      "@forge/open-platform": ["packages/open-platform/src/index.ts"]
+      "@forge/core": [
+        "packages/core/src/index.ts"
+      ],
+      "@forge/store": [
+        "packages/store/src/index.ts"
+      ],
+      "@forge/identity": [
+        "packages/identity/src/index.ts"
+      ],
+      "@forge/governance": [
+        "packages/governance/src/index.ts"
+      ],
+      "@forge/models": [
+        "packages/models/src/index.ts"
+      ],
+      "@forge/capabilities": [
+        "packages/capabilities/src/index.ts"
+      ],
+      "@forge/runtime": [
+        "packages/runtime/src/index.ts"
+      ],
+      "@forge/open-platform": [
+        "packages/open-platform/src/index.ts"
+      ]
     }
   },
   "include": [
@@ -30,5 +49,9 @@
     "scripts/**/*.ts",
     "tests/**/*.ts",
     "vitest.config.ts"
+  ],
+  "exclude": [
+    "apps/console/**",
+    "node_modules"
   ]
 }

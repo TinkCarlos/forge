@@ -24,7 +24,11 @@
     "smoke": "tsx scripts/smoke.ts",
     "smoke:sso": "tsx scripts/sso-smoke.ts",
     "mock:services": "node services/mock-mcp/server.mjs",
-    "smoke:edit": "tsx scripts/edit-smoke.ts"
+    "smoke:edit": "tsx scripts/edit-smoke.ts",
+    "smoke:isolated": "tsx scripts/smoke-isolated.ts",
+    "dev:console": "pnpm --filter @forge/console dev",
+    "build:console": "pnpm --filter @forge/console build",
+    "typecheck:console": "pnpm --filter @forge/console typecheck"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",

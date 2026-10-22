@@ -1,2 +1,4 @@
+packages:
+  - apps/console
 allowBuilds:
   esbuild: true
