@@ -181,6 +181,7 @@ function setApiStatus(ok) {
   el.classList.toggle("down", !ok);
   el.querySelector(".status-text").textContent = ok ? "API 正常" : "API 异常";
   el.title = ok ? "API 与数据库就绪" : "API 或数据库不可用，请联系运维";
+  $("#api-banner")?.classList.toggle("hidden", ok);
 }
 
 async function checkHealth() {
@@ -315,6 +316,10 @@ function stat(label, value, sub) {
 async function renderAgents() {
   const data = await api("/admin/api/agents");
   state.agents = data.items ?? [];
+  const details = await Promise.all(state.agents.map((agent) => api(`/admin/api/agents/${agent.id}`).catch(() => null)));
+  state.agents.forEach((agent, index) => {
+    agent.draft = (details[index]?.versions ?? []).find((version) => version.status === "draft") ?? null;
+  });
   $("#content").innerHTML = `
     <div class="card">
       <div class="card-head"><div><h3>Agents</h3><p class="muted">发布版本、开启开放 API、试运行</p></div>
@@ -329,7 +334,7 @@ async function renderAgents() {
           <td><div class="actions">
             <button class="btn ghost small" onclick="app.openAgentRun('${esc(agent.id)}','${esc(agent.name)}')">试运行</button>
             <button class="btn ghost small" onclick="app.openAgentNewVersion('${esc(agent.id)}','${esc(agent.name)}')">新版本</button>
-            <button class="btn ghost small" onclick="app.publishAgent('${esc(agent.id)}')">发布草稿</button>
+            ${agent.draft ? `<button class="btn ghost small" onclick="app.publishAgent('${esc(agent.id)}')">发布草稿 ${esc(vLabel(agent.draft.version))}</button>` : ""}
             <button class="btn ghost small" onclick="app.toggleAgentApi('${esc(agent.id)}',${agent.apiEnabled ? "false" : "true"})">${agent.apiEnabled ? "关闭 API" : "开放 API"}</button>
             <button class="btn ghost small" onclick="app.openAgentDetail('${esc(agent.id)}')">详情</button>
           </div></td>
@@ -459,7 +464,7 @@ async function renderSchedules() {
     <div class="card">
       <div class="card-head"><div><h3>定时任务</h3><p class="muted">Cron + 时区；以当前账号身份运行</p></div><button class="btn primary" onclick="app.openScheduleCreate()">新建定时任务</button></div>
       ${state.schedules.length ? `<div class="table-wrap"><table><thead><tr><th>名称</th><th>Agent</th><th>Cron</th><th>时区</th><th>下次运行</th><th>状态</th><th>操作</th></tr></thead><tbody>
-        ${state.schedules.map((schedule) => `<tr><td><strong>${esc(schedule.name)}</strong><div class="muted mono">${esc(schedule.key)}</div></td><td>${esc(schedule.agent_name)}</td><td class="mono">${esc(schedule.cron)}</td><td>${esc(schedule.timezone)}</td><td>${fmt(schedule.next_run_at)}</td><td>${statusPill(schedule.status)}</td><td><div class="actions"><button class="btn ghost small" onclick="app.scheduleAction('${esc(schedule.id)}','enable')">启用</button><button class="btn ghost small" onclick="app.scheduleAction('${esc(schedule.id)}','disable')">停用</button><button class="btn ghost small" onclick="app.openScheduleEdit('${esc(schedule.id)}')">编辑</button><button class="btn ghost small" onclick="app.scheduleAction('${esc(schedule.id)}','run')">立即运行</button></div></td></tr>`).join("")}
+        ${state.schedules.map((schedule) => `<tr><td><strong>${esc(schedule.name)}</strong><div class="muted mono">${esc(schedule.key)}</div></td><td>${esc(schedule.agent_name)}</td><td class="mono">${esc(schedule.cron)}</td><td>${esc(schedule.timezone)}</td><td>${fmt(schedule.next_run_at)}</td><td>${statusPill(schedule.status)}</td><td><div class="actions">${schedule.status === "active" ? `<button class="btn ghost small" onclick="app.scheduleAction('${esc(schedule.id)}','disable')">停用</button>` : `<button class="btn ghost small" onclick="app.scheduleAction('${esc(schedule.id)}','enable')">启用</button>`}<button class="btn ghost small" onclick="app.openScheduleEdit('${esc(schedule.id)}')">编辑</button><button class="btn ghost small" onclick="app.scheduleAction('${esc(schedule.id)}','run')">立即运行</button></div></td></tr>`).join("")}
       </tbody></table></div>` : empty("还没有定时任务", "创建一个 Cron 任务，框架会按计划提交 Run。")}
     </div>`;
 }
@@ -545,6 +550,12 @@ function openModal(title, body, onSubmit, submitLabel = "保存", danger = false
     }
   };
   dialog.showModal();
+}
+
+function vLabel(version) {
+  if (version === null || version === undefined || version === "") return "";
+  const text = String(version);
+  return text.startsWith("v") ? text : `v${text}`;
 }
 
 function confirmAction(title, message, confirmLabel, danger = true) {
@@ -744,11 +755,16 @@ const app = {
   async publishAgent(id) {
     try {
       const detail = await api(`/admin/api/agents/${id}`);
-      const draft = (detail.versions ?? []).find((version) => version.status === "draft") ?? detail.versions?.[0];
-      if (!draft) throw new Error("没有可发布版本");
-      if (!(await confirmAction("发布 Agent", `将把版本 ${draft.version} 发布为线上版本，开放 API 和定时任务会立即改用这个版本。`, "确认发布", false))) return;
+      const draft = (detail.versions ?? []).find((version) => version.status === "draft");
+      if (!draft) {
+        toast("没有待发布的草稿，请先创建新版本", "error");
+        return;
+      }
+      const next = vLabel(draft.version);
+      const current = detail.publishedVersion ? `当前线上版本是 ${vLabel(detail.publishedVersion)}` : "这个 Agent 目前还没有线上版本";
+      if (!(await confirmAction(`发布「${detail.name}」${next}`, `发布后开放 API 和定时任务会立即改用 ${next}，${current}。`, "确认发布", false))) return;
       await api(`/admin/api/agents/${id}/publish`, { method: "POST", body: { versionId: draft.id } });
-      toast(`已发布版本 ${draft.version}`);
+      toast(`已发布 ${next}`);
       await renderAgents();
     } catch (error) {
       toast(error.message, "error");
@@ -757,7 +773,8 @@ const app = {
 
   async toggleAgentApi(id, enabled) {
     try {
-      if (!enabled && !(await confirmAction("关闭开放 API", "关闭后，外部应用对这个 Agent 的调用会被拒绝，之后可以随时重新开放。", "确认关闭"))) return;
+      const agent = state.agents.find((item) => item.id === id);
+      if (!enabled && !(await confirmAction(`关闭「${agent?.name ?? id}」的开放 API`, "关闭后外部应用调用会返回 403，之后可以随时重新开放。", "确认关闭"))) return;
       await api(`/admin/api/agents/${id}`, { method: "PATCH", body: { apiEnabled: enabled } });
       toast(enabled ? "已开放 API" : "已关闭 API");
       await renderAgents();
@@ -898,7 +915,8 @@ const app = {
 
   async uninstallPackage(id) {
     try {
-      if (!(await confirmAction("卸载能力包", "卸载只标记包状态，不会删除已经创建的 Agent、Skill、MCP 等资源。", "确认卸载"))) return;
+      const plugin = state.plugins.find((item) => item.id === id);
+      if (!(await confirmAction(`卸载能力包「${plugin?.name ?? plugin?.key ?? id}」`, "卸载只标记包状态，不会删除已经创建的 Agent、Skill、MCP 等资源。", "确认卸载"))) return;
       await api(`/admin/api/plugins/${id}/uninstall`, { method: "POST", body: {} });
       toast("已标记卸载");
       await renderPackages();
@@ -972,7 +990,12 @@ const app = {
         await switchTab("runs");
         return;
       }
-      if (action === "disable" && !(await confirmAction("停用定时任务", "停用后不会再按 Cron 自动运行，之后可以随时重新启用。", "确认停用"))) return;
+      if (action === "disable") {
+        const schedule = state.schedules.find((item) => item.id === id);
+        const nextRun = schedule?.next_run_at ? `，下次计划的 ${fmt(schedule.next_run_at)} 会取消` : "";
+        const message = `停用后不会再按 ${schedule?.cron ?? "Cron"}（${schedule?.timezone ?? "默认时区"}）自动运行${nextRun}。`;
+        if (!(await confirmAction(`停用定时任务「${schedule?.name ?? id}」`, message, "确认停用"))) return;
+      }
       await api(`/admin/api/schedules/${id}/${action}`, { method: "POST", body: {} });
       toast(action === "enable" ? "已启用" : "已停用");
       await renderSchedules();
