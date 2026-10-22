@@ -190,7 +190,7 @@
 | I-SKL-04 | #32/#33 | — | 不存在 id GET / PATCH | 404「Skill 不存在」 | P2 | |
 | I-SKL-05 | #34 | — | 缺 version | 400 CFG-8501 | P2 | |
 | I-SKL-06 | #34 | — | 重复 version | 409 CFG-8503 | P2 | **已知缺陷**：现状 500 |
-| I-SKL-07 | #33 PATCH `/admin/api/skills/:id` | — | ① `status:"foo"`；`status` 超过 16 字符 ② 合法改名 | ① 400 CFG-8501，不入库 ② 200，审计 `skill.update` | P2 | **已知缺陷 K-12**：① 现状 200 `{ok:true}` 并入库，之后该 Skill 从提示词里消失（等于静默下线）；超 16 字符 500 SYS-9001。修复提交待后端定 |
+| I-SKL-07 | #33 PATCH `/admin/api/skills/:id` | — | ① `status:"foo"`；`status` 超过 16 个字符 ② 合法改名 | ① **400 CFG-8501**，不入库；**同时断言错误码和文案**（文案以修复 T 的实现为准，执行前写死）② 200，审计 `skill.update` | P2 | **已知缺陷 K-12**：① 现状 200 `{ok:true}` 并入库，之后该 Skill 从提示词里消失（等于静默下线）；超 16 字符 500 SYS-9001。修复 **T** |
 
 ### 6.5 工具源（I-TS，#35~#36）
 
