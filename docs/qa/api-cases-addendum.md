@@ -13,7 +13,7 @@
 |---|---|
 | PRE-CON | **connector 用例（I-INT-01~13、S-34~36、I-ERR CON-47xx）**：由运维在 **3197** 用临时 `.env` 起独立实例（库另建，非 `forge`/`forge_ux` 共用写入），打开 connector 开关，配置**测试用 RSA 密钥对**。**私钥只放 `/tmp`**（如 `/tmp/forge-qa-con/`，chmod 600），不入库、不进仓库、不贴群；**测完删除私钥与临时 `.env`，停实例**。3197 由谁起：待运维/后端在群里定。 |
 | PRE-OIDC | SSO-1204~1211 需 mock OIDC IdP；无 mock 时标「N/A，单测覆盖」并写明单测文件路径 |
-| PRE-MOCK | 模型类用 mock 8090（可返回 5xx / 非流式 / 超时）；MCP、webhook 用本机 mock 接收端，不对外网发请求。**统一出站校验后（架构师口径）**：mock 8090 及本机接收端须**显式加入出站白名单**才放行，白名单默认为空（见 S-49）；依赖 mock 的用例前置里写明白名单配置 |
+| PRE-MOCK | 模型类用 mock 8090（可返回 5xx / 非流式 / 超时）；MCP、webhook 用本机 mock 接收端，不对外网发请求。**统一出站校验后（架构师口径）**：mock 8090 及本机接收端须**显式加入出站白名单**（`OUTBOUND_ALLOWLIST`，精确 `host:port`，逗号分隔）才放行，白名单默认为空（见 S-49、S-54～S-59）；依赖 mock 的用例前置里写明白名单配置 |
 | PRE-ROLE | 角色账号 `~/forge-qa-users.json`（PA/OA/BL/OP/AU/US/OO + 父/子部门用户各一） |
 | PRE-TMP | 需要改开关的（`ALLOW_LOCAL_LOGIN=false`、未构建控制台、OIDC issuer 不通）一律用临时端口实例，不改 3198 |
 
@@ -172,7 +172,7 @@
 | 编号 | 路由 | 前置 | 步骤 | 预期 | 优先级 | 备注 |
 |---|---|---|---|---|---|---|
 | I-MCP-01 | #26 | MCP 有 headers | GET mcp | 无 `headers` | P0 | |
-| I-MCP-02 | #27 #29 | 出站白名单为空（默认） | create 与 refresh 各一次，url 依次为回环 `http://127.0.0.1:…`、私网、链路本地、云元数据 `http://169.254.169.254/` | create 与 refresh 均 **400 HTP-4003「目标地址不允许（内网/回环/元数据）」**（统一出站校验，与 S-39 / S-46 同码；HTP-4003 架构师已确认，前提是错误码表无重复，后端核查中），不发起连接；创建时的工具发现只记 warning 写 `last_error`；响应体不得出现解析出的 IP | P1 | **已知缺陷**（SSRF）：现状不拦。DNS rebinding 见 S-48，8090 白名单见 S-49 |
+| I-MCP-02 | #27 #29 | 出站白名单为空（默认） | create 与 refresh 各一次，url 依次为回环 `http://127.0.0.1:…`、私网、链路本地、云元数据 `http://169.254.169.254/` | create 与 refresh 均 **400 HTP-4003「目标地址不允许（内网/回环/元数据）」**（统一出站校验，与 S-39 / S-46 同码；HTP-4003 架构师已确认，定稿），不发起连接；创建时的工具发现只记 warning 写 `last_error`；响应体不得出现解析出的 IP | P1 | **已知缺陷**（SSRF）：现状不拦。DNS rebinding 见 S-48，8090 白名单见 S-49 |
 | I-MCP-03 | #27 | — | 缺 url；重复 key | 400；409 | P1 | |
 | I-MCP-04 | #28 | — | 不存在 id；成功改名 | 404「MCP 不存在」；审计 `mcp.update` | P2 | 敏感值见 I-AUD-05 |
 | I-MCP-05 | #29 | PRE-MOCK 上游 500 | refresh | 502 HTP-4001 | P1 | |
