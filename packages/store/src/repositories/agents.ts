@@ -42,6 +42,17 @@ export const agentsRepo = {
   async listAgentVersions(agentId: string): Promise<AgentVersionRow[]> {
     return query<AgentVersionRow>("SELECT * FROM agent_versions WHERE agent_id = ? ORDER BY created_at DESC", [agentId]);
   },
+  /** Newest draft version per agent (same rule as the console: first status='draft' by created_at DESC). */
+  async latestDraftVersions(agentIds: string[]): Promise<Map<string, { id: string; version: string }>> {
+    const result = new Map<string, { id: string; version: string }>();
+    if (agentIds.length === 0) return result;
+    const rows = await query<AgentVersionRow>(
+      `SELECT id, agent_id, version FROM agent_versions WHERE status = 'draft' AND agent_id IN (${agentIds.map(() => "?").join(", ")}) ORDER BY created_at DESC`,
+      agentIds,
+    );
+    for (const row of rows) if (!result.has(row.agent_id)) result.set(row.agent_id, { id: row.id, version: row.version });
+    return result;
+  },
   async getAgentVersion(id: string): Promise<AgentVersionRow | null> {
     return one<AgentVersionRow>("SELECT * FROM agent_versions WHERE id = ?", [id]);
   },

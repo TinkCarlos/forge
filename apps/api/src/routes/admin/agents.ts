@@ -27,10 +27,11 @@ export default async function adminAgentRoutes(app: FastifyInstance): Promise<vo
     const session = await admin(request, "agent.view");
     const orgIds = await visibleAgentOrgIds(session.principal);
     const agents = await repos.listAgents(orgIds);
+    const drafts = await repos.latestDraftVersions(agents.map((agent) => agent.id));
     const items = await Promise.all(
       agents.map(async (agent) => {
         const version = agent.published_version_id ? await repos.getAgentVersion(agent.published_version_id) : null;
-        return presentAgent(agent, version);
+        return { ...presentAgent(agent, version), draftVersion: drafts.get(agent.id) ?? null };
       }),
     );
     return { items };
