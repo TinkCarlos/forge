@@ -17,6 +17,7 @@ import {
   requireBodyString,
   sessionPayload,
 } from "../plugins/http-helpers.js";
+import { safeReturnTo } from "../plugins/return-to.js";
 
 export default async function authRoutes(app: FastifyInstance): Promise<void> {
   app.get("/auth/config", async () => ({
@@ -52,7 +53,8 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
   app.get("/auth/oidc/login", async (request, reply) => {
     if (!oidcConfigured()) throw new ForgeError("SSO-1201", "SSO 尚未配置", 503);
     const query = request.query as Record<string, unknown>;
-    const returnTo = typeof query.returnTo === "string" && query.returnTo.startsWith("/") ? query.returnTo : "/";
+    // S-30: only a same-origin local path survives; anything else falls back to /next/.
+    const returnTo = safeReturnTo(query.returnTo, config.FORGE_PUBLIC_URL);
     return reply.redirect(await buildOidcAuthorizeUrl(returnTo));
   });
 
@@ -65,6 +67,6 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
     const session = createSession(principal);
     setSessionCookie(reply, session);
     await repos.audit({ actorType: "user", actorId: principal.id, action: "auth.login.oidc", resourceType: "user", resourceId: principal.id });
-    return reply.redirect(returnTo.startsWith("/") ? returnTo : "/");
+    return reply.redirect(safeReturnTo(returnTo, config.FORGE_PUBLIC_URL));
   });
 }
