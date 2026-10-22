@@ -552,6 +552,7 @@ POST /admin/v1/schedules
 - `concurrencyPolicy`：`skip`（默认）、`queue`、`cancel_previous`。
 - 服务账号停用、Agent 停用或无权限 → 自动暂停并返回 `SCD-4801` 原因。
 - **已知限制（P2，计划下一轮修）**：`GET /schedules`、`GET /schedules/{id}` 返回的 `input_json` 是明文，没有经过 `maskArgsDeep`（审计里的 `schedule.update` 已打码）。
+- 调度器触发时第一步解析 `cron` 和 `timezone`（I-SCH-17 / I-ERR-20）：解析失败（含空串、越界字段、不存在的时区）记 `last_error_code = SCD-4803`、`failure_count + 1` 并停用任务（`status = disabled`、`next_run_at = NULL`），不建 Run；这一步先于 Agent、运行身份等其他检查。
 - 触发时运行身份实时校验（S-45，自动触发和手动 run 都一样）：绑定服务账号的，服务账号须为 active，且所属部门及每一级上级部门都启用；未绑定服务账号的存量任务，按任务行上的用户（`subject_type = 'user'` 取 `subject_id`，否则取 `created_by`）做和会话认证相同的校验（用户 active、部门链全部启用）。不满足时：自动触发暂停任务并记 `SCD-4801`；手动 run 返回 `409 SCD-4801`；都不建 Run。
 - 校验时查库出错：自动触发只把本次记为失败（`last_error_code = SCD-4803`、`failure_count + 1`），任务保持 active，`next_run_at` 推到下一个 cron 时间；手动 run 返回 `503 SYS-9003`；都不建 Run。
 - `run` 创建 Run 后返回 `{ "runId": "run_...", "trigger": "schedule" }`；并发 skip 时返回 409 `SCD-4802`。

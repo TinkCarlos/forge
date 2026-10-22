@@ -80,14 +80,24 @@ export async function resolveScheduleIdentity(schedule: Record<string, unknown>)
 export async function triggerSchedule(schedule: Record<string, unknown>, now = new Date()): Promise<ScheduleTriggerResult> {
   const scheduleId = String(schedule.id);
   try {
+    // Parse cron + timezone first (I-SCH-17 / I-ERR-20): an invalid expression fails this schedule with SCD-4803 and
+    // stops it before anything else is looked at, so no Run is ever created for it.
+    let nextSlot: Date;
+    try {
+      const cron = String(schedule.cron ?? "").trim();
+      if (!cron) throw new Error("empty cron");
+      nextSlot = CronExpressionParser.parse(cron, { currentDate: now, tz: String(schedule.timezone ?? "Asia/Shanghai") }).next().toDate();
+    } catch {
+      await repos.recordScheduleFailure(scheduleId, SCHEDULE_TRIGGER_FAILED_CODE);
+      return { kind: "failed", code: SCHEDULE_TRIGGER_FAILED_CODE };
+    }
+    const nextRunAt = () => nextSlot;
     const agentId = String(schedule.agent_id);
     const agent = await repos.getAgent(agentId);
     if (!agent || agent.status !== "active" || !agent.published_version_id) {
       await repos.recordScheduleFailure(scheduleId, SCHEDULE_PAUSED_CODE);
       return { kind: "paused", code: SCHEDULE_PAUSED_CODE };
     }
-    const nextRunAt = () =>
-      CronExpressionParser.parse(String(schedule.cron), { currentDate: now, tz: String(schedule.timezone ?? "Asia/Shanghai") }).next().toDate();
     let principal: Principal;
     try {
       principal = await resolveScheduleIdentity(schedule);
@@ -99,14 +109,8 @@ export async function triggerSchedule(schedule: Record<string, unknown>, now = n
       }
       // Database error during the identity lookup: fail only this trigger, keep the schedule active.
       if (error instanceof ForgeError && error.code === "SYS-9003") {
-        let next: Date | null = null;
         try {
-          next = nextRunAt();
-        } catch {
-          next = null;
-        }
-        try {
-          await repos.recordScheduleTriggerError(scheduleId, SCHEDULE_TRIGGER_FAILED_CODE, next);
+          await repos.recordScheduleTriggerError(scheduleId, SCHEDULE_TRIGGER_FAILED_CODE, nextRunAt());
         } catch {
           // database still down: nothing recorded; the row stays due and is retried on the next tick
         }
