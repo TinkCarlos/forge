@@ -1,5 +1,5 @@
 import { type FastifyInstance } from "fastify";
-import { asRecord, assertOutboundUrlStatic, config, encryptSecret } from "@forge/core";
+import { asRecord, assertOutboundUrlStatic, config, encryptSecret, errors } from "@forge/core";
 import { discoverMcpTools } from "@forge/capabilities";
 import { repos } from "@forge/store";
 import {
@@ -92,7 +92,10 @@ export default async function adminPluginRoutes(app: FastifyInstance): Promise<v
 
   app.post("/admin/api/plugins/:id/uninstall", async (request) => {
     const session = await admin(request, "plugin.uninstall");
-    await repos.uninstallPlugin(param(request, "id"));
+    // #68 / I-PLG-04: unknown id -> 404 (no audit). Department scoping waits for an owner-department column.
+    const plugin = await repos.getPlugin(param(request, "id"));
+    if (!plugin) throw errors.notFound("插件不存在");
+    await repos.uninstallPlugin(String(plugin.id));
     await writeAudit(session, "plugin.uninstall", "plugin", param(request, "id"));
     return { ok: true };
   });

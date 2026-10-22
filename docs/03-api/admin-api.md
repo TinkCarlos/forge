@@ -194,6 +194,8 @@ Agent 状态与运行（当前实现，I-AGT-11 / 11b / 11c）：
 | GET | `/installations/{id}/references` | 引用方 | `package.view` |
 | GET | `/installations/{id}/diff` | 当前/目标版本差异 | `package.view` |
 
+卸载插件（当前实现 `POST /admin/api/plugins/{id}/uninstall`，#68 / I-PLG-04）：先校验 `plugin.uninstall`（只有 platform_admin 有；org_admin 等返回 403）；插件不存在 → `404 RUN-7001「插件不存在」`，不写审计；已卸载的插件再卸载返回 200。按安装部门限定卸载范围尚未实现（`plugins` 表目前只有 `created_by`，没有 owner 部门列，待定）。
+
 **安装**
 
 ```http

@@ -242,6 +242,9 @@ export const capabilitiesRepo = {
   async listPlugins(): Promise<Record<string, unknown>[]> {
     return query("SELECT * FROM plugins ORDER BY created_at DESC");
   },
+  async getPlugin(id: string): Promise<Record<string, unknown> | null> {
+    return one("SELECT * FROM plugins WHERE id = ?", [id]);
+  },
   async uninstallPlugin(id: string): Promise<void> {
     await execute("UPDATE plugins SET status = 'uninstalled' WHERE id = ?", [id]);
   },
