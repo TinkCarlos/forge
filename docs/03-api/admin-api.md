@@ -15,6 +15,7 @@
 - 身份查库失败（当前实现）：会话认证、`/integration/v1` 的 Connector 主体、本地登录在查库出错（连接断开、超时等任何异常）时返回 `503 SYS-9003「身份校验暂时不可用，请稍后重试」`（`retryable: true`），不当成用户不可用：不返回 401/403、不当成密码错误、**不删除会话**，数据库恢复后同一个 Cookie 继续可用。响应里不带数据库地址等内部信息。
 - OIDC 登录回跳（当前实现，S-30）：`GET /auth/oidc/login?returnTo=` 和回调里的 `returnTo` 只接受本站路径：必须以单个 `/` 开头，不能以 `//`、`/\` 开头（百分号解码一次后同样检查，如 `/%2F%2Fevil.example`），不能含控制字符，且 `new URL(returnTo, FORGE_PUBLIC_URL)` 的 origin 必须等于本站；任一条不满足都回落到 `/next/`。
 - 所有变更写审计；响应头返回 `X-Request-Id`。
+- 部门子树（AB，I-SCOPE-13 / I-SCOPE-14）：`orgSubtreeIds` 按路径字面匹配（`path = ? OR path LIKE ? ESCAPE '!'`，参数里的 `!`、`%`、`_` 先转义，后缀固定带 `/`），部门 key 里的 `_`、`%` 不再是通配符，`/a/b` 不会匹配 `/a/bc`，子部门 `/a/b/c` 仍在范围内；部门链启用检查同样按 `/` 分隔判断祖先。
 - 补齐的审计 action（Y，当前实现）：`auth.logout`（有有效会话时才写，actor 为该用户；写审计失败不影响登出）、`schedule.enable`、`schedule.disable`、`open.run.cancel`（actor 为应用）、`integration.run.create`、`integration.run.cancel`（actor 为映射用户）。只在操作成功后写；409 等失败不写。
 - 管理 API **不向 Agent Connector 入站开放**；集成调用使用专用 `/integration/v1`，见 [sso-and-connector.md](../02-architecture/sso-and-connector.md)。
 
@@ -175,7 +176,7 @@ Agent 状态与运行（当前实现，I-AGT-11 / 11b / 11c）：
 
 - `PATCH /admin/api/agents/{id}` 的 `status` 只接受 `active` 和 `disabled`，其他值（包括大小写不同、空串、非字符串）返回 `400 CFG-8501`，不修改。
 - Agent 的 `status` 不是 `active` 时，`POST /admin/api/agents/{id}/run`、开放平台 `POST /open/v1/agents/{key}/runs` 和 `/invoke`、`POST /integration/v1/runs` 都返回 `409 CFG-8503「Agent 已停用，不能运行」`，不建 Run、不写审计。判定在可见性之后：看不到的 Agent 仍是 404。
-- Integration 入口的 Agent 范围（I-INT-17）：`GET /integration/v1/agents` 与 `POST /integration/v1/runs` 复用 `agentAccessible`，按映射用户所在部门及其子部门（加上无主 Agent）判定；范围外的 Agent 不出现在列表里，建 Run 返回与不存在相同的 `404`，不建 Run。列表也不再列出已停用的 Agent。Integration 不检查 `api_enabled`（该开关只管开放平台 `/open/v1`）。
+- Integration 入口的 Agent 范围（I-INT-17）：`GET /integration/v1/agents` 与 `POST /integration/v1/runs` 复用 `agentAccessible`，按映射用户所在部门及其子部门（加上无主 Agent）判定；范围外的 Agent 不出现在列表里，建 Run 返回与不存在相同的 `404`，不建 Run。列表也不再列出已停用的 Agent。Integration 不检查 `api_enabled`：该开关只管开放平台的 App Key 入口（`/open/v1/*`）；integration 走 Connector JWT 加用户映射，权限按映射用户的身份（角色、dataScope）和所在部门子树判断。
 - 无主 Agent（`owner_org_unit_id` 为空，I-AGT-13）：`PATCH /admin/api/agents/{id}`、`POST /admin/api/agents/{id}/versions`、`POST /admin/api/agents/{id}/publish` 只有 platform_admin 能执行，其他角色返回 `403 POL-2001`，不写库、不写审计；读取、运行、建定时任务不受影响。
 
 ## 4. 能力包与安装

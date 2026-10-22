@@ -2,6 +2,17 @@ import { ulidWithPrefix } from "@forge/core";
 import { execute, one, query } from "../db.js";
 import type { ServiceAccountRow, UserFilter, UserRow } from "../types.js";
 
+/** Escapes a literal for LIKE ... ESCAPE '!' ("!" rather than "\\" so the SQL does not depend on NO_BACKSLASH_ESCAPES). */
+export function escapeLike(value: string): string {
+  return value.replace(/[!%_]/g, (ch) => `!${ch}`);
+}
+
+/**
+ * SQL: org unit `a` is `o` itself or one of its ancestors (AB). Literal prefix compare (no LIKE) and the prefix always
+ * ends with "/", so "/x/b" is not an ancestor of "/x/bc"; the root "/" stays an ancestor of everything.
+ */
+const ANCESTOR_OF_O = "(a.path = o.path OR LEFT(o.path, CHAR_LENGTH(CONCAT(TRIM(TRAILING '/' FROM a.path), '/'))) = CONCAT(TRIM(TRAILING '/' FROM a.path), '/'))";
+
 export const identityRepo = {
   // Users / orgs
   async getUserByEmail(email: string): Promise<UserRow | null> {
@@ -77,7 +88,11 @@ export const identityRepo = {
     const org = await identityRepo.getOrgUnit(orgId);
     if (!org) return [];
     const path = String(org.path ?? "");
-    const rows = await query<{ id: string }>("SELECT id FROM org_units WHERE path LIKE ?", [`${path}%`]);
+    if (!path) return [String(org.id)];
+    // AB / I-SCOPE-11: the path is matched literally. LIKE wildcards in it are escaped and the descendant pattern always
+    // ends with the separator, so "/x/a_b/" never matches "/x/axb/" and "/x/b" never matches "/x/bc".
+    const base = path.endsWith("/") ? path : `${path}/`;
+    const rows = await query<{ id: string }>("SELECT id FROM org_units WHERE path = ? OR path LIKE ? ESCAPE '!'", [path, `${escapeLike(base)}%`]);
     return rows.map((row) => row.id);
   },
 
@@ -91,7 +106,7 @@ export const identityRepo = {
       `SELECT u.* FROM users u LEFT JOIN org_units o ON o.id = u.org_unit_id
        WHERE u.id = ? AND u.status = 'active'
          AND (u.org_unit_id IS NULL OR (o.id IS NOT NULL AND NOT EXISTS (
-           SELECT 1 FROM org_units a WHERE LEFT(o.path, CHAR_LENGTH(a.path)) = a.path AND a.status <> 'active')))`,
+           SELECT 1 FROM org_units a WHERE ${ANCESTOR_OF_O} AND a.status <> 'active')))`,
       [id],
     );
   },
@@ -132,7 +147,7 @@ export const identityRepo = {
       `SELECT s.* FROM service_accounts s LEFT JOIN org_units o ON o.id = s.org_unit_id
        WHERE s.id = ? AND s.status = 'active'
          AND (s.org_unit_id IS NULL OR (o.id IS NOT NULL AND NOT EXISTS (
-           SELECT 1 FROM org_units a WHERE LEFT(o.path, CHAR_LENGTH(a.path)) = a.path AND a.status <> 'active')))`,
+           SELECT 1 FROM org_units a WHERE ${ANCESTOR_OF_O} AND a.status <> 'active')))`,
       [id],
     );
   },
