@@ -354,8 +354,9 @@
 | I-SCOPE-10c | 接口 | P1 | R-sa（SA 接口仅 PA，故经 schedule 绑定验证）。**正**：父部门 OA 创建/PATCH schedule 绑定**子部门**服务账号；**反**：绑定**兄弟部门**或**上级部门**服务账号。**前置（子部门 SA 怎么造）**：建服务账号时部门固定取调用者自己的部门，接口无法把 SA 放到别的部门（后端对过 `4c2555e`）。造法：① 用 PA 正常建好 SA；② 由**运维**在 **3196 的临时库 `forge_ops`** 执行 `UPDATE service_accounts SET org_unit_id=<子部门id> WHERE id=<账号id>`；③ 执行前先 `SHOW CREATE TABLE service_accounts` 核对表名和列名；④ 改之前先导出这张表做备份，SQL 原样贴进执行日志；⑤ 只允许在临时库（`forge_ops`，或 connector 场景的 `forge_connector`）上做，**禁止在 `forge`、`forge_ux` 上做**，测完整库删除。反面用例（兄弟部门 / 上级部门 SA）用同样办法造数据 | 正：**200**。**已知缺陷**：R-sa 精确等于，现状 404（修复 D 已改）。反：**404**，与 `serviceAccountId` 不存在时完全相同（状态码、错误码、message），响应中**不出现账号名**（= I-SA-10） |
 | I-SCOPE-11 | 接口 | P1 | `self` 用户看 Agent 列表 | 与 `org` 相同（按部门子树），不是「仅自己创建」 |
 | I-SCOPE-12 | 接口 | P1 | owner=NULL 的 Agent：列表空部门用户 vs 详情 | 列表/详情一致性；不一致记缺陷 |
-| I-SCOPE-13 | 接口 | P1 | 修复 **AB**（`orgSubtreeIds` 用 `LIKE path%`）。建两个兄弟部门，key 分别为 `a_b` 和 `axb`；用 `a_b` 的 org_admin 读取 `axb` 下的用户（`GET /admin/api/users/:id` 或等价详情）、再看用户列表和审计列表 | 读 `axb` 的用户 → **404**，与不存在相同；列表和审计都看不到 `axb` 的数据。备注：修法是转义 `\`、`%`、`_` 并在末尾拼接分隔符，或改用 `LEFT` 做前缀比较；**全仓库所有用 LIKE 拼路径的地方一并修改**。哈希待后端 |
-| I-SCOPE-14 | 接口 | P1 | 修复 **AB**。部门路径 `/a/b` 与 `/a/bc` 互为前缀，另建真正的子部门 `/a/b/c`；用 `/a/b` 的 org_admin 看用户列表、审计列表 | 看不到 `/a/bc` 的数据；能看到本部门和 `/a/b/c` 的数据。备注同 I-SCOPE-13 |
+| I-SCOPE-13 | 接口 | P1 | 修复 **AB**（`orgSubtreeIds` 用 `LIKE path%`）。建两个兄弟部门，key 分别为 `a_b` 和 `axb`；用 `a_b` 的 org_admin 读取 `axb` 下的用户（`GET /admin/api/users/:id` 或等价详情）、再看用户列表和审计列表 | 读 `axb` 的用户 → **404**，与不存在相同；列表和审计都看不到 `axb` 的数据。扩展：`a%` 对 `azz`、`q\` 对 `q\x` 同样不得串。备注：修法是转义 `\`、`%`、`_` 并在末尾拼接分隔符，或改用 `LEFT` 做前缀比较；**全仓库所有用 LIKE 拼路径的地方一并修改**。已修：AB `2244dbb` |
+| I-SCOPE-14 | 接口 | P1 | 修复 **AB**。部门路径 `/a/b` 与 `/a/bc` 互为前缀，另建真正的子部门 `/a/b/c`；用 `/a/b` 的 org_admin 看用户列表、审计列表 | 看不到 `/a/bc` 的数据；能看到本部门和 `/a/b/c` 的数据，且 `/x/b/c` 这类真正子部门的资源**可见可改**。扩展：部门 key `a%` 不得匹配 `azz`；`q\` 不得匹配 `q\x`。备注同 I-SCOPE-13（修复 AB `2244dbb`：`path = ? OR path LIKE ? ESCAPE '!'`，转义 `!` `%` `_` 并末尾拼 `/`） |
+| I-SCOPE-15 | 接口 | P1 | 修复 **AB**（`getActiveUserById` / `getActiveServiceAccountById` 原用 `LEFT(...)=` 前缀比较）。部门 `/x/b` 与 `/x/bc` 互为前缀，各有一个用户（及一个 SA 绑定的定时任务）；停用 `/x/b` | `/x/b` 下的用户下一次请求 401、SA 任务被暂停；**`/x/bc` 下的用户和 SA 不受影响**（请求照常 200，任务照常触发）。`/x/b/c`（真正子部门）随 `/x/b` 一起判为停用 |
 
 ### 8.5 执行表
 
@@ -389,22 +390,26 @@
 | S-36 | 安全 | P1 | 有效调用 integration 写接口后查 audit | 应有记录；无则缺陷 |
 | S-37 | 安全 | P2 | open 列表若含 cursor：篡改 cursor | 不可看到他应用数据 |
 | S-38 | 安全 | P0 | 审计日志跨部门隔离：OA（本部门）或 AU 登录，库内已有他部门产生的审计记录；调 `GET /admin/api/audit?limit=200`，检查返回条目的 actor / resource 是否含其他部门 | 仅本部门及所有子部门，只有 PA 看全局；返回全站审计 → 缺陷（与 I-SCOPE-01/03 同口径）。**已知缺陷**：现状全局可见。【待 Cursor Jackson 拍板】 |
-| S-39 | 安全 | P0 | MCP discover 出站（`POST /admin/api/mcp`、`POST /admin/api/mcp/:id/refresh`，BL/OA/PA）：白名单为空；`url` 依次设为回环 `http://127.0.0.1:<port>`、私网（10/8、172.16/12、192.168/16）、链路本地 `169.254.x.x`、云元数据 `http://169.254.169.254/...`；创建后再对已建记录调 refresh。受控监听端观察有无回连，只验证发起行为，不利用 | 统一出站校验：各地址均**拦截，返回明确错误码**，不发起连接。**已知缺陷**：`discoverMcpTools` 未调 `assertSafeUrl`，现状会真实发起连接（= I-MCP-02） |
-| S-40 | 安全 | P1 | Provider test 出站：BL/OA 建 provider，`baseUrl` 依次设为回环 / 私网 / 链路本地 / 云元数据地址并建一个模型，调 `POST /admin/api/providers/:id/test` | **拦截，返回明确错误码**；不对目标发请求，`error` 中不回显连接结果。**已知缺陷**：现状无私网校验 |
+| S-39 | 安全 | P0 | MCP discover 出站（`POST /admin/api/mcp`、`POST /admin/api/mcp/:id/refresh`，BL/OA/PA）：白名单为空；`url` 依次设为回环 `http://127.0.0.1:<port>`、私网（10/8、172.16/12、192.168/16）、链路本地 `169.254.x.x`、云元数据 `http://169.254.169.254/...`；创建后再对已建记录调 refresh。受控监听端观察有无回连，只验证发起行为，不利用 | 统一出站校验：创建 / 修改 / refresh 均 **400 HTP-4003**，不发起连接；创建时的工具发现只记 warning 写 `last_error`；响应体不得出现解析出的 IP。**已知缺陷**：`discoverMcpTools` 未调 `assertSafeUrl`，现状会真实发起连接（= I-MCP-02） |
+| S-40 | 安全 | P1 | Provider test 出站：BL/OA 建 provider，`baseUrl` 依次设为回环 / 私网 / 链路本地 / 云元数据地址并建一个模型，调 `POST /admin/api/providers/:id/test` | Provider 创建 / 修改 / test 均 **400 HTP-4003**（test 不再返回 `{ok:false}`）；不对目标发请求；响应体不得出现解析出的 IP。运行中被拦：不重试、不换下一个候选，全部候选失败时 Run 以 HTP-4003 结束。**已知缺陷**：现状无私网校验 |
 | S-41 | 安全 | P1 | 审计 details 明文敏感值：`PATCH /admin/api/mcp/:id` 带 `headers` 含 `Authorization: Bearer xxx`；`PATCH /schedules/:id` 带含密 `input`；`POST /role-mappings` 带整段 body；随后 `GET /admin/api/audit` 读 `mcp.update` / `schedule.update` / `role_mapping.upsert` | details 不原样保存 `headers_json` / `input_json` / 请求体中的密钥（应打码或不记）。代码确认当前原样存 → 缺陷（修复 B 已覆盖这三类，待复验）。只读验证，不外发 |
-| S-42 | 安全 | P1 | Webhook 出站：OA/PA 建 app，`webhookUrl` 依次指向回环 / 私网 / 链路本地 / 云元数据地址；触发投递并调 `POST /admin/api/webhook-deliveries/:id/replay` | **拦截，返回明确错误码**（投递记录写明原因）。代码此路径已有 `privateNetworkBlocked`，预期 pass，作回归；错误码与 S-39/S-40/S-46 一致。replay 的跨部门越权由 S-22 覆盖 |
+| S-42 | 安全 | P1 | Webhook 出站：OA/PA 建 app，`webhookUrl` 依次指向回环 / 私网 / 链路本地 / 云元数据地址；触发投递并调 `POST /admin/api/webhook-deliveries/:id/replay` | 配置 webhookUrl → **400 HTP-4003**；已存在的私网地址投递记 `failed`、不重试；replay → **200**，投递状态 `failed`；响应体不得出现解析出的 IP（投递记录存 errorCode 见 S-53）。代码此路径已有 `privateNetworkBlocked`，预期 pass，作回归；错误码与 S-39/S-40/S-46 一致（HTP-4003）。replay 的跨部门越权由 S-22 覆盖 |
 | S-43 | 安全 | P1 | args_preview 已知限制向量（对照 `docs/03-api/admin-api.md` 第 9 节）：构造假数据审批，参数覆盖：① `https://app.test/cb#access_token=SECRET`；② `ex.com/a?token=SECRET`、`api.ex.com:8443/v1?key=SECRET`；③ `密码是 hunter2，token=abc123`、`use Authorization: Bearer abc`；④ `/cb？token=SECRET`（全角问号）；读审批列表 `args_preview` | 与文档「不打码」及 `tests/args-preview-edge.test.ts` 固定值一致 → pass，报告列为「已知打码盲区」交架构师决定是否收敛；出现文档未声明的新泄露 → 缺陷 |
 | S-44 | 安全 | P0 | 生产默认密钥与 SSO 拒启（隔离临时实例，不碰 3198/3100）：(1) `NODE_ENV=production` + dev 默认 `SESSION_SECRET` / `FORGE_MASTER_KEY` / `API_KEY_PEPPER`；(2) `NODE_ENV=production` + `SSO_MODE!=required`；(3) 对照：production + 全部唯一密钥 + `SSO_MODE=required` | (1)(2) 启动即报错退出（"Production refuses development default secrets…" / "Production requires SSO_MODE=required"）；(3) 正常启动。补 O-01 只测「缺值」的缺口 |
+| S-50 | 安全 | P1 | OIDC 出站（修复 G）：白名单为空，把 IdP 的 discovery / token / JWKS 地址分别指向回环 / 私网 / 元数据，走一次 SSO 登录 | 登录返回 **502 HTP-4003「目标地址不允许（内网/回环/元数据）」**（不是 400）；不发起连接；响应体不得出现解析出的 IP |
+| S-51 | 安全 / 文档 | P2 | 内网 IdP：先检查 `.env.example` 与 README；再把内网 IdP 的 host 加入出站白名单后走 SSO 登录 | `.env.example` 与 README 写明「IdP host 须加入出站白名单」；加白名单后 SSO 可正常登录；未加时同 S-50 |
+| S-52 | 安全 / 日志 | P1 | 触发任一入口的出站拦截（含 S-48d 的 302 跳转） | 服务端日志记录被拦的目标 host、解析出的 IP、拦截原因（`loopback` / `private` / `metadata` / `redirect` 之一）；这些信息只进服务端日志，不进响应体。**待后端实现** |
+| S-53 | 安全 | P1 | webhook 指向私网地址，触发一次投递，读投递记录 | 投递记录 `status=failed`，并存 `errorCode=HTP-4003`。**待后端实现** |
 | S-45 | 安全 | **P0** | 用户 X 已登录（保留旧 cookie）。PA 依次对 X 做三种操作（每种单独一轮）：**停用**、**降级**（如 OA→US）、**换部门**；X 用旧会话立刻发下一次请求（读 + 写各一） | 按修复 F 的预期：**停用、删除用户**，或用户**所在部门 / 上级部门被停用** → 下一次请求返回 **401**，同时**删掉该会话**；**降级 / 换部门** → 下一次请求即按新角色、新部门判定（原权限 403 / 原部门对象 404）。**已知缺陷**：基线会话是登录时快照（内存 Map，8h），现状仍按旧权限放行。与 **I-INT-10** 互相引用；S-28 为其子集；数据库故障见 S-45b、OPS-024、I-INT-10d |
 | S-45b | 安全 | P0 | （挂 S-45）用户已登录；让会话校验查库失败（MySQL 断开，同 OPS-024），带 cookie 发请求；恢复后再用同一 cookie | 查库失败属基础设施故障：返回 **503**，**会话保留**；恢复后同一 cookie 继续可用。只有确认查到了用户且用户不可用时，才返回 401 并删会话 |
-| S-46 | 安全 | P1 | web_fetch 出站：白名单为空；Agent 运行中让 `web_fetch` 工具依次请求回环 / 私网 / 链路本地 / 云元数据地址 | **拦截，返回明确错误码**，与 S-39/S-40/S-42 同一出站校验、同一错误码。代码已有 `assertSafeUrl`，预期 pass（回归） |
-| S-47 | 安全 | P0 | MCP call 出站：预置一条 MCP，其 url 指向受控监听端（可先临时把监听端加入白名单完成创建，再清空白名单）；Agent 运行时调用该 MCP 工具 | 调用前同样经出站校验：**拦截，返回明确错误码**，监听端无连接。**已知缺陷**：`callMcpTool` 未调 `assertSafeUrl`，现状会真实连接。（已核对：S-39 只覆盖 discover（create / refresh），不含 call，故 S-47 单独保留） |
-| S-48 | 安全 | P0 | DNS rebinding：用受控测试域名（首次解析到公网、连接时解析到 `127.0.0.1` / 私网；或直接解析到私网），分别打 MCP discover、MCP call、Provider test、web_fetch、webhook 五处。前置：受控 DNS 方案执行前由运维定，不改 3100 / 开发环境 | 出站校验在 **DNS 解析后按实际 IP 再校验一次**：五处均**拦截，返回明确错误码**。现状待实测 |
-| S-48a | 安全 | P0 | 绕过写法：云元数据 `http://169.254.169.254/latest/meta-data/`，分别打五处出站入口 | 被拦截，返回明确错误码 |
-| S-48b | 安全 | P0 | 绕过写法：IPv6 回环 `http://[::1]:<port>/` 与 ULA 私网 `fd00::/8`（如 `http://[fd00::1]/`） | 被拦截，返回明确错误码 |
-| S-48c | 安全 | P0 | 绕过写法：十进制 / 八进制 IP，如 `http://2130706433/`、`http://0177.0.0.1/`（均为 127.0.0.1） | 被拦截，返回明确错误码 |
-| S-48d | 安全 | P0 | 绕过写法：公网可达的受控地址先 **302 跳转**到私网地址 | 跳转目标同样校验：被拦截，返回明确错误码，不跟随到私网 |
-| S-49 | 安全 | P0 | 白名单默认为空：不配置白名单，五处出站入口分别指向 mock `http://127.0.0.1:8090`；再把 8090 显式加入白名单重试 | 白名单为空时 8090 **同样被拦截**，返回明确错误码；只有显式加入白名单后才放行。依赖 mock 8090 的用例须在前置里显式配白名单（见 `api-cases-addendum.md` PRE-MOCK） |
+| S-46 | 安全 | P1 | web_fetch 出站：白名单为空；Agent 运行中让 `web_fetch` 工具依次请求回环 / 私网 / 链路本地 / 云元数据地址 | web_fetch 与 OpenAPI 工具均返回 `{ok:false, errorCode:"HTP-4003"}`；响应体不得出现解析出的 IP，与 S-39/S-40/S-42 同一出站校验。代码已有 `assertSafeUrl`，预期 pass（回归） |
+| S-47 | 安全 | P0 | MCP call 出站：预置一条 MCP，其 url 指向受控监听端（可先临时把监听端加入白名单完成创建，再清空白名单）；Agent 运行时调用该 MCP 工具 | 调用前同样经出站校验：返回 `{ok:false, errorCode:"HTP-4003"}`，监听端无连接；响应体不得出现解析出的 IP。**已知缺陷**：`callMcpTool` 未调 `assertSafeUrl`，现状会真实连接。（已核对：S-39 只覆盖 discover（create / refresh），不含 call，故 S-47 单独保留） |
+| S-48 | 安全 | P0 | DNS rebinding：用受控测试域名（首次解析到公网、连接时解析到 `127.0.0.1` / 私网；或直接解析到私网），分别打 MCP discover、MCP call、Provider test、web_fetch、webhook 五处。前置：受控 DNS 方案执行前由运维定，不改 3100 / 开发环境 | 出站校验在 **DNS 解析后按实际 IP 再校验一次**：五处均拦截，按 §15.2 各入口口径返回 HTP-4003；响应体不得出现解析出的 IP。现状待实测 |
+| S-48a | 安全 | P0 | 绕过写法：云元数据 `http://169.254.169.254/latest/meta-data/`，分别打五处出站入口 | 被拦截，按 §15.2 各入口口径返回 HTP-4003，响应体不得出现解析出的 IP |
+| S-48b | 安全 | P0 | 绕过写法：IPv6 回环 `http://[::1]:<port>/` 与 ULA 私网 `fd00::/8`（如 `http://[fd00::1]/`） | 被拦截，按 §15.2 各入口口径返回 HTP-4003，响应体不得出现解析出的 IP |
+| S-48c | 安全 | P0 | 绕过写法：十进制 / 八进制 IP，如 `http://2130706433/`、`http://0177.0.0.1/`（均为 127.0.0.1） | 被拦截，按 §15.2 各入口口径返回 HTP-4003，响应体不得出现解析出的 IP |
+| S-48d | 安全 | P0 | 绕过写法：公网可达的受控地址先 **302 跳转**到私网地址 | 跳转目标同样校验：被拦截，按 §15.2 各入口口径返回 HTP-4003，响应体不得出现解析出的 IP，不跟随到私网 |
+| S-49 | 安全 | P0 | 白名单默认为空：不配置白名单，五处出站入口分别指向 mock `http://127.0.0.1:8090`；再把 8090 显式加入白名单重试 | 白名单为空时 8090 **同样被拦截**，按 §15.2 各入口口径返回 HTP-4003；响应体不得出现解析出的 IP；只有显式加入白名单后才放行。依赖 mock 8090 的用例须在前置里显式配白名单（见 `api-cases-addendum.md` PRE-MOCK） |
 | F-SCH-10a | 功能 | P1 | 创建（POST）或更新（PATCH）schedule 时绑定 platform_admin 服务账号 | **400** SCD-4804（`requireUsableServiceAccount`） |
 | F-SCH-10b | 功能 | P1 | 存量任务已绑 PA 服务账号（库内构造），调 `POST /schedules/:id/run` | **409** SCD-4804（`buildScheduleIdentity`） |
 | F-SCH-11a | 功能 | P1 | 服务账号 disabled 后手动 `POST /schedules/:id/run` | 409 SCD-4801；schedule 状态**不变** |
@@ -432,7 +437,7 @@
 | OPS-024 | **P0**，与 S-45 / S-45b 互引。MySQL 断开 30 秒后恢复：断开期间带会话的请求返回 **503**（不是 401），会话不能被删；恢复后同一 cookie 直接继续用，不用重新登录。**界面预期**：新控制台收到 503 时**不跳登录页**，页面显示错误提示和**重试按钮**，会话保留；数据库恢复后点重试即可继续 |
 | OPS-025 | P2。autocannon 测修复 F 前后的 p95 延迟（只读接口如 `GET /admin/api/agents`，30s，c=20）；涨幅 >20% 记一般问题；EXPLAIN 检查用户 + 部门链查询走索引 |
 | OPS-文档 | 出站白名单环境变量写进 `.env.example`，带注释，**默认为空**（修复 G 上线时补；变量名以后端实现为准） |
-| OPS-026 | **P0**。测试库守卫（修复 Z，架构师要求）：守卫放在 vitest 的 `globalSetup` 里，在任何测试文件连库之前执行；守卫必须在**应用建立数据库连接之前**就拦下，不能只拦 HTTP 请求——测试代码在进程内直接启动应用（如 `buildApp` / `inject`）、用种子 admin 登录连 forge 时也必须被拒绝；测试**只认 `TEST_DATABASE_URL`**，不从开发用的 `.env` 继承 `DATABASE_URL`；库名不以 `_test` 结尾 → **一律报错退出**，vitest **不留任何绕过方式**（没有放行用的环境变量或开关）。子用例：**OPS-026a** 没设 `TEST_DATABASE_URL` → 拒绝；**OPS-026b** 只设了 `DATABASE_URL=…/forge`、没设 `TEST_DATABASE_URL` → 拒绝；**OPS-026c** `TEST_DATABASE_URL=…/forge` → 拒绝；**OPS-026d** `TEST_DATABASE_URL=…/forge_test` → 通过；**OPS-026e** 在主工作区有 `.env` 的情况下直接跑 `pnpm test` → 拒绝；**OPS-026f** 种子脚本和迁移脚本（架构师口径）：库名以 `_test` 或 `_ux` 结尾直接放行；其他库名（包括 `forge`）必须传 `--confirm-db=<完全一致的库名>` 才写入。三条子断言：**f1** 不传参数 → 拒绝；**f2** 传 `--confirm-db=forge_x`（库名不匹配）→ 拒绝，只给通用的 yes 开关也拒绝；**f3** 传 `--confirm-db=forge` → 放行。**OPS-026g** vitest 只认以 `_test` 结尾的库，`TEST_DATABASE_URL=…/forge_ux` → 拒绝。**OPS-026h** 设了 `FORGE_ALLOW_NON_TEST_DB=1` 且 `TEST_DATABASE_URL=…/forge` → **仍然拒绝**（该变量不起任何放行作用）。**OPS-026j**（修复 Z，**只写用例，不执行，绝对不要跑 reset**）`pnpm db:reset` 不带 `--confirm-db` → 拒绝；带 `--yes` 或 `--force` → 也拒绝；只有 `--confirm-db=<完全一致的库名>` 才放行；migrate 和 seed 同样拒绝 `--yes` / `--force`。**OPS-026i** 测试代码在进程内启动应用（`buildApp` / `inject`）并指向 forge → 拒绝，且 forge 库里**没有任何新的 audit_logs 行或业务行**（执行前后只读计数对比）。**已知缺陷 K-16**：现状未设置时落到默认库 `forge`（干净克隆复验时实际发生） |
+| OPS-026 | **P0**。测试库守卫（修复 Z，架构师要求）：守卫放在 vitest 的 `globalSetup` 里，在任何测试文件连库之前执行；守卫必须在**应用建立数据库连接之前**就拦下，不能只拦 HTTP 请求——测试代码在进程内直接启动应用（如 `buildApp` / `inject`）、用种子 admin 登录连 forge 时也必须被拒绝；测试**只认 `TEST_DATABASE_URL`**，不从开发用的 `.env` 继承 `DATABASE_URL`；库名不以 `_test` 结尾 → **一律报错退出**，vitest **不留任何绕过方式**（没有放行用的环境变量或开关）。子用例：**OPS-026a** 没设 `TEST_DATABASE_URL` → 拒绝；**OPS-026b** 只设了 `DATABASE_URL=…/forge`、没设 `TEST_DATABASE_URL` → 拒绝；**OPS-026c** `TEST_DATABASE_URL=…/forge` → 拒绝；**OPS-026d** `TEST_DATABASE_URL=…/forge_test` → 通过；**OPS-026e** 在主工作区有 `.env` 的情况下直接跑 `pnpm test` → 拒绝；**OPS-026f** 种子脚本和迁移脚本（架构师口径）：库名以 `_test` 或 `_ux` 结尾直接放行；其他库名（包括 `forge`）必须传 `--confirm-db=<完全一致的库名>` 才写入。三条子断言：**f1** 不传参数 → 拒绝；**f2** 传 `--confirm-db=forge_x`（库名不匹配）→ 拒绝，只给通用的 yes 开关也拒绝；**f3** 传 `--confirm-db=forge` → 放行。**OPS-026g** vitest 只认以 `_test` 结尾的库，`TEST_DATABASE_URL=…/forge_ux` → 拒绝。**OPS-026h** 设了 `FORGE_ALLOW_NON_TEST_DB=1` 且 `TEST_DATABASE_URL=…/forge` → **仍然拒绝**（该变量不起任何放行作用）。**OPS-026j**（修复 Z，**只写用例，不执行，绝对不要跑 reset**）`pnpm db:reset` 不带 `--confirm-db` → 拒绝；带 `--yes` 或 `--force` → 也拒绝；只有 `--confirm-db=<完全一致的库名>` 才放行；migrate 和 seed 同样拒绝 `--yes` / `--force`。逐项（目标库为 `forge`）：`--yes`、`-y`、`--force`、裸 `--confirm-db`、`--confirm-db forge`（空格分隔）、`--confirm-db=forge_test`、`--confirm-db=Forge`、`--confirm-db=`（空）**均拒绝**；只有 `--confirm-db=forge` 通过。注意：`pnpm db:reset --confirm-db=forge` **仍被拒**（pnpm 只把参数传给最后一条命令），README 写成三步手动执行；后端测试 `d8906a7`。**OPS-026i** 测试代码在进程内启动应用（`buildApp` / `inject`）并指向 forge → 拒绝，且 forge 库里**没有任何新的 audit_logs 行或业务行**（执行前后只读计数对比）；**绕过 `vitest.config.ts`**（在 IDE 里直接跑单个测试文件、或换一份 vitest 配置）时，`db.ts` 仍拒绝非 `_test` 库、不建连接池（修复 AC `76bc68a`）。**已知缺陷 K-16**：现状未设置时落到默认库 `forge`（干净克隆复验时实际发生） |
 | OPS-027 | **P0**。forge 库清理复核。前提：清理须经 Cursor Jackson 同意。**只用只读查询**。**前置检查（清理前，只读）**：查 `it-rs-…` 这个 platform_admin 用户自 12:42（UTC+8）起的登录审计（`auth.login`）；预期只有测试自己产生的记录，出现非测试来源的登录 → 判 **fail**，先当**安全事件上报**，再执行删除。**前置检查结果：pass**。证据（运维只读查询）：`it-rs-…` 没有任何 `auth.login` 记录，只有 12:42:56 和 12:42:57（UTC+8）两条 `run.create`；3100 的日志里也搜不到 `it-rs-`。**原待查项「种子 admin 每分钟 3 次登录来源不明」：已查清**，不再阻塞清理。证据（运维只读结论，时间均为 UTC+8）：最后一次登录是 12:50:52；12:44～12:50 之间的登录是后端测试在进程内启动应用、直连 forge 产生的，没有经过 3100；3100 的日志里当天只有 11:19 前端故意输错密码的 2 次登录；12:50:52 之后的 12 分钟内 forge 没有新的审计记录。清理后预期：① users、service_accounts、agents、api_apps、api_keys、llm_providers、tool_sources、mcp_servers、org_units 中 `it-` 前缀的行数为 0；② 没有状态为 active、且 base_url 指向私网地址、链路本地地址（如 169.254.169.254）、`file:` 或 127.0.0.1 的 Provider 和工具源；③ 没有孤儿行：按外键检查 runs、threads、messages、run_events、schedules、webhook_deliveries、llm_models、mcp_tools、approvals、run_steps、tool_calls、tools，每条外键引用都能对上（不查 sessions 和 user_roles：这两张表不存在，会话存在进程内存里，角色是 users 表上的字段）；④ 审计日志行数不少于清理前，一条都不能删；⑤ 备份两个文件：`/tmp/forge-logs/forge-pre-cleanup-20261022-1254.sql`（sha256 开头 `d7a39bb8`）和 `/tmp/forge-logs/forge-pre-cleanup-20261022-1254-extra.sql`（sha256 开头 `388d01f9`），清理前后核对哈希。备注（事故经过，时间 UTC+8）：测试工程师 12:41 误连 forge 库，很可能写入了 12:42 的 2 个 users，之前只读核查时漏了这两条；后端在 worktree 里用了主工作区的 `.env`，写入了 12:49 那一批数据，其中包括指向云元数据地址的 active Provider |
 
 ## 12. 架构师横向补洞（合并进 UI / F）
@@ -505,15 +510,17 @@
 
 ### 15.2 出站校验口径（架构师已定）
 
-MCP discover / call、Provider test、web_fetch、webhook **统一走同一个出站校验**：拦截回环、私网、链路本地、云元数据地址；DNS 解析后再校验一次（防 rebinding）；8090 mock 只能通过显式白名单放行，白名单默认为空。预期一律「拦截，返回明确错误码」（具体码执行前由后端写死，各入口一致）。
+MCP discover / call、Provider test、web_fetch、webhook **统一走同一个出站校验**：拦截回环、私网、链路本地、云元数据地址；DNS 解析后再校验一次（防 rebinding）；8090 mock 只能通过显式白名单放行，白名单默认为空。错误码统一为 **400 HTP-4003「目标地址不允许（内网/回环/元数据）」**（新增错误码；**架构师已确认，前提是错误码表无重复，后端核查中**），**不回显解析出的 IP**。断言口径按入口分开：**配置阶段 400**；**OIDC 502**；**运行阶段** `{ok:false, errorCode:"HTP-4003"}`；**Run 最终以 HTP-4003 结束**。每个入口都加一条断言：**响应体中不得出现解析出的 IP**。
 
-| 入口 | 用例 |
-|---|---|
-| MCP discover（create / refresh） | S-39、I-MCP-02 |
-| MCP call | S-47 |
-| Provider test | S-40 |
-| web_fetch | S-46 |
-| webhook | S-42 |
+| 入口 | 预期（白名单为空，目标为回环 / 私网 / 链路本地 / 元数据） | 用例 |
+|---|---|---|
+| MCP 创建 / 修改 / refresh | **400 HTP-4003**；创建时的工具发现只是 warning，写 `last_error`，不影响 400 判定 | S-39、I-MCP-02 |
+| MCP 工具调用 | `{ok:false, errorCode:"HTP-4003"}` | S-47 |
+| Provider 创建 / 修改 / test | **400 HTP-4003**（test 不再返回 `{ok:false}`）；运行中被拦**不重试、不换下一个候选**，全部候选失败时 Run 以 HTP-4003 结束 | S-40 |
+| web_fetch、OpenAPI 工具 | `{ok:false, errorCode:"HTP-4003"}` | S-46 |
+| webhook | 配置 webhookUrl → **400 HTP-4003**；投递记 `failed`、不重试；replay → **200**，投递状态 `failed` | S-42、S-53 |
+| OIDC discovery / token / JWKS | 登录返回 **502 HTP-4003**（不是 400） | S-50、S-51 |
+| 全部入口 | 响应体中不得出现解析出的 IP；服务端日志记 host / 解析 IP / 原因 | S-52 |
 | DNS rebinding（五处） | S-48 |
 | 白名单为空时 8090 也被拦 | S-49 |
 
@@ -553,9 +560,11 @@ Agent专家所列 UX 批次（UI-053～UI-057 改 4 条；新增 UI-059、UI-065
 ## 16. 后端修复串复验清单
 
 - 分支 `fix/blockers-authz-mask`（worktree `/Users/libo/projects/forge-blockers`，仅本地，未推送），基于 `4c2555e`。
-- 提交依次（按后端给的顺序）：**A** `dfef71f` · **B** `22b5254` · **C** `020c1e0` · **D** `eed019d` · **E** `e97cbba` · **F** `cf41287` · **G** `40bf11c` 出站私网拦截（错误码**待后端给**）· **H** `42299c5` 审批统一 404 RUN-7001 + 已知打码限制（文档）· **I** `1422152` 查库失败返回 503 SYS-9003（原记 `fda5a74`，**已被 1422152 替换（疑为 rebase，待后端确认）**）· **J** `5dca21b` 定时任务每次触发重新校验身份 · **L** `b8245ee` agent 停用 409 + status 只收两值（续篇 `b038bd2`：integration 按映射用户部门子树判定 Agent，I-INT-17）· **M** `554ce7c` 取消已结束 Run 返回 409 RUN-7005 · **N** `84cb837` cron 先解析再建 Run · **O** `d71af88` body 解析返回 413 / 400 / 415 · **P** `43a57b1` 卸载不存在的插件返回 404 + org_admin 卸载 403 测试（后端建议本轮只做卸载不存在的插件返回 404、按部门判定放到下一轮，架构师已同意）· **R** `0dfa398` 开放重定向 · **T** `a53128c` 用户 / Skill status 白名单 · **V** `6c89a79` 用户列表 presenter，`idp_subject` / `is_emergency_admin` 只给 PA · **W** `6e3c093` I-APR-38：`decideApproval` 判关联 Run 已结束 → 409 RUN-7005 并置审批为 `expired` · **X** `7521dc5` 无主 Agent 只允许 PA 写 · **Y** `c5009e9` 补 6 个审计 action（`auth.logout`、`schedule.enable`、`schedule.disable`、`open.run.cancel`、`integration.run.create`、`integration.run.cancel`）· **Z** `a5cbb35` 测试库名守卫（OPS-026）· **AB** `orgSubtreeIds` 的 `LIKE path%` 前缀误匹配（I-SCOPE-13 / I-SCOPE-14，哈希**待后端**）。另：**Q** K-10 收回 org_admin、builder 的 `model.manage`（**待拍板方案 C**；单独提交，不并入 P）。
+- 提交依次（按后端给的顺序）：**A** `dfef71f` · **B** `22b5254` · **C** `020c1e0` · **D** `eed019d` · **E** `e97cbba` · **F** `cf41287` · **G** `40bf11c` 出站私网拦截（错误码**待后端给**）· **H** `42299c5` 审批统一 404 RUN-7001 + 已知打码限制（文档）· **I** `1422152` 查库失败返回 503 SYS-9003（原记 `fda5a74`：只是 amend 了提交说明（加 I-INT-10d），QA 只读核对两者代码树相同，均为 `33af686`；`fda5a74` 不在分支上但对象仍可达）· **J** `5dca21b` 定时任务每次触发重新校验身份 · **L** `b8245ee` agent 停用 409 + status 只收两值（续篇 `b038bd2`：integration 按映射用户部门子树判定 Agent，I-INT-17）· **M** `554ce7c` 取消已结束 Run 返回 409 RUN-7005 · **N** `84cb837` cron 先解析再建 Run · **O** `d71af88` body 解析返回 413 / 400 / 415 · **P** `43a57b1` 卸载不存在的插件返回 404 + org_admin 卸载 403 测试（后端建议本轮只做卸载不存在的插件返回 404、按部门判定放到下一轮，架构师已同意）· **R** `0dfa398` 开放重定向 · **T** `a53128c` 用户 / Skill status 白名单 · **V** `6c89a79` 用户列表 presenter，`idp_subject` / `is_emergency_admin` 只给 PA · **W** `6e3c093` I-APR-38：`decideApproval` 判关联 Run 已结束 → 409 RUN-7005 并置审批为 `expired` · **X** `7521dc5` 无主 Agent 只允许 PA 写 · **Y** `c5009e9` 补 6 个审计 action（`auth.logout`、`schedule.enable`、`schedule.disable`、`open.run.cancel`、`integration.run.create`、`integration.run.cancel`）· **Z** `a5cbb35` 测试库名守卫（OPS-026）· **AB** `2244dbb` `orgSubtreeIds` 改为 `path = ? OR path LIKE ? ESCAPE '!'`（转义 `!` `%` `_`，末尾拼 `/`），同时修 `getActiveUserById` / `getActiveServiceAccountById` 里 `LEFT(...)=` 把 `/x/b` 停用误判到 `/x/bc` 的问题（I-SCOPE-13～15）· **AC** `76bc68a` `db.ts` 在 vitest 进程中库名不以 `_test` 结尾直接报错、不建连接池（OPS-026i）· `d8906a7` OPS-026j 仅补测试（db:reset 守卫端到端）。另：**Q** K-10 收回 org_admin、builder 的 `model.manage`（**待拍板方案 C**；单独提交，不并入 P）。
 - **QA 只读核对（13:11 UTC+8，`git -C /Users/libo/projects/forge-blockers`，未跑测试、未连库）**：分支 `fix/blockers-authz-mask` HEAD = `c5009e9`；`cf41287..c5009e9` 共 17 个提交，G～Z 的 16 个哈希加 L 续篇 `b038bd2` 全部在分支上（`merge-base --is-ancestor` 逐个确认）；A～F 也在分支上；`fda5a74` 对象存在但**不在**分支上。分支上的实际顺序是 I → J → G → H → L → M → N → O → P → R → Z → T → V → W → X → L 续篇 → Y，和字母顺序不同。
-- **后端自报，待 QA 复验**：13:08–13:09（UTC+8）连 `forge_test`；typecheck 通过；37 个文件，597 条通过、2 条跳过（跳过原因待后端说明）；`smoke:isolated` 通过；路由 86 条。
+- **QA 只读核对（13:20 UTC+8）**：分支 HEAD = `d8906a7`；`c5009e9..d8906a7` 依次为 `2244dbb`(AB) → `76bc68a`(AC) → `d8906a7`(OPS-026j 测试)，三个都在分支上、顺序正确；`git rev-parse <hash>^{tree}`：`fda5a74` 与 `1422152` 均为 `33af686`。
+- **后端自报，待 QA 复验**（13:18 UTC+8 那次运行，全部连 `forge_test`）：typecheck 通过；40 个文件，629 条通过、2 条跳过；`smoke:isolated` 通过；路由 86 条。跳过的两条是 `tests/routes.test.ts:115`、`:120`（`/next/` 页面与 SPA 回落，因 `apps/console/dist` 未构建）。**执行前置项**：执行时先构建 dist，再复跑这两条。修复 T 的非法 status 测试位置：`tests/status-whitelist.test.ts:54`。
+- **（上一次）后端自报，待 QA 复验**：13:08–13:09（UTC+8）连 `forge_test`；typecheck 通过；37 个文件，597 条通过、2 条跳过（跳过原因待后端说明）；`smoke:isolated` 通过；路由 86 条。
 - 复验时机：本轮执行测实问题后，按下表排队复验；复验结论记到对应用例 ID。
 - **冻结基线的前置条件**：修复 **Z**、**OPS-026**（测试库守卫）、**OPS-027**（forge 库清理复核）必须先完成并通过；**K-16 已由架构师定为 P0**。
 
@@ -566,11 +575,13 @@ Agent专家所列 UX 批次（UI-053～UI-057 改 4 条；新增 UI-059、UI-065
 | I-APR-12 | 打码保留 `max_tokens` / `input_tokens` / `output_tokens` |
 | I-INT-10a～c | connector 主体停用 / 删除 / 部门停用 → 403 CON-4706（C） |
 | I-SCOPE-10a～c | 本部门 + 子部门范围；SA 绑定正反两面（D） |
-| I-SCOPE-13、I-SCOPE-14 | 部门子树前缀匹配：`_` / `%` 通配与路径互为前缀不得串到兄弟部门（AB，哈希待后端） |
+| I-SCOPE-13、I-SCOPE-14、I-SCOPE-15 | 部门子树前缀匹配：`_` / `%` / `\` 不当通配、路径互为前缀不得串到兄弟部门；`/x/b` 停用不得误判 `/x/bc`（AB `2244dbb`） |
+| OPS-026i | 进程内 / 绕过 `vitest.config.ts` 时 `db.ts` 拒绝非 `_test` 库、不建池（AC `76bc68a`） |
+| OPS-026j | `db:reset` / migrate / seed 的 `--confirm-db` 守卫，只写用例不执行（测试 `d8906a7`） |
 | I-RBAC-02 | decide 跨部门与审批不存在相同（D） |
 | S-45 | 会话快照：每次请求按用户 id 重读状态 / 角色 / 部门（F） |
 | OPS-025 | 修复 F 前后 p95 与索引 |
-| S-39、S-40、S-42、S-46～S-49（含 S-48a～d）、I-MCP-02 | 出站私网拦截（G） |
+| S-39、S-40、S-42、S-46～S-49（含 S-48a～d）、S-50～S-53、I-MCP-02 | 出站私网拦截（G）：统一 **HTP-4003**（架构师已确认，前提是错误码表无重复，后端核查中）；S-52 / S-53 **待后端实现** |
 | （H） | 待后端说明 |
 | S-30（执行表 #10） | 开放重定向回落 `/next/`（R，K-14） |
 | I-USR-01（执行表 #57）、执行表 #59、I-USR-12（执行表 #58） | 用户 status 白名单（T，建用户 `disabled` 生效、`foo` → 400 CFG-8501）；用户列表 presenter，敏感字段只给 PA（V） |
@@ -580,7 +591,7 @@ Agent专家所列 UX 批次（UI-053～UI-057 改 4 条；新增 UI-059、UI-065
 | I-AUD-01 / 执行表 #9 #47 #48 #79 #83 #86 | 补 6 个审计 action（Y） |
 | OPS-026a～j | 测试库名守卫（j：`db:reset` / migrate / seed 拒绝 `--yes` / `--force`，只认 `--confirm-db=<库名>`；不执行 reset）：vitest `globalSetup`（在应用建立数据库连接前拦截，进程内 `buildApp` / `inject` 指向 forge 也拒绝且不落任何行）、只认 `TEST_DATABASE_URL` 且只认 `_test` 结尾（`_ux` 也拒绝，`FORGE_ALLOW_NON_TEST_DB=1` 也不放行）、种子 / 迁移非 `_test` / `_ux` 库须 `--confirm-db=<库名>`（Z，K-16，P0） |
 | OPS-027 | forge 库清理复核（只读；前置 PA 登录检查 pass；种子 admin 每分钟 3 次登录已查清（后端进程内测试直连 forge，末次 12:50:52 UTC+8）；只剩清理需 Cursor Jackson 同意） |
-| I-SKL-07（执行表 #33） | Skill status 为 "foo" 或超 16 字符 → 400 CFG-8501，断言码和文案（K-12，修复 T） |
+| I-SKL-07（执行表 #33） | Skill status 为 "foo" 或超 16 字符 → 400 CFG-8501，断言码和文案（K-12，修复 T；后端测试 `tests/status-whitelist.test.ts:54`） |
 | I-MDL-11（执行表 #21～#25） | 收回 org_admin、builder 的 `model.manage`，Provider / 模型只有 PA 能写（K-10，P1，修复 **Q**：待 Cursor Jackson 拍板方案 C；单独提交，不并入 P） |
 | I-PLG-04、I-PLG-03、执行表 #68 | 本轮 P 只做：卸载不存在的插件 → 404 不写审计；补「org_admin 卸载 → 403」测试（**待后端提交**）。单测四种：① 非 PA 有卸载权限的身份卸载外部门插件 → 404（**下一轮**）② 卸载本部门插件成功（**下一轮**）③ PA 卸载任意部门插件成功 ④ org_admin 卸载 → 403 |
 | S-45b、I-INT-10d（原 I-INT-10b）、OPS-024 | 查库失败返回 503，会话保留（I） |
@@ -619,3 +630,4 @@ Agent专家所列 UX 批次（UI-053～UI-057 改 4 条；新增 UI-059、UI-065
 | 2026-10-22 | OPS-027 阻塞项「种子 admin 每分钟 3 次登录来源不明」改为**已查清**（运维只读结论：末次登录 12:50:52；12:44～12:50 为后端进程内测试直连 forge、未经 3100；3100 当天只有 11:19 前端故意输错密码 2 次；12:50:52 后 12 分钟无新审计，时间 UTC+8），前置条件只剩「需 Cursor Jackson 同意清理」；§16 同步 |
 | 2026-10-22 | OPS-026 预期补充（架构师）：守卫须在应用建立数据库连接前拦截，不能只拦 HTTP；进程内 `buildApp` / `inject` 用种子 admin 连 forge 也拒绝；新增 OPS-026i（进程内启动指向 forge → 拒绝，forge 无新 audit_logs / 业务行）；§16 同步为 a～i。`ops-cases.md` 引用仍写 a～h，待运维改为 a～i |
 | 2026-10-22 | §16 填入修复哈希 G～Z（L 续篇 `b038bd2`），I 原 `fda5a74` 标「已被 `1422152` 替换（疑为 rebase，待后端确认）」，QA 只读核对 17 个提交均在 `fix/blockers-authz-mask`；记后端自报结果（待 QA 复验）；新增修复 AB（哈希待后端）。I-APR-38 / K-13 改为 409 RUN-7005「Run 已结束，审批不可操作」、审批 `expired`（架构师已确认）。新增 OPS-026j（`db:reset` / migrate / seed 拒绝 `--yes` / `--force`，只写不执行），§16 范围 a～j。新增 I-USR-12（建用户 status，400 CFG-8501）。执行表 #12 #13 #15 #37 #38 #39 #85 改「未验（无单测覆盖…），待 API 实测覆盖」，新增 K-17（P2）。新增 I-SCOPE-13 / I-SCOPE-14（部门子树 LIKE 前缀误匹配，修复 AB；架构师指定的 I-SCOPE-11 / 12 已被占用，顺延）。integration 不检查 `api_enabled` 写为架构师定的边界 |
+| 2026-10-22 | §16 补 AB `2244dbb`、AC `76bc68a`、OPS-026j 测试 `d8906a7`（QA 只读核对均在分支、顺序正确）；I 行注明 `fda5a74`→`1422152` 只改提交说明，tree 均为 `33af686`；记后端 13:18 自报（40 文件 629 过 2 跳过，待 QA 复验），跳过的 `tests/routes.test.ts:115`、`:120` 列为执行前置（先构建 dist 再复跑）；T 测试位置 `tests/status-whitelist.test.ts:54`。I-SCOPE-13/14 扩展（`a%`/`azz`、`q\`/`q\x`、`/x/b/c` 可见可改），新增 I-SCOPE-15（`/x/b` 停用不误判 `/x/bc`）。OPS-026i 补绕过 `vitest.config.ts`；OPS-026j 逐项写拒绝参数与 pnpm 传参限制。出站拦截统一 HTP-4003（架构师已确认，前提是错误码表无重复，后端核查中），§15.2 按入口写预期，配置 400 / OIDC 502 / 运行期 `{ok:false}` / Run 以 HTP-4003 结束，每个入口断言不回显解析 IP；新增 S-50～S-53（S-52 / S-53 待后端实现）。`api-inventory.md` 改 #82 #83 与 R-run 写法 |

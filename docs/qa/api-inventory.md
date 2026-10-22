@@ -52,7 +52,7 @@
 
 | 规则名 | 含义 | 用在 |
 |---|---|---|
-| **R-run** `runFilterFor/canAccessRun` | dataScope `all` 全部；`self` 只看 `subject_type=user AND subject_id=本人`；`org` 看本部门**子树**（`org_units.path LIKE '<path>%'`）；无部门 → 空；`app` 身份只看 `app_id=本应用` | runs、approvals、integration runs |
+| **R-run** `runFilterFor/canAccessRun` | dataScope `all` 全部；`self` 只看 `subject_type=user AND subject_id=本人`；`org` 看本部门**子树**（AB `2244dbb` 后：`org_units.path = ? OR org_units.path LIKE ? ESCAPE '!'`，参数为转义 `!` `%` `_` 后的 path 并在末尾拼 `/`）；无部门 → 空；`app` 身份只看 `app_id=本应用` | runs、approvals、integration runs |
 | **R-agent** `visibleAgentOrgIds/agentAccessible` | `all` 或 app → 全部；无部门 → 列表为空（`listAgents([])` 直接返回空），但详情类接口对 owner 为 NULL 的 agent 仍可访问（`agentAccessible`），列表与详情不一致；否则本部门子树 + owner 为 NULL 的。**`self` 和 `org` 一样按部门子树**，不区分 | agents、schedule 创建时的 agent |
 | **R-sched** `scheduleVisible` | `all` 全部；否则 `schedule.org_unit_id === 本人 org_unit_id`（**精确等于，不含子部门**，与 R-run 不同） | schedules |
 | **R-sa** `serviceAccountVisible` | `all` 全部；否则 `org_unit_id === 本人部门`（精确等于） | service-accounts、schedule 绑定服务账号 |
@@ -224,8 +224,8 @@
 
 | # | 方法 路径 | 权限 | 数据范围 | 主要参数与校验 | 状态码 / 错误码 | 审计 | 代码 |
 |---|---|---|---|---|---|---|---|
-| 82 | GET `/integration/v1/agents` | 无 | **全局**：所有已发布 agent，不看部门、不看 api_enabled | — | 200 `{items}` | — | routes/integration.ts |
-| 83 | POST `/integration/v1/runs` | 无 | 不检查 agent 部门可见性 | `agentKey` 必填；`input`/`text` | 202 `{runId, status}`；400 CFG-8501；404 RUN-7001「Agent 不存在」（不存在或未发布） | **—** | routes/integration.ts |
+| 82 | GET `/integration/v1/agents` | 无 | 按映射用户所在部门子树 + 无主 Agent 过滤（L 续篇 `b038bd2`）；停用的 Agent 不列出；**不检查 `api_enabled`**（该开关只管开放平台 App Key 入口） | — | 200 `{items}` | — | routes/integration.ts |
+| 83 | POST `/integration/v1/runs` | 无 | 可见性同 #82；范围外 → 404 RUN-7001；停用 → 409 CFG-8503 | `agentKey` 必填；`input`/`text` | 202 `{runId, status}`；400 CFG-8501；404 RUN-7001「Agent 不存在」（不存在或未发布） | **—** | routes/integration.ts |
 | 84 | GET `/integration/v1/runs/:id` | 无 | R-run（按映射用户的 dataScope）→ 404 | — | 200；404 RUN-7001 | — | routes/integration.ts |
 | 85 | GET `/integration/v1/runs/:id/result` | 无 | R-run → 404 | — | 200；404 RUN-7001；409 RUN-7002 | — | routes/integration.ts |
 | 86 | POST `/integration/v1/runs/:id/cancel` | 无 | R-run → 404 | — | 200 `{ok:true}`；404 RUN-7001 | **—** | routes/integration.ts |
