@@ -13,15 +13,16 @@
     "noEmit": true,
     "skipLibCheck": true,
     "isolatedModules": true,
-    "baseUrl": ".",
     "paths": {
       "@/*": [
-        "src/*"
+        "./src/*"
       ]
     },
     "types": [
-      "vite/client"
-    ]
+      "vite/client",
+      "node"
+    ],
+    "noUnusedLocals": true
   },
   "include": [
     "src",

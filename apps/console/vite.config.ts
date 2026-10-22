@@ -1,20 +1,21 @@
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
-import tailwindcss from "@tailwindcss/vite";
-import { fileURLToPath, URL } from "node:url";
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
+import { tanstackRouter } from '@tanstack/router-plugin/vite'
+import { fileURLToPath, URL } from 'node:url'
 
-const api = process.env.FORGE_API_URL ?? "http://127.0.0.1:3100";
+const api = process.env.FORGE_API_URL ?? 'http://127.0.0.1:3100'
 
-// 新控制台与旧版 public/ 并存：构建产物放 dist/，挂在 /next/ 下，切换前不影响旧页面。
+// 基于 shadcn-admin（MIT，见 LICENSE）。产物放 dist/，挂在 /next/，旧控制台仍在 /。
 export default defineConfig({
-  base: "/next/",
+  base: '/next/',
   // 旧控制台在 public/，不能被当成 Vite 的静态目录复制进 dist。
   publicDir: false,
-  plugins: [react(), tailwindcss()],
-  resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
+  plugins: [tanstackRouter({ target: 'react', autoCodeSplitting: true }), react(), tailwindcss()],
+  resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   server: {
     port: 5175,
-    proxy: Object.fromEntries(["/admin", "/auth", "/open", "/integration", "/healthz", "/readyz"].map((path) => [path, { target: api, changeOrigin: false }])),
+    proxy: Object.fromEntries(['/admin', '/auth', '/open', '/integration', '/healthz', '/readyz'].map((path) => [path, { target: api, changeOrigin: false }])),
   },
-  build: { outDir: "dist", emptyOutDir: true },
-});
+  build: { outDir: 'dist', emptyOutDir: true },
+})
