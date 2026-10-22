@@ -4,6 +4,8 @@ coverage/
 .env
 .env.local
 data/
+# 运行时数据目录仍忽略，但控制台源码里的 data/（如侧栏配置）要入库
+!apps/console/src/**/data/
 uploads/
 *.log
 .DS_Store
