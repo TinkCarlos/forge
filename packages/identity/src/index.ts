@@ -11,6 +11,7 @@ import {
   verifyPassword,
   type DataScope,
   type Principal,
+  type Config,
   type Role,
 } from "@forge/core";
 import { repos, parseJsonValue, type UserRow } from "@forge/store";
@@ -271,9 +272,21 @@ async function mapRoles(roles: Array<{ code: string; name: string }>): Promise<R
   return best ?? "user";
 }
 
-async function connectorPublicKey(): Promise<CryptoKey> {
-  if (!config.AGENT_CONNECTOR_CONFIG_PUBLIC_KEY_B64) throw new ForgeError("CON-4702", "Connector 验签公钥未配置", 503);
-  const pem = Buffer.from(config.AGENT_CONNECTOR_CONFIG_PUBLIC_KEY_B64, "base64").toString("utf8");
+/** Config fields read by connector principal verification; overridable per app (see buildApp) for tests. */
+export type ConnectorConfig = Pick<
+  Config,
+  | "AGENT_CONNECTOR_ENABLED"
+  | "AGENT_CONNECTOR_INBOUND_ENABLED"
+  | "AGENT_CONNECTOR_LEGACY_FALLBACK_ENABLED"
+  | "AGENT_CONNECTOR_CONFIG_PUBLIC_KEY_B64"
+  | "AGENT_CONNECTOR_ENVIRONMENT"
+  | "CONNECTOR_PRINCIPAL_ISSUER"
+  | "CONNECTOR_PRINCIPAL_AUDIENCE"
+>;
+
+async function connectorPublicKey(cfg: ConnectorConfig = config): Promise<CryptoKey> {
+  if (!cfg.AGENT_CONNECTOR_CONFIG_PUBLIC_KEY_B64) throw new ForgeError("CON-4702", "Connector 验签公钥未配置", 503);
+  const pem = Buffer.from(cfg.AGENT_CONNECTOR_CONFIG_PUBLIC_KEY_B64, "base64").toString("utf8");
   return importSPKI(pem, "RS256");
 }
 
@@ -289,20 +302,20 @@ export interface ConnectorPrincipal {
   displayName?: string | null;
 }
 
-export async function verifyConnectorPrincipal(token: string): Promise<ConnectorPrincipal> {
-  if (!config.AGENT_CONNECTOR_ENABLED || !config.AGENT_CONNECTOR_INBOUND_ENABLED) {
+export async function verifyConnectorPrincipal(token: string, cfg: ConnectorConfig = config): Promise<ConnectorPrincipal> {
+  if (!cfg.AGENT_CONNECTOR_ENABLED || !cfg.AGENT_CONNECTOR_INBOUND_ENABLED) {
     throw new ForgeError("CON-4703", "Connector 入站未启用", 503);
   }
-  if (config.AGENT_CONNECTOR_LEGACY_FALLBACK_ENABLED) {
+  if (cfg.AGENT_CONNECTOR_LEGACY_FALLBACK_ENABLED) {
     throw new ForgeError("CON-4704", "Connector legacy fallback 必须关闭", 503);
   }
-  const verified = await jwtVerify(token, await connectorPublicKey(), {
-    issuer: config.CONNECTOR_PRINCIPAL_ISSUER,
-    audience: config.CONNECTOR_PRINCIPAL_AUDIENCE,
+  const verified = await jwtVerify(token, await connectorPublicKey(cfg), {
+    issuer: cfg.CONNECTOR_PRINCIPAL_ISSUER,
+    audience: cfg.CONNECTOR_PRINCIPAL_AUDIENCE,
   });
   const payload = verified.payload as unknown as ConnectorPrincipal;
   if (!payload.subject || !payload.principalType) throw new ForgeError("CON-4701", "Principal 缺少主体", 401);
-  if (payload.environment !== config.AGENT_CONNECTOR_ENVIRONMENT) throw new ForgeError("CON-4705", "运行环境不匹配", 401);
+  if (payload.environment !== cfg.AGENT_CONNECTOR_ENVIRONMENT) throw new ForgeError("CON-4705", "运行环境不匹配", 401);
   return payload;
 }
 

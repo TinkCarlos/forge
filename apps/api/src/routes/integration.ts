@@ -16,7 +16,7 @@ import {
 async function connectorUser(request: FastifyRequest): Promise<Principal> {
   const header = request.headers.authorization;
   if (!header?.startsWith("Bearer ")) throw errors.unauthorized("缺少 Connector Principal");
-  const payload = await verifyConnectorPrincipal(header.slice(7));
+  const payload = await verifyConnectorPrincipal(header.slice(7), request.server.forgeConfig);
   return principalForConnector(payload);
 }
 
