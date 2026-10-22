@@ -1,12 +1,12 @@
 import { type FastifyInstance } from "fastify";
 import {
   config,
-  defaultDataScope,
   errors,
   hashPassword,
   ROLE_PERMISSIONS,
   type Role,
 } from "@forge/core";
+import { assertCanGrant, assertCanManageUser, grantDefaultDataScope, loadVisibleUserOr404, userFilterFor } from "@forge/governance";
 import { oidcConfigured } from "@forge/identity";
 import { repos } from "@forge/store";
 import {
@@ -19,9 +19,11 @@ import {
 } from "../../plugins/http-helpers.js";
 
 export default async function adminIdentityRoutes(app: FastifyInstance): Promise<void> {
+  // Users: a non-platform_admin sees and manages only users in its own data scope (filtered in SQL; others -> same 404
+  // as nonexistent), cannot grant a higher role or wider dataScope (403 POL-2001) and cannot modify a platform_admin.
   app.get("/admin/api/users", async (request) => {
-    await admin(request, "user.view");
-    const users = await repos.listUsers();
+    const session = await admin(request, "user.view");
+    const users = await repos.listUsers(await userFilterFor(session.principal));
     return { items: users.map((user) => ({ ...user, password_hash: undefined })) };
   });
 
@@ -32,13 +34,15 @@ export default async function adminIdentityRoutes(app: FastifyInstance): Promise
     if (await repos.getUserByEmail(email)) throw errors.conflict("邮箱已存在");
     const role = stringBody(body, "role", "user");
     if (!Object.keys(ROLE_PERMISSIONS).includes(role)) throw errors.invalid("非法角色");
-    if (session.principal.role !== "platform_admin" && ["platform_admin", "org_admin"].includes(role)) throw errors.forbidden("不能授予该角色");
+    const dataScope = stringBody(body, "dataScope") || grantDefaultDataScope(session.principal, role as Role);
+    assertCanGrant(session.principal, role, dataScope);
     const id = await repos.createUser({
       email,
       username: stringBody(body, "username", email.split("@")[0] ?? email),
       displayName: stringBody(body, "displayName", email),
       role,
-      dataScope: stringBody(body, "dataScope", defaultDataScope(role as Role)),
+      dataScope,
+      // Always the caller's own department; body.orgUnitId is ignored.
       orgUnitId: session.principal.orgUnitId,
       passwordHash: stringBody(body, "password") ? hashPassword(stringBody(body, "password")) : null,
     });
@@ -46,20 +50,19 @@ export default async function adminIdentityRoutes(app: FastifyInstance): Promise
     return { id };
   });
 
+  // Updates role / dataScope / status only; body.orgUnitId is ignored (a user cannot be moved to another department here).
   app.patch("/admin/api/users/:id", async (request) => {
     const session = await admin(request, "user.manage");
     const body = bodyOf(request);
-    const target = await repos.getUserById(param(request, "id"));
-    if (!target) throw errors.notFound("用户不存在");
+    const target = await loadVisibleUserOr404(session.principal, param(request, "id"));
+    assertCanManageUser(session.principal, target);
     const role = stringBody(body, "role", target.role);
     if (!Object.keys(ROLE_PERMISSIONS).includes(role)) throw errors.invalid("非法角色");
-    if (session.principal.role !== "platform_admin" && ["platform_admin", "org_admin"].includes(role)) throw errors.forbidden("不能授予该角色");
-    await repos.updateUser(target.id, {
-      role,
-      dataScope: stringBody(body, "dataScope", defaultDataScope(role as Role)),
-      status: body.status !== undefined ? stringBody(body, "status") : undefined,
-    });
-    await writeAudit(session, "user.update", "user", target.id, { role, dataScope: stringBody(body, "dataScope") });
+    const dataScope = stringBody(body, "dataScope") || grantDefaultDataScope(session.principal, role as Role);
+    assertCanGrant(session.principal, role, dataScope);
+    const status = body.status !== undefined ? stringBody(body, "status") : undefined;
+    await repos.updateUser(target.id, { role, dataScope, status });
+    await writeAudit(session, "user.update", "user", target.id, { role, dataScope: stringBody(body, "dataScope"), ...(status !== undefined ? { status } : {}) });
     return { ok: true };
   });
 

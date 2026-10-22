@@ -1,6 +1,6 @@
 import { ulidWithPrefix } from "@forge/core";
 import { execute, one, query } from "../db.js";
-import type { ServiceAccountRow, UserRow } from "../types.js";
+import type { ServiceAccountRow, UserFilter, UserRow } from "../types.js";
 
 export const identityRepo = {
   // Users / orgs
@@ -13,7 +13,13 @@ export const identityRepo = {
   async getUserByIdpSubject(subject: string): Promise<UserRow | null> {
     return one<UserRow>("SELECT * FROM users WHERE idp_subject = ?", [subject]);
   },
-  async listUsers(): Promise<UserRow[]> {
+  /** Users visible through `filter` (scope applied in SQL): `{}` -> all; `orgIds` -> those departments ([] -> none); `userId` -> only that user. */
+  async listUsers(filter: UserFilter = {}): Promise<UserRow[]> {
+    if (filter.userId !== undefined) return query<UserRow>("SELECT * FROM users WHERE id = ? ORDER BY created_at DESC", [filter.userId]);
+    if (filter.orgIds) {
+      if (!filter.orgIds.length) return [];
+      return query<UserRow>(`SELECT * FROM users WHERE org_unit_id IN (${filter.orgIds.map(() => "?").join(", ")}) ORDER BY created_at DESC`, filter.orgIds);
+    }
     return query<UserRow>("SELECT * FROM users ORDER BY created_at DESC");
   },
   async createUser(input: {

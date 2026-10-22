@@ -52,3 +52,4 @@ export async function visibleAgentOrgIds(principal: Principal): Promise<string[]
 }
 
 export { buildArgsPreview, isHttpUrl, isSecretValue, isSensitiveKey, keySegments, looksLikeJson, looksLikeUrl, maskQueryString, maskUrlQuery, SENSITIVE_KEY_SEGMENTS, SENSITIVE_QUERY_PARAMS, ARGS_PREVIEW_VALUE_MAX, ARGS_PREVIEW_TOTAL_MAX } from "./args-preview.js";
+export { assertCanGrant, assertCanManageUser, canSeeUser, grantDefaultDataScope, loadVisibleUserOr404, userFilterFor, USER_DATA_SCOPES } from "./user-admin.js";

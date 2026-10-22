@@ -13,6 +13,12 @@ export interface UserRow {
   created_at: Date;
 }
 
+/** Data-scope filter for user lists: `{}` = all users; `orgIds` = users in these departments; `userId` = only this user. */
+export interface UserFilter {
+  orgIds?: string[];
+  userId?: string;
+}
+
 export interface AgentRow {
   id: string;
   key: string;

@@ -613,6 +613,19 @@ kb.view kb.manage eval.view eval.manage
 | `auditor` | 审计与用量只读 |
 | `user` | 仅使用被授权的 Agent |
 
+用户管理（当前实现）：`GET /admin/api/users` 需 `user.view`，`POST /admin/api/users`、`PATCH /admin/api/users/{id}` 需 `user.manage`（文档上表的 `org.view`/`org.manage` 尚未实现）。
+
+- 数据范围在 SQL 里过滤：platform_admin 和 `dataScope = all` 看全部用户；`org` 只看本部门及下级部门的用户（`org_unit_id` 为空的用户不可见）；`self` 只看自己。org_admin 不再能看到其他部门的用户。
+- `PATCH /users/{id}`：先校验 `user.manage`（无权限 → 403），再按列表同一数据范围查用户；其他部门的用户与不存在的用户返回完全相同的 `404 RUN-7001「用户不存在」`。
+- 非 platform_admin 调用时：
+  - 目标用户是 platform_admin → `403 POL-2001「不能修改 platform_admin」`（改角色、数据范围、状态都不行）。只有 platform_admin 能修改 platform_admin。
+  - 授予 `platform_admin`、`org_admin`，或权限码不是自身权限子集的角色 → `403 POL-2001「不能授予该角色」`。
+  - `dataScope` 比自身宽（`self` < `org` < `all`）→ `403 POL-2001「不能授予超出自身的数据范围」`。
+  - 不传 `dataScope` 时取角色默认值，但不超过调用者自身的范围（例如 org 范围的 org_admin 授予 `auditor`，默认 `all` 会变成 `org`）。platform_admin 不受此上限影响。
+- `dataScope` 只能是 `all`、`org`、`self`，其他值 → `400 CFG-8501`（对所有调用者，包括 platform_admin）；空字符串视为未传。
+- `POST /users` 新用户的部门固定为调用者所在部门；`PATCH /users/{id}` 只改 `role`、`dataScope`、`status`。请求体里的 `orgUnitId` 两个接口都忽略，不能把用户移到其他部门。
+- 审计：`user.update` 的 details 为 `{ role, dataScope, status? }`（传了 `status` 才记）。
+
 ## 13. 凭据、审计与设置
 
 | 方法 | 路径 | 说明 | 权限 |
