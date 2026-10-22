@@ -1,10 +1,11 @@
 import { type FastifyInstance, type FastifyRequest } from "fastify";
 import { errors, ForgeError, type Principal } from "@forge/core";
-import { assertRunAccess } from "@forge/governance";
+import { assertRunAccess, visibleAgentOrgIds } from "@forge/governance";
 import { principalForConnector, verifyConnectorPrincipal } from "@forge/identity";
 import { assertAgentRunnable, cancelRun, createQueuedRun } from "@forge/runtime";
 import { repos } from "@forge/store";
 import {
+  agentAccessible,
   bodyOf,
   param,
   stringBody,
@@ -22,11 +23,13 @@ async function connectorUser(request: FastifyRequest): Promise<Principal> {
 
 export default async function integrationRoutes(app: FastifyInstance): Promise<void> {
   app.get("/integration/v1/agents", async (request) => {
-    await connectorUser(request);
-    const agents = await repos.listAgents(null);
+    const principal = await connectorUser(request);
+    // I-INT-17: same visibility as agentAccessible (mapped user's department subtree + unowned); disabled Agents are
+    // not runnable, so they are not listed either.
+    const agents = await repos.listAgents(await visibleAgentOrgIds(principal));
     const items = [];
     for (const agent of agents) {
-      if (!agent.published_version_id) continue;
+      if (!agent.published_version_id || agent.status !== "active") continue;
       const version = await repos.getAgentVersion(agent.published_version_id);
       items.push({ key: agent.key, name: agent.name, description: agent.description, version: version?.version ?? null });
     }
@@ -37,7 +40,8 @@ export default async function integrationRoutes(app: FastifyInstance): Promise<v
     const principal = await connectorUser(request);
     const body = bodyOf(request);
     const agent = await repos.getAgentByKey(requireBodyString(body, "agentKey"));
-    if (!agent || !agent.published_version_id) throw errors.notFound("Agent 不存在");
+    // I-INT-17: outside the mapped user's scope -> the same 404 as a missing Agent (checked before status).
+    if (!agent || !agent.published_version_id || !(await agentAccessible(principal, agent))) throw errors.notFound("Agent 不存在");
     assertAgentRunnable(agent);
     const runId = await createQueuedRun({
       agentId: agent.id,
