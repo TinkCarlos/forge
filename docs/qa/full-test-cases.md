@@ -354,6 +354,8 @@
 | I-SCOPE-10c | 接口 | P1 | R-sa（SA 接口仅 PA，故经 schedule 绑定验证）。**正**：父部门 OA 创建/PATCH schedule 绑定**子部门**服务账号；**反**：绑定**兄弟部门**或**上级部门**服务账号。**前置（子部门 SA 怎么造）**：建服务账号时部门固定取调用者自己的部门，接口无法把 SA 放到别的部门（后端对过 `4c2555e`）。造法：① 用 PA 正常建好 SA；② 由**运维**在 **3196 的临时库 `forge_ops`** 执行 `UPDATE service_accounts SET org_unit_id=<子部门id> WHERE id=<账号id>`；③ 执行前先 `SHOW CREATE TABLE service_accounts` 核对表名和列名；④ 改之前先导出这张表做备份，SQL 原样贴进执行日志；⑤ 只允许在临时库（`forge_ops`，或 connector 场景的 `forge_connector`）上做，**禁止在 `forge`、`forge_ux` 上做**，测完整库删除。反面用例（兄弟部门 / 上级部门 SA）用同样办法造数据 | 正：**200**。**已知缺陷**：R-sa 精确等于，现状 404（修复 D 已改）。反：**404**，与 `serviceAccountId` 不存在时完全相同（状态码、错误码、message），响应中**不出现账号名**（= I-SA-10） |
 | I-SCOPE-11 | 接口 | P1 | `self` 用户看 Agent 列表 | 与 `org` 相同（按部门子树），不是「仅自己创建」 |
 | I-SCOPE-12 | 接口 | P1 | owner=NULL 的 Agent：列表空部门用户 vs 详情 | 列表/详情一致性；不一致记缺陷 |
+| I-SCOPE-13 | 接口 | P1 | 修复 **AB**（`orgSubtreeIds` 用 `LIKE path%`）。建两个兄弟部门，key 分别为 `a_b` 和 `axb`；用 `a_b` 的 org_admin 读取 `axb` 下的用户（`GET /admin/api/users/:id` 或等价详情）、再看用户列表和审计列表 | 读 `axb` 的用户 → **404**，与不存在相同；列表和审计都看不到 `axb` 的数据。备注：修法是转义 `\`、`%`、`_` 并在末尾拼接分隔符，或改用 `LEFT` 做前缀比较；**全仓库所有用 LIKE 拼路径的地方一并修改**。哈希待后端 |
+| I-SCOPE-14 | 接口 | P1 | 修复 **AB**。部门路径 `/a/b` 与 `/a/bc` 互为前缀，另建真正的子部门 `/a/b/c`；用 `/a/b` 的 org_admin 看用户列表、审计列表 | 看不到 `/a/bc` 的数据；能看到本部门和 `/a/b/c` 的数据。备注同 I-SCOPE-13 |
 
 ### 8.5 执行表
 
@@ -430,7 +432,7 @@
 | OPS-024 | **P0**，与 S-45 / S-45b 互引。MySQL 断开 30 秒后恢复：断开期间带会话的请求返回 **503**（不是 401），会话不能被删；恢复后同一 cookie 直接继续用，不用重新登录。**界面预期**：新控制台收到 503 时**不跳登录页**，页面显示错误提示和**重试按钮**，会话保留；数据库恢复后点重试即可继续 |
 | OPS-025 | P2。autocannon 测修复 F 前后的 p95 延迟（只读接口如 `GET /admin/api/agents`，30s，c=20）；涨幅 >20% 记一般问题；EXPLAIN 检查用户 + 部门链查询走索引 |
 | OPS-文档 | 出站白名单环境变量写进 `.env.example`，带注释，**默认为空**（修复 G 上线时补；变量名以后端实现为准） |
-| OPS-026 | **P0**。测试库守卫（修复 Z，架构师要求）：守卫放在 vitest 的 `globalSetup` 里，在任何测试文件连库之前执行；守卫必须在**应用建立数据库连接之前**就拦下，不能只拦 HTTP 请求——测试代码在进程内直接启动应用（如 `buildApp` / `inject`）、用种子 admin 登录连 forge 时也必须被拒绝；测试**只认 `TEST_DATABASE_URL`**，不从开发用的 `.env` 继承 `DATABASE_URL`；库名不以 `_test` 结尾 → **一律报错退出**，vitest **不留任何绕过方式**（没有放行用的环境变量或开关）。子用例：**OPS-026a** 没设 `TEST_DATABASE_URL` → 拒绝；**OPS-026b** 只设了 `DATABASE_URL=…/forge`、没设 `TEST_DATABASE_URL` → 拒绝；**OPS-026c** `TEST_DATABASE_URL=…/forge` → 拒绝；**OPS-026d** `TEST_DATABASE_URL=…/forge_test` → 通过；**OPS-026e** 在主工作区有 `.env` 的情况下直接跑 `pnpm test` → 拒绝；**OPS-026f** 种子脚本和迁移脚本（架构师口径）：库名以 `_test` 或 `_ux` 结尾直接放行；其他库名（包括 `forge`）必须传 `--confirm-db=<完全一致的库名>` 才写入。三条子断言：**f1** 不传参数 → 拒绝；**f2** 传 `--confirm-db=forge_x`（库名不匹配）→ 拒绝，只给通用的 yes 开关也拒绝；**f3** 传 `--confirm-db=forge` → 放行。**OPS-026g** vitest 只认以 `_test` 结尾的库，`TEST_DATABASE_URL=…/forge_ux` → 拒绝。**OPS-026h** 设了 `FORGE_ALLOW_NON_TEST_DB=1` 且 `TEST_DATABASE_URL=…/forge` → **仍然拒绝**（该变量不起任何放行作用）。**OPS-026i** 测试代码在进程内启动应用（`buildApp` / `inject`）并指向 forge → 拒绝，且 forge 库里**没有任何新的 audit_logs 行或业务行**（执行前后只读计数对比）。**已知缺陷 K-16**：现状未设置时落到默认库 `forge`（干净克隆复验时实际发生） |
+| OPS-026 | **P0**。测试库守卫（修复 Z，架构师要求）：守卫放在 vitest 的 `globalSetup` 里，在任何测试文件连库之前执行；守卫必须在**应用建立数据库连接之前**就拦下，不能只拦 HTTP 请求——测试代码在进程内直接启动应用（如 `buildApp` / `inject`）、用种子 admin 登录连 forge 时也必须被拒绝；测试**只认 `TEST_DATABASE_URL`**，不从开发用的 `.env` 继承 `DATABASE_URL`；库名不以 `_test` 结尾 → **一律报错退出**，vitest **不留任何绕过方式**（没有放行用的环境变量或开关）。子用例：**OPS-026a** 没设 `TEST_DATABASE_URL` → 拒绝；**OPS-026b** 只设了 `DATABASE_URL=…/forge`、没设 `TEST_DATABASE_URL` → 拒绝；**OPS-026c** `TEST_DATABASE_URL=…/forge` → 拒绝；**OPS-026d** `TEST_DATABASE_URL=…/forge_test` → 通过；**OPS-026e** 在主工作区有 `.env` 的情况下直接跑 `pnpm test` → 拒绝；**OPS-026f** 种子脚本和迁移脚本（架构师口径）：库名以 `_test` 或 `_ux` 结尾直接放行；其他库名（包括 `forge`）必须传 `--confirm-db=<完全一致的库名>` 才写入。三条子断言：**f1** 不传参数 → 拒绝；**f2** 传 `--confirm-db=forge_x`（库名不匹配）→ 拒绝，只给通用的 yes 开关也拒绝；**f3** 传 `--confirm-db=forge` → 放行。**OPS-026g** vitest 只认以 `_test` 结尾的库，`TEST_DATABASE_URL=…/forge_ux` → 拒绝。**OPS-026h** 设了 `FORGE_ALLOW_NON_TEST_DB=1` 且 `TEST_DATABASE_URL=…/forge` → **仍然拒绝**（该变量不起任何放行作用）。**OPS-026j**（修复 Z，**只写用例，不执行，绝对不要跑 reset**）`pnpm db:reset` 不带 `--confirm-db` → 拒绝；带 `--yes` 或 `--force` → 也拒绝；只有 `--confirm-db=<完全一致的库名>` 才放行；migrate 和 seed 同样拒绝 `--yes` / `--force`。**OPS-026i** 测试代码在进程内启动应用（`buildApp` / `inject`）并指向 forge → 拒绝，且 forge 库里**没有任何新的 audit_logs 行或业务行**（执行前后只读计数对比）。**已知缺陷 K-16**：现状未设置时落到默认库 `forge`（干净克隆复验时实际发生） |
 | OPS-027 | **P0**。forge 库清理复核。前提：清理须经 Cursor Jackson 同意。**只用只读查询**。**前置检查（清理前，只读）**：查 `it-rs-…` 这个 platform_admin 用户自 12:42（UTC+8）起的登录审计（`auth.login`）；预期只有测试自己产生的记录，出现非测试来源的登录 → 判 **fail**，先当**安全事件上报**，再执行删除。**前置检查结果：pass**。证据（运维只读查询）：`it-rs-…` 没有任何 `auth.login` 记录，只有 12:42:56 和 12:42:57（UTC+8）两条 `run.create`；3100 的日志里也搜不到 `it-rs-`。**原待查项「种子 admin 每分钟 3 次登录来源不明」：已查清**，不再阻塞清理。证据（运维只读结论，时间均为 UTC+8）：最后一次登录是 12:50:52；12:44～12:50 之间的登录是后端测试在进程内启动应用、直连 forge 产生的，没有经过 3100；3100 的日志里当天只有 11:19 前端故意输错密码的 2 次登录；12:50:52 之后的 12 分钟内 forge 没有新的审计记录。清理后预期：① users、service_accounts、agents、api_apps、api_keys、llm_providers、tool_sources、mcp_servers、org_units 中 `it-` 前缀的行数为 0；② 没有状态为 active、且 base_url 指向私网地址、链路本地地址（如 169.254.169.254）、`file:` 或 127.0.0.1 的 Provider 和工具源；③ 没有孤儿行：按外键检查 runs、threads、messages、run_events、schedules、webhook_deliveries、llm_models、mcp_tools、approvals、run_steps、tool_calls、tools，每条外键引用都能对上（不查 sessions 和 user_roles：这两张表不存在，会话存在进程内存里，角色是 users 表上的字段）；④ 审计日志行数不少于清理前，一条都不能删；⑤ 备份两个文件：`/tmp/forge-logs/forge-pre-cleanup-20261022-1254.sql`（sha256 开头 `d7a39bb8`）和 `/tmp/forge-logs/forge-pre-cleanup-20261022-1254-extra.sql`（sha256 开头 `388d01f9`），清理前后核对哈希。备注（事故经过，时间 UTC+8）：测试工程师 12:41 误连 forge 库，很可能写入了 12:42 的 2 个 users，之前只读核查时漏了这两条；后端在 worktree 里用了主工作区的 `.env`，写入了 12:49 那一批数据，其中包括指向云元数据地址的 active Provider |
 
 ## 12. 架构师横向补洞（合并进 UI / F）
@@ -479,10 +481,11 @@
 | K-09 | I-CSRF-06（及 I-G-06 / I-G-07） | 坏 JSON 400、超 2MB 413、Content-Type 不对 415、空 JSON 体 400 | 均 500 SYS-9001（body 先于 CSRF 解析，顺序保留） |
 | K-10 | I-MDL-11（执行表 #21～#25） | Provider / 模型只有 PA 能写，OA / BL → 403 | OA、BL 持有 `model.manage`，可写（越权，P1；架构师推荐 C 方案，【待 Cursor Jackson 拍板】；修复 **Q**） |
 | K-12 | I-SKL-07（执行表 #33） | `status` 非法 → 400 CFG-8501，不入库 | `status:"foo"` 200 入库，Skill 静默下线；超 16 字符 500（修复 T） |
-| K-13 | I-APR-38（执行表 #42），P1 | Run 已结束 → decide 409 RUN-7005，Run 不恢复 | decide 200，Run 继续执行（修复 W） |
+| K-13 | I-APR-38（执行表 #42），P1 | Run 已结束 → decide 409 RUN-7005「Run 已结束，审批不可操作」，审批 `expired`，Run 不恢复 | decide 200，Run 继续执行（修复 W） |
 | K-14 | S-30（执行表 #10），P1 | 开放重定向：非本站 origin 一律回落 `/next/` | `//evil.example` 被放过，跳外域（修复 R） |
 | K-15 | UI-056，P2 | 字号只用 12/13/14/16/20/28 | 登录页标题「登录 Forge 控制台」18px、Agents 页 H1 24px；不在 `04ef9a8` 改动范围；前端确认 P2，等测试问题汇总后一起改，不动本次冻结基线 |
 | K-16 | OPS-026，**P0** | 测试只认 `TEST_DATABASE_URL`，库名非 `_test` 结尾或未设置 → 拒绝运行（vitest `globalSetup` 守卫） | 未设 `DATABASE_URL` 时 `pnpm test` 落到默认库 `forge`（干净克隆复验时实际发生）；修复 Z |
+| K-17 | 执行表 #12 #13 #15 #37 #38 #39 #85，P2 | 缺权限 → 403 的路径有自动化覆盖 | 这 7 条缺权限 403 的路径没有任何自动化覆盖（无单测；所有内置角色都有 agent.view / run.view，无法用内置角色触发；#85 走 Connector JWT）；待 API 实测覆盖 |
 | K-11 | UI-095 | 确认框内操作收到 401 / 403 时确认框自动关闭，只留错误提示 | 发布收到 403 后确认框不关闭 |
 
 ### 14.3 新增
@@ -550,7 +553,9 @@ Agent专家所列 UX 批次（UI-053～UI-057 改 4 条；新增 UI-059、UI-065
 ## 16. 后端修复串复验清单
 
 - 分支 `fix/blockers-authz-mask`（worktree `/Users/libo/projects/forge-blockers`，仅本地，未推送），基于 `4c2555e`。
-- 提交依次（按后端给的顺序）：**A** `dfef71f` · **B** `22b5254` · **C** `020c1e0` · **D** `eed019d` · **E** `e97cbba` · **F** `cf41287` · **G** 出站私网拦截（待定）· **H**（待定，内容待后端说明）· **I** `fda5a74` 查库失败返回 503 SYS-9003 · **J** 定时任务重新校验身份（待定）· **L** agent 停用 409 + status 只收两值 + integration 建 Run 复用 `agentAccessible`（I-INT-17）（待定）· **M** 取消已结束 Run 返回 409 RUN-7005（待定）· **N** cron 先解析再建 Run（待定）· **O** body 解析返回 413 / 400 / 415（待定）· **P** 卸载不存在的插件返回 404 + org_admin 卸载 403 测试（待后端提交；后端建议本轮只做卸载不存在的插件返回 404、按部门判定放到下一轮，架构师已同意）· **R** 开放重定向（已同意，本轮修）· **T** 用户 status 白名单（已同意，本轮修）· **V** 用户列表 presenter，`idp_subject` / `is_emergency_admin` 只给 PA（已同意，本轮修）· **W** I-APR-38：`decideApproval` 判关联 Run 已结束 → 409 RUN-7005 并置审批不可操作（已同意，本轮修）· **X** 无主 Agent 只允许 PA 写（已同意，本轮修）· **Y** 补 6 个审计 action（`auth.logout`、`schedule.enable`、`schedule.disable`、`open.run.cancel`、`integration.run.create`、`integration.run.cancel`）· **Z** 测试库名守卫（OPS-026）。另：**Q** K-10 收回 org_admin、builder 的 `model.manage`（**待拍板**；单独提交，不并入 P）。
+- 提交依次（按后端给的顺序）：**A** `dfef71f` · **B** `22b5254` · **C** `020c1e0` · **D** `eed019d` · **E** `e97cbba` · **F** `cf41287` · **G** `40bf11c` 出站私网拦截（错误码**待后端给**）· **H** `42299c5` 审批统一 404 RUN-7001 + 已知打码限制（文档）· **I** `1422152` 查库失败返回 503 SYS-9003（原记 `fda5a74`，**已被 1422152 替换（疑为 rebase，待后端确认）**）· **J** `5dca21b` 定时任务每次触发重新校验身份 · **L** `b8245ee` agent 停用 409 + status 只收两值（续篇 `b038bd2`：integration 按映射用户部门子树判定 Agent，I-INT-17）· **M** `554ce7c` 取消已结束 Run 返回 409 RUN-7005 · **N** `84cb837` cron 先解析再建 Run · **O** `d71af88` body 解析返回 413 / 400 / 415 · **P** `43a57b1` 卸载不存在的插件返回 404 + org_admin 卸载 403 测试（后端建议本轮只做卸载不存在的插件返回 404、按部门判定放到下一轮，架构师已同意）· **R** `0dfa398` 开放重定向 · **T** `a53128c` 用户 / Skill status 白名单 · **V** `6c89a79` 用户列表 presenter，`idp_subject` / `is_emergency_admin` 只给 PA · **W** `6e3c093` I-APR-38：`decideApproval` 判关联 Run 已结束 → 409 RUN-7005 并置审批为 `expired` · **X** `7521dc5` 无主 Agent 只允许 PA 写 · **Y** `c5009e9` 补 6 个审计 action（`auth.logout`、`schedule.enable`、`schedule.disable`、`open.run.cancel`、`integration.run.create`、`integration.run.cancel`）· **Z** `a5cbb35` 测试库名守卫（OPS-026）· **AB** `orgSubtreeIds` 的 `LIKE path%` 前缀误匹配（I-SCOPE-13 / I-SCOPE-14，哈希**待后端**）。另：**Q** K-10 收回 org_admin、builder 的 `model.manage`（**待拍板方案 C**；单独提交，不并入 P）。
+- **QA 只读核对（13:11 UTC+8，`git -C /Users/libo/projects/forge-blockers`，未跑测试、未连库）**：分支 `fix/blockers-authz-mask` HEAD = `c5009e9`；`cf41287..c5009e9` 共 17 个提交，G～Z 的 16 个哈希加 L 续篇 `b038bd2` 全部在分支上（`merge-base --is-ancestor` 逐个确认）；A～F 也在分支上；`fda5a74` 对象存在但**不在**分支上。分支上的实际顺序是 I → J → G → H → L → M → N → O → P → R → Z → T → V → W → X → L 续篇 → Y，和字母顺序不同。
+- **后端自报，待 QA 复验**：13:08–13:09（UTC+8）连 `forge_test`；typecheck 通过；37 个文件，597 条通过、2 条跳过（跳过原因待后端说明）；`smoke:isolated` 通过；路由 86 条。
 - 复验时机：本轮执行测实问题后，按下表排队复验；复验结论记到对应用例 ID。
 - **冻结基线的前置条件**：修复 **Z**、**OPS-026**（测试库守卫）、**OPS-027**（forge 库清理复核）必须先完成并通过；**K-16 已由架构师定为 P0**。
 
@@ -561,18 +566,19 @@ Agent专家所列 UX 批次（UI-053～UI-057 改 4 条；新增 UI-059、UI-065
 | I-APR-12 | 打码保留 `max_tokens` / `input_tokens` / `output_tokens` |
 | I-INT-10a～c | connector 主体停用 / 删除 / 部门停用 → 403 CON-4706（C） |
 | I-SCOPE-10a～c | 本部门 + 子部门范围；SA 绑定正反两面（D） |
+| I-SCOPE-13、I-SCOPE-14 | 部门子树前缀匹配：`_` / `%` 通配与路径互为前缀不得串到兄弟部门（AB，哈希待后端） |
 | I-RBAC-02 | decide 跨部门与审批不存在相同（D） |
 | S-45 | 会话快照：每次请求按用户 id 重读状态 / 角色 / 部门（F） |
 | OPS-025 | 修复 F 前后 p95 与索引 |
 | S-39、S-40、S-42、S-46～S-49（含 S-48a～d）、I-MCP-02 | 出站私网拦截（G） |
 | （H） | 待后端说明 |
 | S-30（执行表 #10） | 开放重定向回落 `/next/`（R，K-14） |
-| I-USR-01（执行表 #57）、执行表 #59 | 用户 status 白名单（T）；用户列表 presenter，敏感字段只给 PA（V） |
-| I-APR-38（执行表 #42） | Run 已结束 → decide 409 RUN-7005（W，K-13） |
+| I-USR-01（执行表 #57）、执行表 #59、I-USR-12（执行表 #58） | 用户 status 白名单（T，建用户 `disabled` 生效、`foo` → 400 CFG-8501）；用户列表 presenter，敏感字段只给 PA（V） |
+| I-APR-38（执行表 #42） | Run 已结束 → decide 409 RUN-7005「Run 已结束，审批不可操作」，审批 `expired`（W，K-13）；I-APR-37 为 409 CFG-8503 |
 | I-AGT-13（执行表 #16～#18） | 无主 Agent 只允许 PA 写（X） |
-| I-INT-17（执行表 #83） | integration 建 Run 复用 `agentAccessible`（L） |
+| I-INT-17（执行表 #83） | integration 建 Run 复用 `agentAccessible`（L，续篇 `b038bd2`）；不检查 `api_enabled` 是架构师定的边界，不算缺陷 |
 | I-AUD-01 / 执行表 #9 #47 #48 #79 #83 #86 | 补 6 个审计 action（Y） |
-| OPS-026a～i | 测试库名守卫：vitest `globalSetup`（在应用建立数据库连接前拦截，进程内 `buildApp` / `inject` 指向 forge 也拒绝且不落任何行）、只认 `TEST_DATABASE_URL` 且只认 `_test` 结尾（`_ux` 也拒绝，`FORGE_ALLOW_NON_TEST_DB=1` 也不放行）、种子 / 迁移非 `_test` / `_ux` 库须 `--confirm-db=<库名>`（Z，K-16，P0） |
+| OPS-026a～j | 测试库名守卫（j：`db:reset` / migrate / seed 拒绝 `--yes` / `--force`，只认 `--confirm-db=<库名>`；不执行 reset）：vitest `globalSetup`（在应用建立数据库连接前拦截，进程内 `buildApp` / `inject` 指向 forge 也拒绝且不落任何行）、只认 `TEST_DATABASE_URL` 且只认 `_test` 结尾（`_ux` 也拒绝，`FORGE_ALLOW_NON_TEST_DB=1` 也不放行）、种子 / 迁移非 `_test` / `_ux` 库须 `--confirm-db=<库名>`（Z，K-16，P0） |
 | OPS-027 | forge 库清理复核（只读；前置 PA 登录检查 pass；种子 admin 每分钟 3 次登录已查清（后端进程内测试直连 forge，末次 12:50:52 UTC+8）；只剩清理需 Cursor Jackson 同意） |
 | I-SKL-07（执行表 #33） | Skill status 为 "foo" 或超 16 字符 → 400 CFG-8501，断言码和文案（K-12，修复 T） |
 | I-MDL-11（执行表 #21～#25） | 收回 org_admin、builder 的 `model.manage`，Provider / 模型只有 PA 能写（K-10，P1，修复 **Q**：待 Cursor Jackson 拍板方案 C；单独提交，不并入 P） |
@@ -612,3 +618,4 @@ Agent专家所列 UX 批次（UI-053～UI-057 改 4 条；新增 UI-059、UI-065
 | 2026-10-22 | OPS-026 删掉 `FORGE_ALLOW_NON_TEST_DB` 放行描述，vitest 不留绕过；新增 OPS-026h（`FORGE_ALLOW_NON_TEST_DB=1` + `…/forge` 仍拒绝）。OPS-027：孤儿行改按外键查 12 张表、去掉不存在的 sessions / user_roles；备份两个文件（`d7a39bb8…`、`388d01f9…`）；前置 PA 登录检查记 pass（运维只读查询）；新增待查项「种子 admin 每分钟 3 次登录」，查清前不清理。正文留在 §11（架构师定），`ops-cases.md` 未改 |
 | 2026-10-22 | OPS-027 阻塞项「种子 admin 每分钟 3 次登录来源不明」改为**已查清**（运维只读结论：末次登录 12:50:52；12:44～12:50 为后端进程内测试直连 forge、未经 3100；3100 当天只有 11:19 前端故意输错密码 2 次；12:50:52 后 12 分钟无新审计，时间 UTC+8），前置条件只剩「需 Cursor Jackson 同意清理」；§16 同步 |
 | 2026-10-22 | OPS-026 预期补充（架构师）：守卫须在应用建立数据库连接前拦截，不能只拦 HTTP；进程内 `buildApp` / `inject` 用种子 admin 连 forge 也拒绝；新增 OPS-026i（进程内启动指向 forge → 拒绝，forge 无新 audit_logs / 业务行）；§16 同步为 a～i。`ops-cases.md` 引用仍写 a～h，待运维改为 a～i |
+| 2026-10-22 | §16 填入修复哈希 G～Z（L 续篇 `b038bd2`），I 原 `fda5a74` 标「已被 `1422152` 替换（疑为 rebase，待后端确认）」，QA 只读核对 17 个提交均在 `fix/blockers-authz-mask`；记后端自报结果（待 QA 复验）；新增修复 AB（哈希待后端）。I-APR-38 / K-13 改为 409 RUN-7005「Run 已结束，审批不可操作」、审批 `expired`（架构师已确认）。新增 OPS-026j（`db:reset` / migrate / seed 拒绝 `--yes` / `--force`，只写不执行），§16 范围 a～j。新增 I-USR-12（建用户 status，400 CFG-8501）。执行表 #12 #13 #15 #37 #38 #39 #85 改「未验（无单测覆盖…），待 API 实测覆盖」，新增 K-17（P2）。新增 I-SCOPE-13 / I-SCOPE-14（部门子树 LIKE 前缀误匹配，修复 AB；架构师指定的 I-SCOPE-11 / 12 已被占用，顺延）。integration 不检查 `api_enabled` 写为架构师定的边界 |

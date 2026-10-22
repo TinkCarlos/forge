@@ -66,12 +66,12 @@
 | I-INT-10c | 同上 | 用户所属部门已停用。**由运维在 3197 的临时库 `forge_connector` 执行**：执行前先导出 `org_units` 表做备份；用 SQL `UPDATE org_units SET status='disabled' WHERE id='<测试部门 id>'` 置停用，**SQL 原样贴进执行日志**；测完整库删除。没有改部门状态的接口；**严禁在 `forge`、`forge_ux` 上执行** | 同上 | 403 CON-4706，不建 Run | P0 | 基线 `4c2555e` 会放行，判 fail（已知缺陷）；`fix/blockers-authz-mask` 的 C `020c1e0` 之后应 403 CON-4706 |
 | I-INT-10d | #82、#83 | PRE-CON；映射用户正常 | 让主体查库失败（MySQL 断开，同 OPS-024），调 `GET /integration/v1/agents` | 查库失败属基础设施故障：**503**，**不能是 403 CON-4706**；只有确认查到用户且不可用时才 CON-4706 | P0 | 与 S-45b 同口径（原编号 I-INT-10b，为避免与子场景 b 混淆改为 10d） |
 | I-INT-11 | #83 | 映射用户为 AU（无 `agent.run`） | 建 Run | 403 POL-2001「角色缺少权限: agent.run」 | P1 | **已知缺陷** K-06：现状 202（同 S-35） |
-| I-INT-12 | #82 | 映射用户属部门 A | 列 agents | 只含 A 部门子树可见且已发布的 Agent | P1 | **已知缺陷**：现状全局、不看 api_enabled（Q6） |
+| I-INT-12 | #82 | 映射用户属部门 A | 列 agents | 只含 A 部门子树可见且已发布的 Agent | P1 | **已知缺陷**：现状全局（部门子树部分由 L 续篇 `b038bd2` 修）。integration **不检查 `api_enabled`** 是架构师定的边界，**不算缺陷**，由 I-INT-17 和 `loadActivePrincipal` 覆盖 |
 | I-INT-13 | #83 | 映射用户属部门 A | 建 Run 后 PA 查 `GET /admin/api/runs/:id` | Run 的 org = 部门 A；subject = 映射用户 | P1 | |
 | I-INT-14 | #84 GET `/integration/v1/runs/:id` | PRE-CON；映射用户无 `run.view` | 读本范围内 Run | 403 | P3 | 内置角色都有 `run.view`，测不出，记设计；现状无权限检查 |
 | I-INT-15 | #86 POST `/integration/v1/runs/:id/cancel` | PRE-CON | ① 取消范围外 Run ② 映射用户为 BL / AU / US（无 `run.cancel`）取消本范围 Run | ① 404（`assertRunAccess`）② 403 | P1 | ② **已知缺陷**：现状 200 |
 | I-INT-16 | #86 同上 | PRE-CON；已结束的 Run | cancel | **409 RUN-7005「Run 已结束，不能取消」**，状态不变，不写审计（与 I-RUN-06、I-OPEN-23 统一）；断言同时查错误码和文案 | P2 | **已知缺陷**：现状 200 `{ok:true}`，状态不变（`integration.ts:68-74`）。修复 M |
-| I-INT-17 | #83 POST `/integration/v1/runs` | PRE-CON（3197 connector 实例开 inbound）；映射用户属部门 A，**必须用 operator 或 builder（dataScope=org）**——不要用 dataScope=all 的用户（如 auditor），否则可见范围是全局，会误判；部门 B（非 A 子树）有已发布 Agent | 用该 Agent 的 key 建 Run | **404 RUN-7001**，不建 Run（只能跑映射用户部门子树内已发布的 Agent，与 #82 一致） | P1 | **已知缺陷**：现状只看「存在且已发布」，返回 202（`integration.ts:39-40`）；修复 L（复用 `agentAccessible`） |
+| I-INT-17 | #83 POST `/integration/v1/runs` | PRE-CON（3197 connector 实例开 inbound）；映射用户属部门 A，**必须用 operator 或 builder（dataScope=org）**——不要用 dataScope=all 的用户（如 auditor），否则可见范围是全局，会误判；部门 B（非 A 子树）有已发布 Agent | 用该 Agent 的 key 建 Run | **404 RUN-7001**，不建 Run（只能跑映射用户部门子树内已发布的 Agent，与 #82 一致） | P1 | **已知缺陷**：现状只看「存在且已发布」，返回 202（`integration.ts:39-40`）；修复 L（复用 `agentAccessible`，续篇 `b038bd2`）。integration 不检查 `api_enabled` 是架构师定的边界，不算缺陷，由本条和 `loadActivePrincipal` 覆盖（`api-inventory.md` 由后端改） |
 
 ## 4. 审计（I-AUD）
 
@@ -225,7 +225,7 @@
 | I-APR-34 | #42 | — | 不传 decision；`comment` 1025 字 | 400 CFG-8501（两者） | P1 | 后者**已知缺陷**：现状 500 |
 | I-APR-35 | #42 | — | 不存在 id + 非法 decision | 404（先查存在） | P2 | |
 | I-APR-37 | #42 | 审批已 `rejected` | 再调 decide `{"decision":"approved"}` | 409 CFG-8503，状态仍 rejected，Run 不继续 | P1 | 与 I-APR-21 对称（架构师横向 a） |
-| I-APR-38 | #40 #42 | Run 处于 waiting_approval，对应审批 pending | ① cancel 该 Run ② 查审批列表 / 详情 ③ decide approved | ② 审批不可操作 ③ **409 RUN-7005「Run 已结束，不能取消」**（关联 Run 已结束 → `decideApproval` 返回 409 RUN-7005 并把审批置为不可操作），Run 保持 cancelled、不恢复、不执行工具；断言同时查错误码和文案 | P1 | **已知缺陷 K-13**：现状 decide 200，并触发 `executeRun`，Run 继续执行（`loop.ts:307-315`、`runs.ts:282-288`）。修复 W |
+| I-APR-38 | #40 #42 | Run 处于 waiting_approval，对应审批 pending | ① cancel 该 Run ② 查审批列表 / 详情 ③ decide approved | ② 审批不可操作 ③ **409 RUN-7005「Run 已结束，审批不可操作」**（关联 Run 已结束 → `decideApproval` 返回 409 RUN-7005），审批状态断言为 **`expired`**，Run 保持 cancelled、不恢复、不执行工具；断言同时查错误码和文案 | P1 | **已知缺陷 K-13**：现状 decide 200，并触发 `executeRun`，Run 继续执行（`loop.ts:307-315`、`runs.ts:282-288`）。修复 W（`6e3c093`）。RUN-7005 对应两句文案，按场景分开断言：取消已结束 Run 是「Run 已结束，不能取消」（I-RUN-06 等），审批场景是「Run 已结束，审批不可操作」（架构师已确认）。对照：I-APR-37（已 rejected 再批准）预期 409 CFG-8503 |
 | I-APR-36 | #42 | 审批已过 `expires_at` 但未被 `timeoutApprovals` 清理 | 批准 | 409 CFG-8503，不批准 | P1 | **已知缺陷**：现状 200（`decideApproval` 不看 expires_at）。UI-034b / UI-081b |
 
 ### 6.8 定时任务接口级（I-SCH，#45~#49）
@@ -279,6 +279,7 @@
 | I-USR-09 | #59 | OA | PATCH PA、不传 role | 403「不能授予该角色」 | P1 | 业务 403，不计入 I-RBAC 判定 |
 | I-USR-10 | #63 | PA | 缺 agentRoleCode/localRole；`localRole:"superuser"` | 400；400 | P2 | 后者**已知缺陷**：现状入库 |
 | I-USR-11 | #63 | — | upsert 后读审计 | 见 I-AUD-11 | P3 | |
+| I-USR-12 | #58 POST `/admin/api/users` | PA | ① 建用户传 `status:"disabled"` ② 传 `status:"foo"` | ① 200，创建结果 `status=disabled`，该用户无法登录 ② **400 CFG-8501**，不入库（架构师已定：建用户和 Skill 的 status 非法都返回 400 CFG-8501，与 I-SKL-07 一致） | P2 | 修复 T（`a53128c`） |
 
 ### 6.11 插件 / 服务账号（I-PLG，I-SA，#66~#72）
 
