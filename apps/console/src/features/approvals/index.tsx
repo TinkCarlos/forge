@@ -37,7 +37,7 @@ function ArgsPreview({ value }: { value?: string | null }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <code className='block max-w-72 truncate rounded bg-muted px-1.5 font-mono text-xs leading-4'>{value}</code>
+        <code className='block max-w-72 truncate rounded max-lg:max-w-[60vw] bg-muted px-1.5 font-mono text-xs leading-4'>{value}</code>
       </TooltipTrigger>
       <TooltipContent className='max-w-md font-mono text-xs break-all'>{value}</TooltipContent>
     </Tooltip>
@@ -61,7 +61,7 @@ function RunId({ id }: { id: string }) {
         type='button'
         onClick={copy}
         aria-label={`复制 Run ID ${id}`}
-        className='inline-flex size-4 items-center justify-center rounded-sm opacity-60 transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none'
+        className='hit-area relative inline-flex size-4 items-center justify-center rounded-sm opacity-60 transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none'
       >
         <Copy className='size-3' />
       </button>
@@ -101,7 +101,7 @@ export function Approvals() {
 
   return (
     <PageShell title='审批中心' description='Agent 调用高风险工具时会暂停，等你批准或驳回。'>
-      <div className='overflow-hidden rounded-lg border bg-card'>
+      <div className='table-cards overflow-hidden rounded-lg border bg-card'>
         <Table>
           <TableHeader className='bg-muted/40'>
             <TableRow className='hover:bg-transparent'>
@@ -130,14 +130,16 @@ export function Approvals() {
                       <div className='font-medium'>{a.agent_name}</div>
                       <RunId id={a.run_id} />
                     </TableCell>
-                    <TableCell>
+                    <TableCell data-label='工具与参数' className='max-lg:items-start'>
+                      <div className='min-w-0 max-lg:flex max-lg:flex-col max-lg:items-end max-lg:gap-1'>
                       <div className='font-mono text-sm whitespace-nowrap'>{a.tool_name ?? '—'}</div>
                       <ArgsPreview value={a.args_preview} />
+                      </div>
                     </TableCell>
-                    <TableCell><StatusBadge status={a.risk_level} /></TableCell>
-                    <TableCell className='tabular-nums' title={created.title}>{created.text}</TableCell>
-                    <TableCell className='tabular-nums' title={expires.title}>{expires.text}</TableCell>
-                    <TableCell>
+                    <TableCell data-label='风险'><StatusBadge status={a.risk_level} /></TableCell>
+                    <TableCell data-label='提交时间' className='tabular-nums' title={created.title}>{created.text}</TableCell>
+                    <TableCell data-label='过期时间' className='tabular-nums' title={expires.title}>{expires.text}</TableCell>
+                    <TableCell data-actions>
                       <div className='flex items-center justify-end gap-1'>
                         <Button size='sm' variant='outline' onClick={() => open(a, 'approved')}>
                           <Check /> 批准

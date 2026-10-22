@@ -12,7 +12,9 @@ type AuthenticatedLayoutProps = {
 }
 
 export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
-  const defaultOpen = getCookie('sidebar_state') !== 'false'
+  // 用户手动切过就按 cookie；没切过时，1024 以下（平板）默认收起成图标，给表格留宽度
+  const saved = getCookie('sidebar_state')
+  const defaultOpen = saved === undefined || saved === '' ? window.innerWidth >= 1024 : saved !== 'false'
   return (
     <SearchProvider>
       <LayoutProvider>
