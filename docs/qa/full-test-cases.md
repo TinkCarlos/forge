@@ -391,7 +391,7 @@
 | S-37 | 安全 | P2 | open 列表若含 cursor：篡改 cursor | 不可看到他应用数据 |
 | S-38 | 安全 | P0 | 审计日志跨部门隔离：OA（本部门）或 AU 登录，库内已有他部门产生的审计记录；调 `GET /admin/api/audit?limit=200`，检查返回条目的 actor / resource 是否含其他部门 | 仅本部门及所有子部门，只有 PA 看全局；返回全站审计 → 缺陷（与 I-SCOPE-01/03 同口径）。**已知缺陷**：现状全局可见。【待 Cursor Jackson 拍板】 |
 | S-39 | 安全 | P0 | MCP discover 出站（`POST /admin/api/mcp`、`POST /admin/api/mcp/:id/refresh`，BL/OA/PA）：白名单为空；`url` 依次设为回环 `http://127.0.0.1:<port>`、私网（10/8、172.16/12、192.168/16）、链路本地 `169.254.x.x`、云元数据 `http://169.254.169.254/...`；创建后再对已建记录调 refresh。受控监听端观察有无回连，只验证发起行为，不利用 | 统一出站校验：创建 / 修改 / refresh 均 **400 HTP-4003**，不发起连接；创建时的工具发现只记 warning 写 `last_error`；响应体不得出现解析出的 IP。**已知缺陷**：`discoverMcpTools` 未调 `assertSafeUrl`，现状会真实发起连接（= I-MCP-02） |
-| S-40 | 安全 | P1 | Provider test 出站：BL/OA 建 provider，`baseUrl` 依次设为回环 / 私网 / 链路本地 / 云元数据地址并建一个模型，调 `POST /admin/api/providers/:id/test` | Provider 创建 / 修改 / test 均 **400 HTP-4003**（test 不再返回 `{ok:false}`）；不对目标发请求；响应体不得出现解析出的 IP。运行中被拦：不重试、不换下一个候选，全部候选失败时 Run 以 HTP-4003 结束。**已知缺陷**：现状无私网校验 |
+| S-40 | 安全 | P1 | Provider test 出站：BL/OA 建 provider，`baseUrl` 依次设为回环 / 私网 / 链路本地 / 云元数据地址并建一个模型，调 `POST /admin/api/providers/:id/test` | Provider 创建 / 修改 / test 均 **400 HTP-4003**（test 不再返回 `{ok:false}`）；不对目标发请求；响应体不得出现解析出的 IP。运行中被拦：不重试、换下一个候选，全部候选失败时 Run 以 HTP-4003 结束。**已知缺陷**：现状无私网校验 |
 | S-41 | 安全 | P1 | 审计 details 明文敏感值：`PATCH /admin/api/mcp/:id` 带 `headers` 含 `Authorization: Bearer xxx`；`PATCH /schedules/:id` 带含密 `input`；`POST /role-mappings` 带整段 body；随后 `GET /admin/api/audit` 读 `mcp.update` / `schedule.update` / `role_mapping.upsert` | details 不原样保存 `headers_json` / `input_json` / 请求体中的密钥（应打码或不记）。代码确认当前原样存 → 缺陷（修复 B 已覆盖这三类，待复验）。只读验证，不外发 |
 | S-42 | 安全 | P1 | Webhook 出站：OA/PA 建 app，`webhookUrl` 依次指向回环 / 私网 / 链路本地 / 云元数据地址；触发投递并调 `POST /admin/api/webhook-deliveries/:id/replay` | 配置 webhookUrl → **400 HTP-4003**；已存在的私网地址投递记 `failed`、不重试；replay → **200**，投递状态 `failed`；响应体不得出现解析出的 IP（投递记录存 errorCode 见 S-53）。代码此路径已有 `privateNetworkBlocked`，预期 pass，作回归；错误码与 S-39/S-40/S-46 一致（HTP-4003）。replay 的跨部门越权由 S-22 覆盖 |
 | S-43 | 安全 | P1 | args_preview 已知限制向量（对照 `docs/03-api/admin-api.md` 第 9 节）：构造假数据审批，参数覆盖：① `https://app.test/cb#access_token=SECRET`；② `ex.com/a?token=SECRET`、`api.ex.com:8443/v1?key=SECRET`；③ `密码是 hunter2，token=abc123`、`use Authorization: Bearer abc`；④ `/cb？token=SECRET`（全角问号）；读审批列表 `args_preview` | 与文档「不打码」及 `tests/args-preview-edge.test.ts` 固定值一致 → pass，报告列为「已知打码盲区」交架构师决定是否收敛；出现文档未声明的新泄露 → 缺陷 |
@@ -516,7 +516,7 @@ MCP discover / call、Provider test、web_fetch、webhook **统一走同一个�
 |---|---|---|
 | MCP 创建 / 修改 / refresh | **400 HTP-4003**；创建时的工具发现只是 warning，写 `last_error`，不影响 400 判定 | S-39、I-MCP-02 |
 | MCP 工具调用 | `{ok:false, errorCode:"HTP-4003"}` | S-47 |
-| Provider 创建 / 修改 / test | **400 HTP-4003**（test 不再返回 `{ok:false}`）；运行中被拦**不重试、不换下一个候选**，全部候选失败时 Run 以 HTP-4003 结束 | S-40 |
+| Provider 创建 / 修改 / test | **400 HTP-4003**（test 不再返回 `{ok:false}`）；运行中被拦**不重试、换下一个候选**，全部候选失败时 Run 以 HTP-4003 结束 | S-40 |
 | web_fetch、OpenAPI 工具 | `{ok:false, errorCode:"HTP-4003"}` | S-46 |
 | webhook | 配置 webhookUrl → **400 HTP-4003**；投递记 `failed`、不重试；replay → **200**，投递状态 `failed` | S-42、S-53 |
 | OIDC discovery / token / JWKS | 登录返回 **502 HTP-4003**（不是 400） | S-50、S-51 |
