@@ -448,6 +448,7 @@ If-Match: "rev-2"
 ```
 
 - 并发决定返回 `409 APR-2103`；重复决定幂等返回当前结果。
+- **审批不存在（包括跨部门访问）统一返回 `404 RUN-7001`**，状态码、错误码、文案完全相同。
 - `POST /admin/api/approvals/{id}/decide`（当前实现）：审批不存在、对应 Run 不存在、Run 不在调用者数据范围内，三种情况返回完全相同的 `404 RUN-7001「审批不存在」`（错误码是通用的“资源不存在”码，和其他 404 一样），响应里不出现 Run 的 id 或「Run 不存在」字样。
 - 超时由工作流处理，API 返回 `APR-2102`。
 - 审批参数只在服务端脱敏后展示；不返回秘密。
@@ -492,6 +493,7 @@ If-Match: "rev-2"
   - `messages[]`：`role = user` 的 `content` 整体打码；`role = assistant` 只打码 `content.tool_calls`（其中 `function.arguments` 是 JSON 字符串，打码后仍是字符串）；`tool`、`system` 消息原样返回。
 - `GET /admin/api/runs` 列表项、`GET /open/v1/runs/{id}`、`GET /integration/v1/runs/{id}` 的 `input` 同样打码。`output`、`usage`、`/result` 接口和 SSE 事件不变（事件里不带工具参数）。
 - 数据库里存的原值不变，执行 Run 时用的仍是原值。
+- **已知限制（P1，计划下一轮修）**：工具返回结果不打码——`toolCalls[].result` / `result_json` / `result_text` 和 `role = tool` 的消息原样返回，工具把秘密写进返回值时会出现在运行详情里。
 
 ## 10. 定时任务
 
@@ -542,6 +544,7 @@ POST /admin/v1/schedules
 - `versionPolicy`：`latest_published`（默认）或 `pinned` + `agentVersionId`。
 - `concurrencyPolicy`：`skip`（默认）、`queue`、`cancel_previous`。
 - 服务账号停用、Agent 停用或无权限 → 自动暂停并返回 `SCD-4801` 原因。
+- **已知限制（P2，计划下一轮修）**：`GET /schedules`、`GET /schedules/{id}` 返回的 `input_json` 是明文，没有经过 `maskArgsDeep`（审计里的 `schedule.update` 已打码）。
 - 触发时运行身份实时校验（S-45，自动触发和手动 run 都一样）：绑定服务账号的，服务账号须为 active，且所属部门及每一级上级部门都启用；未绑定服务账号的存量任务，按任务行上的用户（`subject_type = 'user'` 取 `subject_id`，否则取 `created_by`）做和会话认证相同的校验（用户 active、部门链全部启用）。不满足时：自动触发暂停任务并记 `SCD-4801`；手动 run 返回 `409 SCD-4801`；都不建 Run。
 - 校验时查库出错：自动触发只把本次记为失败（`last_error_code = SCD-4803`、`failure_count + 1`），任务保持 active，`next_run_at` 推到下一个 cron 时间；手动 run 返回 `503 SYS-9003`；都不建 Run。
 - `run` 创建 Run 后返回 `{ "runId": "run_...", "trigger": "schedule" }`；并发 skip 时返回 409 `SCD-4802`。
