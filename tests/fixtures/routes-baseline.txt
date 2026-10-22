@@ -79,3 +79,7 @@ GET /open/v1/runs/:id/result
 GET /readyz
 GET /next
 GET /next/*
+GET /admin/api/service-accounts
+POST /admin/api/service-accounts
+GET /admin/api/service-accounts/:id
+PATCH /admin/api/service-accounts/:id

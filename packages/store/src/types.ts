@@ -152,3 +152,17 @@ export interface ModelRow {
   output_price_per_mtok: string | number;
   status: string;
 }
+
+export interface ServiceAccountRow {
+  id: string;
+  key: string;
+  name: string;
+  description: string;
+  org_unit_id: string | null;
+  role: string;
+  data_scope: string;
+  status: string;
+  created_by: string | null;
+  created_at: Date;
+  updated_at: Date;
+}

@@ -1,6 +1,6 @@
 import { ulidWithPrefix } from "@forge/core";
 import { execute, one, query } from "../db.js";
-import type { UserRow } from "../types.js";
+import type { ServiceAccountRow, UserRow } from "../types.js";
 
 export const identityRepo = {
   // Users / orgs
@@ -91,5 +91,35 @@ export const identityRepo = {
   },
   async setIdpSubject(id: string, subject: string): Promise<void> {
     await execute("UPDATE users SET idp_subject = ? WHERE id = ?", [subject, id]);
+  },
+  // Service accounts (machine identities for schedules/integrations; cannot log in)
+  async listServiceAccounts(): Promise<ServiceAccountRow[]> {
+    return query<ServiceAccountRow>("SELECT * FROM service_accounts ORDER BY created_at DESC");
+  },
+  async getServiceAccount(id: string): Promise<ServiceAccountRow | null> {
+    return one<ServiceAccountRow>("SELECT * FROM service_accounts WHERE id = ?", [id]);
+  },
+  async getServiceAccountByKey(key: string): Promise<ServiceAccountRow | null> {
+    return one<ServiceAccountRow>("SELECT * FROM service_accounts WHERE `key` = ?", [key]);
+  },
+  async createServiceAccount(input: { key: string; name: string; description?: string; orgUnitId?: string | null; role?: string; dataScope?: string; createdBy?: string | null }): Promise<string> {
+    const id = ulidWithPrefix("svc");
+    await execute(
+      "INSERT INTO service_accounts (id, `key`, name, description, org_unit_id, role, data_scope, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      [id, input.key, input.name, input.description ?? "", input.orgUnitId ?? null, input.role ?? "user", input.dataScope ?? "org", input.createdBy ?? null],
+    );
+    return id;
+  },
+  async updateServiceAccount(id: string, fields: { name?: string; description?: string; role?: string; dataScope?: string; status?: string }): Promise<void> {
+    const sets: string[] = [];
+    const params: unknown[] = [];
+    if (fields.name) { sets.push("name = ?"); params.push(fields.name); }
+    if (fields.description !== undefined) { sets.push("description = ?"); params.push(fields.description); }
+    if (fields.role) { sets.push("role = ?"); params.push(fields.role); }
+    if (fields.dataScope) { sets.push("data_scope = ?"); params.push(fields.dataScope); }
+    if (fields.status) { sets.push("status = ?"); params.push(fields.status); }
+    if (!sets.length) return;
+    params.push(id);
+    await execute(`UPDATE service_accounts SET ${sets.join(", ")} WHERE id = ?`, params);
   },
 };
