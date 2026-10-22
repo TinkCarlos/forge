@@ -4,6 +4,20 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* 减少动态效果：tw-animate-css 的菜单/弹窗/⌘K 动画和所有过渡压到 1ms（motion 由 MotionConfig 处理） */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

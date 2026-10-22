@@ -60,7 +60,7 @@ export function NavGroup({ title, items }: NavGroupProps) {
 
 function NavBadge({ children }: { children: ReactNode }) {
   return (
-    <Badge className='ms-auto min-w-5 justify-center rounded-full px-1.5 py-0 text-xs tabular-nums animate-in zoom-in-50 duration-300'>
+    <Badge className='ms-auto min-w-5 justify-center rounded-full px-1.5 py-0 text-xs tabular-nums animate-in fade-in-0 duration-200'>
       {children}
     </Badge>
   )

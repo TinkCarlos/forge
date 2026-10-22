@@ -8,3 +8,4 @@ uploads/
 *.log
 .DS_Store
 apps/console/public/vendor/
+*.tsbuildinfo

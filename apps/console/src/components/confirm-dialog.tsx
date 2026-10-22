@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef } from 'react'
 import { cn } from '@/lib/utils'
 import {
   AlertDialog,
@@ -42,9 +43,20 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
     handleConfirm,
     ...actions
   } = props
+  const returnTo = useReturnFocus(actions.open)
   return (
     <AlertDialog {...actions}>
-      <AlertDialogContent className={cn(className && className)}>
+      <AlertDialogContent
+        className={cn(className && className)}
+        onCloseAutoFocus={(e) => {
+          const el = returnTo.current
+          returnTo.current = null
+          const target = el?.isConnected ? el : document.querySelector<HTMLElement>('[data-focus-fallback]')
+          if (!target) return
+          e.preventDefault()
+          target.focus()
+        }}
+      >
         <AlertDialogHeader className='text-start'>
           <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription asChild>
@@ -70,4 +82,21 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
       </AlertDialogContent>
     </AlertDialog>
   )
+}
+
+/**
+ * 打开时记下触发元素，关闭后把焦点还回去。
+ * 从下拉菜单项打开时，菜单项会随菜单卸载，所以改记菜单的 ⋯ 触发按钮。
+ * 触发元素已不在页面上（比如审批行被处理掉）时，退回页面标题 [data-focus-fallback]。
+ */
+function useReturnFocus(open: boolean) {
+  const ref = useRef<HTMLElement | null>(null)
+  useLayoutEffect(() => {
+    if (!open) return
+    const active = document.activeElement as HTMLElement | null
+    const menu = active?.closest<HTMLElement>('[role="menu"]')
+    const trigger = menu?.id ? document.querySelector<HTMLElement>(`[aria-controls="${CSS.escape(menu.id)}"]`) : null
+    ref.current = trigger ?? (active && active !== document.body ? active : null)
+  }, [open])
+  return ref
 }

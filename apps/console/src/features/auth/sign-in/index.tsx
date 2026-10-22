@@ -9,7 +9,7 @@ export function SignIn() {
 
   return (
     <AuthLayout>
-      <motion.div initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}>
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2, ease: 'easeOut' }}>
         <Card className='gap-4'>
           <CardHeader>
             <CardTitle className='text-lg tracking-tight'>登录 Forge 控制台</CardTitle>

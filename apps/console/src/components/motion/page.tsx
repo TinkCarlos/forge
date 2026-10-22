@@ -5,18 +5,18 @@ export function PageTransition({ children, className }: { children: React.ReactN
   return (
     <motion.div
       className={className}
-      initial={{ opacity: 0, y: 8 }}
+      initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+      transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
     >
       {children}
     </motion.div>
   )
 }
 
-/** 列表行依次出现，单行延迟上限 0.3s，长列表不拖沓。 */
+/** 列表行纯淡入，错开延迟上限 0.12s，没有位移。 */
 export const rowMotion = (index: number) => ({
-  initial: { opacity: 0, y: 4 },
-  animate: { opacity: 1, y: 0 },
-  transition: { duration: 0.2, delay: Math.min(index * 0.025, 0.3), ease: [0.22, 1, 0.36, 1] as const },
+  initial: { opacity: 0 },
+  animate: { opacity: 1 },
+  transition: { duration: 0.16, delay: Math.min(index * 0.015, 0.12), ease: 'easeOut' as const },
 })

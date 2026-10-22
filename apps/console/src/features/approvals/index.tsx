@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { motion } from 'motion/react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, ExternalLink, MoreHorizontal, X } from 'lucide-react'
+import { Check, ExternalLink, MoreHorizontal, X, Copy } from 'lucide-react'
 import { toast } from 'sonner'
 import { api, ApiError } from '@/lib/api'
 import { shortTime } from '@/lib/format'
@@ -33,14 +33,39 @@ const SIZE = 20
 
 /** args_preview：null 表示没有工具调用，空字符串表示调用时没有参数，都显示「无参数」。 */
 function ArgsPreview({ value }: { value?: string | null }) {
-  if (!value) return <span className='text-muted-foreground'>无参数</span>
+  if (!value) return <span className='block text-xs leading-4 text-muted-foreground'>无参数</span>
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <code className='block max-w-72 truncate rounded bg-muted px-1.5 py-0.5 font-mono text-xs'>{value}</code>
+        <code className='block max-w-72 truncate rounded bg-muted px-1.5 font-mono text-xs leading-4'>{value}</code>
       </TooltipTrigger>
       <TooltipContent className='max-w-md font-mono text-xs break-all'>{value}</TooltipContent>
     </Tooltip>
+  )
+}
+
+/** Run ID 是 ULID，前 8 位是时间戳、同批数据都一样，所以显示后 8 位，完整值可复制。 */
+function RunId({ id }: { id: string }) {
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(id)
+      toast.success('已复制 Run ID')
+    } catch {
+      toast.error('复制失败，请手动选择')
+    }
+  }
+  return (
+    <div className='flex items-center gap-1 font-mono text-xs leading-4 text-muted-foreground'>
+      <span title={id}>Run …{id.slice(-8)}</span>
+      <button
+        type='button'
+        onClick={copy}
+        aria-label={`复制 Run ID ${id}`}
+        className='inline-flex size-4 items-center justify-center rounded-sm opacity-60 transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none'
+      >
+        <Copy className='size-3' />
+      </button>
+    </div>
   )
 }
 
@@ -100,13 +125,13 @@ export function Approvals() {
                 const created = shortTime(a.created_at)
                 const expires = shortTime(a.expires_at)
                 return (
-                  <MotionRow key={a.id} {...rowMotion(i)} className='h-13'>
+                  <MotionRow key={a.id} {...rowMotion(i)} className='h-13 [&>td]:py-1.5'>
                     <TableCell>
                       <div className='font-medium'>{a.agent_name}</div>
-                      <div className='font-mono text-xs text-muted-foreground' title={a.run_id}>Run …{a.run_id.slice(-8)}</div>
+                      <RunId id={a.run_id} />
                     </TableCell>
                     <TableCell>
-                      <div className='font-mono text-sm'>{a.tool_name ?? '—'}</div>
+                      <div className='font-mono text-sm whitespace-nowrap'>{a.tool_name ?? '—'}</div>
                       <ArgsPreview value={a.args_preview} />
                     </TableCell>
                     <TableCell><StatusBadge status={a.risk_level} /></TableCell>
