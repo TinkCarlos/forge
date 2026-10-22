@@ -1,6 +1,6 @@
 import { type FastifyInstance } from "fastify";
 import { errors } from "@forge/core";
-import { assertRunAccess, buildArgsPreview, maskArgsDeep, runFilterFor } from "@forge/governance";
+import { assertRunAccess, buildArgsPreview, canAccessRun, maskArgsDeep, runFilterFor } from "@forge/governance";
 import { cancelRun, executeRun } from "@forge/runtime";
 import { repos } from "@forge/store";
 import {
@@ -84,10 +84,10 @@ export default async function adminRunRoutes(app: FastifyInstance): Promise<void
 
   app.post("/admin/api/approvals/:id/decide", async (request) => {
     const session = await admin(request, "approval.decide");
+    // Missing approval, missing run and a run outside the caller's scope all answer the same 404 「审批不存在」 (no Run details).
     const approval = await repos.getApproval(param(request, "id"));
-    if (!approval) throw errors.notFound("审批不存在");
-    const run = await repos.getRun(approval.run_id);
-    await assertRunAccess(session.principal, run);
+    const run = approval ? await repos.getRun(approval.run_id) : null;
+    if (!approval || !run || !(await canAccessRun(session.principal, run))) throw errors.notFound("审批不存在");
     const body = bodyOf(request);
     const decision = stringBody(body, "decision");
     if (!["approved", "rejected"].includes(decision)) throw errors.invalid("decision 必须为 approved/rejected");

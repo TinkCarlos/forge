@@ -425,6 +425,7 @@ If-Match: "rev-2"
 ```
 
 - 并发决定返回 `409 APR-2103`；重复决定幂等返回当前结果。
+- `POST /admin/api/approvals/{id}/decide`（当前实现）：审批不存在、对应 Run 不存在、Run 不在调用者数据范围内，三种情况返回完全相同的 `404 RUN-7001「审批不存在」`（错误码是通用的“资源不存在”码，和其他 404 一样），响应里不出现 Run 的 id 或「Run 不存在」字样。
 - 超时由工作流处理，API 返回 `APR-2102`。
 - 审批参数只在服务端脱敏后展示；不返回秘密。
 
@@ -521,6 +522,7 @@ POST /admin/v1/schedules
 - `run` 创建 Run 后返回 `{ "runId": "run_...", "trigger": "schedule" }`；并发 skip 时返回 409 `SCD-4802`。
 - 绑定 platform_admin 服务账号 → 400 SCD-4804；存量任务触发时同码自动暂停。手动 run 先按调用者数据范围查任务，查不到 → 404（platform_admin 除外）。
 - `GET /schedules/{id}`：先校验 `schedule.view`（无权限 → 403），再按列表同一数据范围查任务；其他部门的任务与不存在的任务返回完全相同的 404（platform_admin / dataScope all 可读任意部门）。响应不包 `items`，直接是列表里那一项。
+- 数据范围（当前实现，列表、`/{id}` 各路由、手动 run、绑定服务账号都一样）：`dataScope = all` 看全部；否则看本部门及其所有下级部门的任务，和 Run 的可见性（`canAccessRun`）一致，父部门能看到、能管理子部门的任务，子部门看不到父部门和平级部门的任务。创建或修改任务时绑定的服务账号也按这个范围查，范围外 → 404「服务账号不存在」。
 - Cron/时区由 Temporal 计算；控制台预览不得自行实现调度。
 - 所有操作写审计；修改/启停记录前后值。
 
@@ -635,6 +637,8 @@ kb.view kb.manage eval.view eval.manage
 - `dataScope` 只能是 `all`、`org`、`self`，其他值 → `400 CFG-8501`（对所有调用者，包括 platform_admin）；空字符串视为未传。
 - `POST /users` 新用户的部门固定为调用者所在部门；`PATCH /users/{id}` 只改 `role`、`dataScope`、`status`。请求体里的 `orgUnitId` 两个接口都忽略，不能把用户移到其他部门。
 - 审计：`user.update` 的 details 为 `{ role, dataScope, status? }`（传了 `status` 才记）。
+
+服务账号（当前实现）：`/admin/api/service-accounts` 列表、详情和修改的数据范围和定时任务相同：`dataScope = all` 看全部，否则看本部门及其所有下级部门的服务账号；范围外与不存在都返回 `404「服务账号不存在」`。
 
 ## 13. 凭据、审计与设置
 

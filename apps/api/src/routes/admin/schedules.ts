@@ -3,7 +3,7 @@ import type { Session } from "@forge/identity";
 import { CronExpressionParser } from "cron-parser";
 import { errors, ForgeError, type Principal } from "@forge/core";
 import { buildScheduleIdentity, createQueuedRun } from "@forge/runtime";
-import { maskArgsDeep } from "@forge/governance";
+import { inOrgScope, maskArgsDeep, orgScopeIds } from "@forge/governance";
 import { parseJsonValue, repos } from "@forge/store";
 import {
   bodyOf,
@@ -16,25 +16,24 @@ import {
   requireBodyString,
 } from "../../plugins/http-helpers.js";
 
-/** A schedule's service account must exist, be visible to the caller (same org unless dataScope all), be active and not platform_admin. */
+/** A schedule's service account must exist, be visible to the caller (own department or a sub-department unless dataScope all), be active and not platform_admin. */
 async function requireUsableServiceAccount(principal: Principal, id: string) {
   const account = await repos.getServiceAccount(id);
-  if (!account || (principal.dataScope !== "all" && account.org_unit_id !== principal.orgUnitId)) throw errors.notFound("服务账号不存在");
+  if (!account || !inOrgScope(await orgScopeIds(principal), account.org_unit_id)) throw errors.notFound("服务账号不存在");
   if (account.status !== "active") throw new ForgeError("SCD-4801", "服务账号已停用", 409);
   if (account.role === "platform_admin") throw new ForgeError("SCD-4804", "不能绑定 platform_admin 角色的服务账号", 400);
   return account;
 }
 
-/** Schedule data scope used by the list endpoint: dataScope all sees everything, otherwise only the caller's org. */
-function scheduleVisible(principal: Principal, schedule: Record<string, unknown>): boolean {
-  if (principal.dataScope === "all") return true;
-  return schedule.org_unit_id === principal.orgUnitId;
+/** Schedule data scope used by the list endpoint: dataScope all sees everything, otherwise the caller's department and its sub-departments (as runs). */
+function scheduleVisible(scopeIds: string[] | null, schedule: Record<string, unknown>): boolean {
+  return inOrgScope(scopeIds, schedule.org_unit_id);
 }
 
 /** Loads one schedule through the same data scope as the list; invisible and nonexistent both -> 404. */
 async function loadVisibleScheduleOr404(principal: Principal, id: string): Promise<Record<string, unknown>> {
   const schedule = await repos.getSchedule(id);
-  if (!schedule || !scheduleVisible(principal, schedule)) throw errors.notFound("定时任务不存在");
+  if (!schedule || !scheduleVisible(await orgScopeIds(principal), schedule)) throw errors.notFound("定时任务不存在");
   return schedule;
 }
 
@@ -76,8 +75,9 @@ export default async function adminScheduleRoutes(app: FastifyInstance): Promise
   app.get("/admin/api/schedules", async (request) => {
     const session = await admin(request, "schedule.view");
     const schedules = await repos.listSchedules();
+    const scopeIds = await orgScopeIds(session.principal);
     const items = schedules
-      .filter((schedule) => scheduleVisible(session.principal, schedule))
+      .filter((schedule) => scheduleVisible(scopeIds, schedule))
       .map(presentScheduleExtras);
     return { items };
   });

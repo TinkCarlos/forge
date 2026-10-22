@@ -45,6 +45,20 @@ export async function assertRunAccess(principal: Principal, run: RunRow | null):
   if (!(await canAccessRun(principal, run))) throw errors.notFound("Run 不存在");
 }
 
+/**
+ * Department scope for org-owned admin resources (schedules, service accounts), same rule as {@link canAccessRun} for org:
+ * dataScope all -> null (everything); otherwise the caller's department plus all of its sub-departments ([] without one).
+ */
+export async function orgScopeIds(principal: Principal): Promise<string[] | null> {
+  if (principal.dataScope === "all") return null;
+  return repos.orgSubtreeIds(principal.orgUnitId);
+}
+
+export function inOrgScope(scopeIds: string[] | null, orgUnitId: unknown): boolean {
+  if (scopeIds === null) return true;
+  return typeof orgUnitId === "string" && scopeIds.includes(orgUnitId);
+}
+
 export async function visibleAgentOrgIds(principal: Principal): Promise<string[] | null> {
   if (principal.type === "app" || principal.dataScope === "all") return null;
   if (!principal.orgUnitId) return [];

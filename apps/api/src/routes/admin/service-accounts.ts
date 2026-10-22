@@ -1,5 +1,6 @@
 import { type FastifyInstance } from "fastify";
 import { errors, ForgeError, ROLE_PERMISSIONS, type Principal } from "@forge/core";
+import { inOrgScope, orgScopeIds } from "@forge/governance";
 import { repos, type ServiceAccountRow } from "@forge/store";
 import { bodyOf, param, stringBody, admin, writeAudit, requireBodyString } from "../../plugins/http-helpers.js";
 
@@ -24,9 +25,10 @@ export function presentServiceAccount(row: ServiceAccountRow): Record<string, un
   };
 }
 
-export function serviceAccountVisible(principal: Principal, row: ServiceAccountRow | null): row is ServiceAccountRow {
+/** Visible when dataScope is all, or the account belongs to the caller's department or one of its sub-departments (as runs). */
+export function serviceAccountVisible(scopeIds: string[] | null, row: ServiceAccountRow | null): row is ServiceAccountRow {
   if (!row) return false;
-  return principal.dataScope === "all" || row.org_unit_id === principal.orgUnitId;
+  return inOrgScope(scopeIds, row.org_unit_id);
 }
 
 function validateRoleAndScope(principal: Principal, role: string, dataScope: string): void {
@@ -41,7 +43,8 @@ export default async function adminServiceAccountRoutes(app: FastifyInstance): P
   app.get("/admin/api/service-accounts", async (request) => {
     const session = await admin(request, "service_account.manage");
     const rows = await repos.listServiceAccounts();
-    return { items: rows.filter((row) => serviceAccountVisible(session.principal, row)).map(presentServiceAccount) };
+    const scopeIds = await orgScopeIds(session.principal);
+    return { items: rows.filter((row) => serviceAccountVisible(scopeIds, row)).map(presentServiceAccount) };
   });
 
   app.post("/admin/api/service-accounts", async (request) => {
@@ -69,14 +72,14 @@ export default async function adminServiceAccountRoutes(app: FastifyInstance): P
   app.get("/admin/api/service-accounts/:id", async (request) => {
     const session = await admin(request, "service_account.manage");
     const row = await repos.getServiceAccount(param(request, "id"));
-    if (!serviceAccountVisible(session.principal, row)) throw errors.notFound("服务账号不存在");
+    if (!serviceAccountVisible(await orgScopeIds(session.principal), row)) throw errors.notFound("服务账号不存在");
     return presentServiceAccount(row);
   });
 
   app.patch("/admin/api/service-accounts/:id", async (request) => {
     const session = await admin(request, "service_account.manage");
     const row = await repos.getServiceAccount(param(request, "id"));
-    if (!serviceAccountVisible(session.principal, row)) throw errors.notFound("服务账号不存在");
+    if (!serviceAccountVisible(await orgScopeIds(session.principal), row)) throw errors.notFound("服务账号不存在");
     const body = bodyOf(request);
     const role = stringBody(body, "role", row.role);
     const dataScope = stringBody(body, "dataScope", row.data_scope);
