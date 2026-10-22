@@ -36,7 +36,7 @@
 ### MCP / 工具 / Skill
 - HTTP Streamable MCP：initialize、tools/list、tools/call；工具风险从 annotations 推断。
 - 工具名归一化为 OpenAI 兼容函数名；MCP/OpenAPI 工具通过 `toolsets` 白名单暴露。
-- OpenAPI 3.x 导入：paths/operations → tools，基础参数与 requestBody Schema；HTTP 执行、SSRF 默认拒绝私网（可用 `TOOL_ALLOW_PRIVATE_NETWORK` 放开）。5xx/429/超时记为 `HTP-4002` 并按 `TOOL_MAX_ATTEMPTS` 重试，4xx 直接交还模型。
+- OpenAPI 3.x 导入：paths/operations → tools，基础参数与 requestBody Schema；HTTP 执行、SSRF 默认拒绝私网（统一出站校验，按 `OUTBOUND_ALLOWLIST` 的 `host:port` 放行，见 admin-api.md §2.1）。5xx/429/超时记为 `HTP-4002` 并按 `TOOL_MAX_ATTEMPTS` 重试，4xx 直接交还模型。
 - Skill：SKILL.md 内容、发布版本、注入上下文。
 
 ### 安全与治理
@@ -78,7 +78,7 @@
 - `FORGE_ADMIN_EMAIL` / `FORGE_ADMIN_PASSWORD`：首次 seed 的应急管理员。
 - `ALLOW_LOCAL_LOGIN`：本地登录开关；生产应配合 SSO 并仅保留应急管理员。
 - `OIDC_*`、`SSO_TOKEN_VALIDATION_MODE`、`CONNECTOR_PRINCIPAL_*`、`AGENT_CONNECTOR_*`：统一登录/Connector。
-- `TOOL_ALLOW_PRIVATE_NETWORK`：默认 `false`；本地演示 MCP/OpenAPI 时可临时开启。
+- `OUTBOUND_ALLOWLIST`：默认空；本地演示 MCP/OpenAPI mock 时设为 `127.0.0.1:8090`。`TOOL_ALLOW_PRIVATE_NETWORK` 已废弃，不再绕过出站校验。
 - `EMBEDDED_WORKER`：单进程开发默认 `true`；生产拆分 worker 时在 API 设为 `false`，单独运行 `apps/worker`。
 - `MAX_CONCURRENT_RUNS`：单进程同时执行的 Run 数，默认 `2`。
 - `LEASE_TTL_SECONDS`：运行租约秒数，默认 `30`；worker 在租约到期前续租，过期后其他 worker 可重领。

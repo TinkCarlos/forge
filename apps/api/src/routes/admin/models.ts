@@ -1,5 +1,5 @@
 import { type FastifyInstance } from "fastify";
-import { config, encryptSecret, errors, ForgeError } from "@forge/core";
+import { assertOutboundUrlStatic, config, encryptSecret, errors, ForgeError, OUTBOUND_BLOCKED_CODE } from "@forge/core";
 import { callModel } from "@forge/models";
 import { repos } from "@forge/store";
 import {
@@ -43,6 +43,7 @@ export default async function adminModelRoutes(app: FastifyInstance): Promise<vo
     const key = requireBodyString(body, "key");
     if (await repos.getProviderByKey(key)) throw errors.conflict("Provider key 已存在");
     const apiKey = stringBody(body, "apiKey");
+    assertOutboundUrlStatic(requireBodyString(body, "baseUrl"));
     const providerId = await repos.createProvider({
       key,
       name: stringBody(body, "name", key),
@@ -84,7 +85,10 @@ export default async function adminModelRoutes(app: FastifyInstance): Promise<vo
     const fields: Record<string, unknown> = {};
     if (body.name !== undefined) fields.name = stringBody(body, "name");
     if (body.protocol !== undefined) fields.protocol = stringBody(body, "protocol");
-    if (body.baseUrl !== undefined) fields.base_url = stringBody(body, "baseUrl");
+    if (body.baseUrl !== undefined) {
+      fields.base_url = stringBody(body, "baseUrl");
+      assertOutboundUrlStatic(String(fields.base_url));
+    }
     if (body.apiKey) fields.api_key_encrypted = encryptSecret(stringBody(body, "apiKey"), config.FORGE_MASTER_KEY);
     if (body.headers !== undefined) fields.headers_json = jsonBody(body, "headers", {});
     if (body.timeoutMs !== undefined) fields.timeout_ms = Number(body.timeoutMs);
@@ -128,6 +132,8 @@ export default async function adminModelRoutes(app: FastifyInstance): Promise<vo
       });
       return { ok: true, content: result.content, usage: result.usage };
     } catch (error) {
+      // Refused outbound target (S-46) is a request error, not a provider failure.
+      if (error instanceof ForgeError && error.code === OUTBOUND_BLOCKED_CODE) throw error;
       return { ok: false, error: error instanceof ForgeError ? error.message : String(error) };
     }
   });

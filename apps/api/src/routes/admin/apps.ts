@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { type FastifyInstance } from "fastify";
-import { config, encryptSecret, errors, hashApiKey } from "@forge/core";
+import { assertOutboundUrlStatic, config, encryptSecret, errors, hashApiKey } from "@forge/core";
 import { deliverDueWebhooks } from "@forge/runtime";
 import { repos } from "@forge/store";
 import {
@@ -12,6 +12,14 @@ import {
   writeAudit,
   requireBodyString,
 } from "../../plugins/http-helpers.js";
+
+/** Webhook URL from the body, statically checked by the outbound guard (S-46); empty -> null. */
+function webhookUrlOf(body: Record<string, unknown>): string | null {
+  const url = stringBody(body, "webhookUrl");
+  if (!url) return null;
+  assertOutboundUrlStatic(url);
+  return url;
+}
 
 export default async function adminAppRoutes(app: FastifyInstance): Promise<void> {
   app.get("/admin/api/apps/:id/webhook-deliveries", async (request) => {
@@ -76,7 +84,7 @@ export default async function adminAppRoutes(app: FastifyInstance): Promise<void
       description: stringBody(body, "description"),
       ownerOrgUnitId: session.principal.orgUnitId,
       scopes: arrayBody(body, "scopes").length ? arrayBody(body, "scopes") : ["agents:read", "runs:create", "runs:read", "runs:cancel"],
-      webhookUrl: stringBody(body, "webhookUrl") || null,
+      webhookUrl: webhookUrlOf(body),
       webhookSecretEncrypted: webhookSecret ? encryptSecret(webhookSecret, config.FORGE_MASTER_KEY) : null,
       rateLimitPerMinute: Number(body.rateLimitPerMinute ?? 60),
       dailyQuota: Number(body.dailyQuota ?? 1000),
@@ -96,7 +104,7 @@ export default async function adminAppRoutes(app: FastifyInstance): Promise<void
     if (body.description !== undefined) fields.description = stringBody(body, "description");
     if (body.status !== undefined) fields.status = stringBody(body, "status");
     if (body.scopes !== undefined) fields.scopes_json = arrayBody(body, "scopes");
-    if (body.webhookUrl !== undefined) fields.webhook_url = stringBody(body, "webhookUrl") || null;
+    if (body.webhookUrl !== undefined) fields.webhook_url = webhookUrlOf(body);
     if (body.webhookSecret) fields.webhook_secret_encrypted = encryptSecret(stringBody(body, "webhookSecret"), config.FORGE_MASTER_KEY);
     if (body.rateLimitPerMinute !== undefined) fields.rate_limit_per_minute = Number(body.rateLimitPerMinute);
     if (body.dailyQuota !== undefined) fields.daily_quota = Number(body.dailyQuota);

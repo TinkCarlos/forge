@@ -39,7 +39,7 @@ GRANT ALL PRIVILEGES ON forge.* TO 'forge'@'localhost';
 2. 「模型」→ 添加自定义 OpenAI-compatible Provider 与模型，然后在 Agent spec 中引用。
 3. 「能力包」→ 粘贴声明式 JSON，一次性安装 Agent / Skill / MCP / Provider。
 4. 需要演示 MCP/OpenAPI 工具时：`pnpm mock:services`（端口 8090），然后在「MCP 服务」添加 `http://127.0.0.1:8090/mcp`，或在「工具源」导入 `http://127.0.0.1:8090/api/openapi.json`。
-   本地 OpenAPI 指向 127.0.0.1，需要在 `.env` 中临时设置 `TOOL_ALLOW_PRIVATE_NETWORK=true`（生产保持 `false`）。
+   mock 在 127.0.0.1:8090，出站校验默认拒绝回环地址，需要在 `.env` 中加 `OUTBOUND_ALLOWLIST=127.0.0.1:8090`（生产按需列出真正要放行的内网 `host:port`）。
 
 ### 4. 开放 API
 

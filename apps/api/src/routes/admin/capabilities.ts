@@ -1,5 +1,5 @@
 import { type FastifyInstance } from "fastify";
-import { errors } from "@forge/core";
+import { assertOutboundUrlStatic, errors } from "@forge/core";
 import { discoverMcpTools, parseOpenApi } from "@forge/capabilities";
 import { maskArgsDeep } from "@forge/governance";
 import { repos } from "@forge/store";
@@ -37,6 +37,7 @@ export default async function adminCapabilityRoutes(app: FastifyInstance): Promi
     const body = bodyOf(request);
     const key = requireBodyString(body, "key");
     if (await repos.getMcpServerByKey(key)) throw errors.conflict("MCP key 已存在");
+    assertOutboundUrlStatic(requireBodyString(body, "url"));
     const id = await repos.createMcpServer({
       key,
       name: stringBody(body, "name", key),
@@ -67,7 +68,10 @@ export default async function adminCapabilityRoutes(app: FastifyInstance): Promi
     const body = bodyOf(request);
     const fields: Record<string, unknown> = {};
     if (body.name !== undefined) fields.name = stringBody(body, "name");
-    if (body.url !== undefined) fields.url = stringBody(body, "url");
+    if (body.url !== undefined) {
+      fields.url = stringBody(body, "url");
+      assertOutboundUrlStatic(String(fields.url));
+    }
     if (body.headers !== undefined) fields.headers_json = jsonBody(body, "headers", {});
     if (body.status !== undefined) fields.status = stringBody(body, "status");
     await repos.updateMcpServer(String(server.id), fields);
@@ -170,6 +174,7 @@ export default async function adminCapabilityRoutes(app: FastifyInstance): Promi
     if (!spec || typeof spec !== "object") throw errors.invalid("spec 必须是 OpenAPI JSON");
     const parsed = parseOpenApi(spec as Record<string, unknown>, stringBody(body, "baseUrl"));
     if (!parsed.baseUrl) throw errors.invalid("缺少 baseUrl 或 servers[0].url");
+    assertOutboundUrlStatic(parsed.baseUrl);
     const sourceId = await repos.createToolSource({
       key,
       name: stringBody(body, "name", key),

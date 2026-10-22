@@ -18,7 +18,8 @@ if (baseUrl.pathname.replace(/^\//, "") === dbName) {
 const smokeUrl = new URL(baseUrl.toString());
 smokeUrl.pathname = `/${dbName}`;
 const port = process.env.FORGE_SMOKE_PORT ?? "3199";
-const env = { ...process.env, DATABASE_URL: smokeUrl.toString(), PORT: port, NODE_ENV: "development" };
+// The smoke MCP/OpenAPI mock listens on 127.0.0.1:8090; the outbound guard (S-46) only lets it through when allowlisted.
+const env = { ...process.env, DATABASE_URL: smokeUrl.toString(), PORT: port, NODE_ENV: "development", OUTBOUND_ALLOWLIST: process.env.OUTBOUND_ALLOWLIST || "127.0.0.1:8090" };
 
 function step(label: string, args: string[], extra: Record<string, string> = {}): void {
   console.log(`▶ ${label}`);

@@ -46,7 +46,13 @@ const envSchema = z.object({
   DEFAULT_MAX_PARALLEL_TOOLS: z.coerce.number().int().positive().default(4),
   MAX_RUN_STEPS: z.coerce.number().int().positive().default(8),
   DEFAULT_MAX_COST_USD: z.coerce.number().positive().default(1),
+  /** Deprecated: no longer bypasses the outbound guard (S-46). Use OUTBOUND_ALLOWLIST for specific host:port targets. */
   TOOL_ALLOW_PRIVATE_NETWORK: bool,
+  /** Comma separated host:port targets exempt from the outbound private-address check (e.g. 127.0.0.1:8090 for the dev mock). Empty by default. */
+  OUTBOUND_ALLOWLIST: z
+    .string()
+    .default("")
+    .refine((value) => value.split(",").map((e) => e.trim()).filter(Boolean).every((e) => /^(\[[0-9a-fA-F:.]+\]|[a-zA-Z0-9.-]+):\d{1,5}$/.test(e)), "OUTBOUND_ALLOWLIST 应为逗号分隔的 host:port"),
   MCP_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
   LOG_LEVEL: z.string().default("info"),
   SSO_MODE: z.enum(["disabled", "optional", "required"]).default("optional"),

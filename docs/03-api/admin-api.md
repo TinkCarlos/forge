@@ -58,6 +58,27 @@ GET /admin/v1/session
 | 错误 | `{ "error": { "code", "message", "requestId", "details", "remedy" } }` |
 | 审计 | 所有写操作记录 actor、资源、前后值、IP、UA、traceId |
 
+### 2.1 出站请求（SSRF 拦截，S-46 ~ S-49，当前实现）
+
+服务端发出的所有 HTTP 请求都经过同一个出站校验（`@forge/core` 的 `assertOutboundAllowed` / `safeFetch`）：
+
+| 出站入口 | 保存配置时（静态校验） | 发请求时（完整校验） |
+| --- | --- | --- |
+| MCP | `POST /admin/api/mcp`、`PATCH /admin/api/mcp/:id`（`url`）、能力包安装中的 `mcp[].url` | 创建后的 discover、`POST /admin/api/mcp/:id/refresh`、运行时 `tools/call` |
+| 模型 Provider | `POST /admin/api/providers`、`PATCH /admin/api/providers/:id`（`baseUrl`）、能力包安装中的 `providers[].baseUrl` | `POST /admin/api/providers/:id/test`、运行时模型调用 |
+| OpenAPI 工具源 | `POST /admin/api/tool-sources/import`（`baseUrl` 或 `servers[0].url`） | 运行时 OpenAPI 工具调用 |
+| `web_fetch` 内置工具 | — | 每次调用 |
+| Webhook | `POST /admin/api/apps`、`PATCH /admin/api/apps/:id`（`webhookUrl`） | 投递（worker）和 `POST /admin/api/webhook-deliveries/:id/replay` |
+| OIDC | — | discovery、token endpoint、JWKS（`OIDC_ISSUER` 来自环境变量） |
+
+- 只允许 `http` / `https`；`file://`、`gopher://` 等一律拒绝。
+- 拒绝的地址：回环 `127/8`、`::1`；私网 `10/8`、`172.16/12`、`192.168/16`、`fc00::/7`（含 `fd00::/8`）；链路本地 `169.254/16`（含云元数据 `169.254.169.254`）、`fe80::/10`；`0.0.0.0/8`；CGNAT `100.64/10`；IPv4-mapped / IPv4-compatible IPv6（`::ffff:0:0/96`、`::/96`）；以及 NAT64、6to4、组播、保留段。十进制 / 八进制 / 十六进制写法的 IP（如 `2130706433`、`0177.0.0.1`、`0x7f000001`）先按 URL 标准规范化成点分形式再判断。
+- 静态校验只看字面 IP 和 `localhost`、`*.localhost`、`*.local`、`metadata.google.internal` 这类主机名，不做 DNS。完整校验会做 DNS 解析，解析出的**每一个**地址都必须是公网地址。
+- 防 DNS rebinding：解析一次、校验全部结果，连接时用自定义 `lookup` 把 socket 固定到这批已校验的地址上，不会再做第二次解析；TLS 的 SNI 和证书校验仍按原主机名。
+- 跳转：手动跟随，最多 5 跳，每一跳都重新做完整校验（跳到私网、元数据或 `file://` 都会被拒绝）；Webhook 不跟随跳转。跨源跳转会去掉 `Authorization` / `Cookie`。
+- 被拒绝时：管理接口返回 `400 HTP-4003「目标地址不允许（内网/回环/元数据）」`；运行时工具调用返回 `errorCode: HTP-4003` 的工具结果；Webhook 投递记为 `failed`（不重试），`errorMessage` 以 `HTP-4003` 开头。响应和日志里都不回显解析出的地址。
+- 白名单：环境变量 `OUTBOUND_ALLOWLIST`，逗号分隔的 `host:port`（IPv6 写成 `[::1]:9000`），默认空。只放行完全一致的主机和端口（默认端口按 80/443 计），按规范化后的主机名匹配；白名单不放开非 http(s) 协议。旧开关 `TOOL_ALLOW_PRIVATE_NETWORK` 不再绕过出站校验。
+
 **HTTP 状态**：`200` 成功、`201` 创建、`202` 已接受、`204` 无内容、`400` 校验、`401` 未登录、`403` 权限、`404` 不存在、`409` 冲突/状态、`413` 超限、`422` 语义错误、`429` 限流、`500` 内部。
 
 ## 3. Agent

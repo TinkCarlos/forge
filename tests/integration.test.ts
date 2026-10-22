@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { config, encryptSecret, OUTPUT_REPAIR_PREFIX, type Principal } from "@forge/core";
+import { config, encryptSecret, OUTPUT_REPAIR_PREFIX, setOutboundResolver, type Principal } from "@forge/core";
 import { createQueuedRun, deliverDueWebhooks, executeRun, idempotencyRequestHash, invokeStatusCode, resolveIdempotentCreate, waitForRun } from "@forge/runtime";
 import { execute, one, parseJsonValue, repos } from "@forge/store";
 
@@ -328,6 +328,8 @@ describe("runtime hardening", () => {
     await repos.enqueueWebhook({ appId, eventId: "evt_retry", eventType: "run.completed", payload: { id: "evt_retry", type: "run.completed" } });
     await repos.enqueueWebhook({ appId, eventId: "evt_stop", eventType: "run.failed", payload: { id: "evt_stop", type: "run.failed" } });
     let retryCalls = 0;
+    // Outbound guard resolves the webhook host first (S-46); answer from a mock so no real DNS query is made.
+    setOutboundResolver(async (host) => (host === "example.com" ? [{ address: "93.184.215.14", family: 4 }] : []));
     await deliverDueWebhooks(async (url, init) => {
       const eventId = (init?.headers as Record<string, string>)["X-Forge-Event-Id"];
       expect(String(url)).toBe("https://example.com/hooks/forge");
@@ -346,6 +348,7 @@ describe("runtime hardening", () => {
     await deliverDueWebhooks(async () => new Response("ok", { status: 200 }));
     const secondPass = await repos.listWebhookDeliveries(appId);
     expect(secondPass.find((row) => row.event_id === "evt_retry")?.status).toBe("delivered");
+    setOutboundResolver(null);
     await execute("DELETE FROM api_apps WHERE id = ?", [appId]);
   });
 

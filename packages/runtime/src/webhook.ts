@@ -1,6 +1,5 @@
 import { createHmac } from "node:crypto";
-import { config, decryptSecret } from "@forge/core";
-import { privateNetworkBlocked } from "@forge/capabilities";
+import { assertOutboundAllowed, config, decryptSecret, ForgeError, OUTBOUND_BLOCKED_CODE, safeFetch } from "@forge/core";
 import { parseJsonValue, repos, type RunRow } from "@forge/store";
 
 export const WEBHOOK_RETRY_MS = [60_000, 5 * 60_000, 30 * 60_000, 2 * 60 * 60_000, 6 * 60 * 60_000];
@@ -61,9 +60,14 @@ async function deliverOne(row: Record<string, unknown>, fetchImpl: typeof fetch)
     return;
   }
   const url = String(app.webhook_url);
-  if (privateNetworkBlocked(url)) {
-    await repos.finishWebhookDelivery(id, { status: "failed", errorMessage: "默认禁止 Webhook 访问私网" });
-    return;
+  // Outbound guard (S-46): refused targets fail the delivery for good (no retry); the message never echoes the address.
+  try {
+    await assertOutboundAllowed(url);
+  } catch (error) {
+    if (error instanceof ForgeError && error.code === OUTBOUND_BLOCKED_CODE) {
+      await repos.finishWebhookDelivery(id, { status: "failed", errorMessage: `${OUTBOUND_BLOCKED_CODE} ${error.message}` });
+      return;
+    }
   }
   const body = JSON.stringify(parseJsonValue(row.payload_json, {}));
   let responseStatus: number | null = null;
@@ -102,7 +106,11 @@ async function deliverOne(row: Record<string, unknown>, fetchImpl: typeof fetch)
   await repos.scheduleWebhookRetry(id, delay, responseStatus, errorMessage);
 }
 
-export async function deliverDueWebhooks(fetchImpl: typeof fetch = fetch): Promise<number> {
+/** Default transport: safeFetch (pinned to the validated address, redirects not followed). */
+const guardedFetch = ((input: string | URL, init?: RequestInit) =>
+  safeFetch(String(input), { method: init?.method, headers: init?.headers as Record<string, string>, body: typeof init?.body === "string" ? init.body : undefined, signal: init?.signal, redirect: "manual" })) as typeof fetch;
+
+export async function deliverDueWebhooks(fetchImpl: typeof fetch = guardedFetch): Promise<number> {
   const due = await repos.dueWebhookDeliveries();
   for (const row of due) {
     try {

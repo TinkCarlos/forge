@@ -1,8 +1,11 @@
 import {
+  assertOutboundAllowed,
   config,
   errors,
   ForgeError,
+  OUTBOUND_BLOCKED_CODE,
   parseJson,
+  safeFetch,
   type AgentSpec,
   type ToolDefinition,
   type ToolResult,
@@ -37,31 +40,10 @@ export function httpToolErrorCode(status: number): string | undefined {
   return "HTP-4001";
 }
 
-export function privateNetworkBlocked(raw: string): boolean {
-  try {
-    assertSafeUrl(raw);
-    return false;
-  } catch {
-    return true;
-  }
-}
-
-function assertSafeUrl(raw: string): URL {
-  const url = new URL(raw);
-  if (!["http:", "https:"].includes(url.protocol)) throw errors.tool("仅允许 HTTP/HTTPS 工具地址");
-  if (config.TOOL_ALLOW_PRIVATE_NETWORK) return url;
-  const host = url.hostname.toLowerCase();
-  const privateHost =
-    host === "localhost" ||
-    host === "::1" ||
-    host.endsWith(".local") ||
-    /^127\./.test(host) ||
-    /^10\./.test(host) ||
-    /^192\.168\./.test(host) ||
-    /^169\.254\./.test(host) ||
-    /^172\.(1[6-9]|2\d|3[0-1])\./.test(host);
-  if (privateHost) throw errors.tool(`默认禁止访问私网地址: ${host}`);
-  return url;
+/** Tool result for an outbound target refused by the guard (HTP-4003); never echoes the resolved address. */
+function blockedToolResult(error: unknown): ToolResult | null {
+  if (error instanceof ForgeError && error.code === OUTBOUND_BLOCKED_CODE) return { ok: false, content: error.message, errorCode: OUTBOUND_BLOCKED_CODE };
+  return null;
 }
 
 function truncate(text: string, limit = 20000): string {
@@ -115,15 +97,17 @@ export function builtinTools(): Map<string, ResolvedTool> {
       risk: "medium",
     },
     execute: async (args) => {
-      const url = assertSafeUrl(String(args.url ?? ""));
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 15000);
       try {
-        const response = await fetch(url, { signal: controller.signal, redirect: "follow" });
+        // Outbound guard (S-46): scheme + DNS check, socket pinned to the checked address, every redirect re-checked.
+        const response = await safeFetch(String(args.url ?? ""), { signal: controller.signal, redirect: "follow" });
         const text = await response.text();
         const content = response.headers.get("content-type")?.includes("html") ? stripHtml(text) : text;
         return { ok: response.ok, content: truncate(content), errorCode: httpToolErrorCode(response.status) };
       } catch (error) {
+        const blocked = blockedToolResult(error);
+        if (blocked) return blocked;
         return { ok: false, content: `web_fetch failed: ${String(error)}`, errorCode: "HTP-4002" };
       } finally {
         clearTimeout(timer);
@@ -138,7 +122,7 @@ export async function discoverMcpTools(server: Record<string, unknown>): Promise
   const headers = envHeaders(server.headers_json);
   let sessionId: string | null = null;
   const call = async (method: string, params: unknown, id: number | null = null): Promise<Record<string, unknown>> => {
-    const response = await fetch(url, {
+    const response = await safeFetch(url, {
       method: "POST",
       headers: { ...headers, "Content-Type": "application/json", Accept: "application/json, text/event-stream", ...(sessionId ? { "Mcp-Session-Id": sessionId } : {}) },
       body: JSON.stringify({ jsonrpc: "2.0", ...(id === null ? {} : { id }), method, params }),
@@ -189,8 +173,15 @@ export async function callMcpTool(server: Record<string, unknown>, toolName: str
   const url = String(server.url);
   const headers = envHeaders(server.headers_json);
   let sessionId: string | null = null;
+  try {
+    await assertOutboundAllowed(url);
+  } catch (error) {
+    const blocked = blockedToolResult(error);
+    if (blocked) return blocked;
+    throw error;
+  }
   const rpc = async (method: string, params: unknown, id: number | null): Promise<{ ok: boolean; content: string }> => {
-    const response = await fetch(url, {
+    const response = await safeFetch(url, {
       method: "POST",
       headers: { ...headers, "Content-Type": "application/json", Accept: "application/json, text/event-stream", ...(sessionId ? { "Mcp-Session-Id": sessionId } : {}) },
       body: JSON.stringify({ jsonrpc: "2.0", ...(id === null ? {} : { id }), method, params }),
@@ -288,7 +279,14 @@ export async function executeOpenApiTool(input: {
     resolvedPath = resolvedPath.replace(token, encodeURIComponent(String(args[name])));
     delete args[name];
   }
-  const url = assertSafeUrl(`${baseUrl.replace(/\/$/, "")}${resolvedPath.startsWith("/") ? resolvedPath : `/${resolvedPath}`}`);
+  let url: URL;
+  try {
+    url = (await assertOutboundAllowed(`${baseUrl.replace(/\/$/, "")}${resolvedPath.startsWith("/") ? resolvedPath : `/${resolvedPath}`}`)).url;
+  } catch (error) {
+    const blocked = blockedToolResult(error);
+    if (blocked) return blocked;
+    return { ok: false, content: `openapi tool failed: ${String(error)}`, errorCode: "HTP-4002" };
+  }
   const headers = envHeaders(input.source.headers_json);
   let body: string | undefined;
   if (method === "GET" || method === "DELETE" || method === "HEAD") {
@@ -298,7 +296,7 @@ export async function executeOpenApiTool(input: {
     body = JSON.stringify(args);
   }
   try {
-    const response = await fetch(url, { method, headers, body, signal: AbortSignal.timeout(30000) });
+    const response = await safeFetch(url, { method, headers, body, signal: AbortSignal.timeout(30000) });
     const text = await response.text();
     return {
       ok: response.ok,
@@ -306,6 +304,8 @@ export async function executeOpenApiTool(input: {
       errorCode: httpToolErrorCode(response.status),
     };
   } catch (error) {
+    const blocked = blockedToolResult(error);
+    if (blocked) return blocked;
     return { ok: false, content: `openapi tool failed: ${String(error)}`, errorCode: "HTP-4002" };
   }
 }
@@ -364,4 +364,4 @@ export async function resolveTools(spec: AgentSpec): Promise<Map<string, Resolve
   return tools;
 }
 
-export { envHeaders, assertSafeUrl, truncate };
+export { envHeaders, truncate };

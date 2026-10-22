@@ -5,6 +5,7 @@ import {
   ForgeError,
   OUTPUT_REPAIR_PREFIX,
   parseJson,
+  safeFetch,
   type ChatMessage,
   type ToolDefinition,
 } from "@forge/core";
@@ -153,7 +154,7 @@ async function callOpenAiCompatible(
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), provider.timeout_ms);
   try {
-    const response = await fetch(url, {
+    const response = await safeFetch(url, {
       method: "POST",
       headers: headersFor(provider),
       body: JSON.stringify(body),

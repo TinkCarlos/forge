@@ -1,5 +1,5 @@
 import { type FastifyInstance } from "fastify";
-import { asRecord, config, encryptSecret } from "@forge/core";
+import { asRecord, assertOutboundUrlStatic, config, encryptSecret } from "@forge/core";
 import { discoverMcpTools } from "@forge/capabilities";
 import { repos } from "@forge/store";
 import {
@@ -22,6 +22,9 @@ export default async function adminPluginRoutes(app: FastifyInstance): Promise<v
     const session = await admin(request, "plugin.install");
     const body = bodyOf(request);
     const resources = asRecord(body.resources);
+    // Outbound guard (S-46): check every URL in the package before creating anything (static: scheme, IP literals, localhost).
+    for (const raw of Array.isArray(resources.mcp) ? resources.mcp : []) assertOutboundUrlStatic(requireBodyString(asRecord(raw), "url"));
+    for (const raw of Array.isArray(resources.providers) ? resources.providers : []) assertOutboundUrlStatic(requireBodyString(asRecord(raw), "baseUrl"));
     const created: Record<string, string[]> = { agents: [], skills: [], mcp: [], providers: [] };
     if (Array.isArray(resources.agents)) {
       for (const raw of resources.agents) {

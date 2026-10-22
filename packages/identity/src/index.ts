@@ -1,5 +1,5 @@
 import { randomBytes, createHash } from "node:crypto";
-import { createRemoteJWKSet, importSPKI, jwtVerify, type JWTPayload } from "jose";
+import { createLocalJWKSet, importSPKI, jwtVerify, type JSONWebKeySet, type JWTPayload } from "jose";
 import {
   config,
   defaultDataScope,
@@ -7,6 +7,7 @@ import {
   ForgeError,
   hashApiKey,
   safeEqual,
+  safeFetch,
   signSession,
   verifyPassword,
   type DataScope,
@@ -180,7 +181,8 @@ async function discovery(): Promise<Discovery> {
   if (!config.OIDC_ISSUER) throw new ForgeError("SSO-1201", "SSO 尚未配置", 503);
   const cached = discoveryCache.get(config.OIDC_ISSUER);
   if (cached) return cached;
-  const response = await fetch(`${config.OIDC_ISSUER.replace(/\/$/, "")}/.well-known/openid-configuration`);
+  // Outbound guard (S-46): issuer, token endpoint and JWKS all go through safeFetch.
+  const response = await safeFetch(`${config.OIDC_ISSUER.replace(/\/$/, "")}/.well-known/openid-configuration`);
   if (!response.ok) throw new ForgeError("SSO-1202", "无法获取 OIDC discovery", 502);
   const doc = (await response.json()) as Discovery;
   discoveryCache.set(config.OIDC_ISSUER, doc);
@@ -222,7 +224,7 @@ export async function handleOidcCallback(code: string, state: string): Promise<{
     code_verifier: saved.verifier,
   });
   if (config.OIDC_CLIENT_SECRET) body.set("client_secret", config.OIDC_CLIENT_SECRET);
-  const tokenResponse = await fetch(doc.token_endpoint, {
+  const tokenResponse = await safeFetch(doc.token_endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
@@ -230,7 +232,9 @@ export async function handleOidcCallback(code: string, state: string): Promise<{
   if (!tokenResponse.ok) throw new ForgeError("SSO-1204", "OIDC 令牌交换失败", 401);
   const tokens = (await tokenResponse.json()) as { id_token?: string; access_token?: string };
   if (!tokens.id_token) throw new ForgeError("SSO-1205", "OIDC 未返回 id_token", 401);
-  const jwks = createRemoteJWKSet(new URL(doc.jwks_uri));
+  const jwksResponse = await safeFetch(doc.jwks_uri);
+  if (!jwksResponse.ok) throw new ForgeError("SSO-1202", "无法获取 OIDC JWKS", 502);
+  const jwks = createLocalJWKSet((await jwksResponse.json()) as JSONWebKeySet);
   const { payload } = await jwtVerify(tokens.id_token, jwks, {
     issuer: doc.issuer,
     audience: config.OIDC_AUDIENCE ?? config.OIDC_CLIENT_ID,
