@@ -60,7 +60,7 @@ const tabMeta = {
   packages: ["能力包", "以声明式 JSON 安装 Agent / Skill / MCP / Provider"],
   runs: ["运行中心", "查看执行日志、工具调用与实时事件"],
   approvals: ["审批中心", "处理高风险工具调用"],
-  schedules: ["定时任务", "按 Cron 以服务身份运行（普通用户权限，数据范围为创建者所在部门）"],
+  schedules: ["定时任务", "按 Cron 以绑定的服务账号身份运行"],
   apps: ["应用与密钥", "开放平台 API Key、配额与 Webhook"],
   users: ["用户与权限", "功能角色与数据范围"],
   sso: ["SSO / Connector", "统一登录与 Agent 平台接入状态"],
@@ -457,16 +457,37 @@ async function renderApprovals() {
 }
 
 async function renderSchedules() {
-  const [data, agents] = await Promise.all([api("/admin/api/schedules"), api("/admin/api/agents")]);
+  // 服务账号列表只有平台管理员能取；取不到时表格照常显示，只是身份列退化为 ID。
+  const [data, agents, accounts] = await Promise.all([
+    api("/admin/api/schedules"),
+    api("/admin/api/agents"),
+    api("/admin/api/service-accounts").catch(() => null),
+  ]);
   state.schedules = data.items ?? [];
   state.agents = agents.items ?? [];
+  state.serviceAccounts = accounts?.items ?? null;
   $("#content").innerHTML = `
     <div class="card">
-      <div class="card-head"><div><h3>定时任务</h3><p class="muted">Cron + 时区</p></div><button class="btn primary" onclick="app.openScheduleCreate()">新建定时任务</button></div>
-      ${state.schedules.length ? `<div class="table-wrap"><table><thead><tr><th>名称</th><th>Agent</th><th>Cron</th><th>时区</th><th>下次运行</th><th>状态</th><th>操作</th></tr></thead><tbody>
-        ${state.schedules.map((schedule) => `<tr><td><strong>${esc(schedule.name)}</strong><div class="muted mono">${esc(schedule.key)}</div></td><td>${esc(schedule.agent_name)}</td><td class="mono">${esc(schedule.cron)}</td><td>${esc(schedule.timezone)}</td><td>${fmt(schedule.next_run_at)}</td><td>${statusPill(schedule.status)}</td><td><div class="actions">${schedule.status === "active" ? `<button class="btn ghost small" onclick="app.scheduleAction('${esc(schedule.id)}','disable')">停用</button>` : `<button class="btn ghost small" onclick="app.scheduleAction('${esc(schedule.id)}','enable')">启用</button>`}<button class="btn ghost small" onclick="app.openScheduleEdit('${esc(schedule.id)}')">编辑</button><button class="btn ghost small" onclick="app.scheduleAction('${esc(schedule.id)}','run')">立即运行</button></div></td></tr>`).join("")}
+      <div class="card-head"><div><h3>定时任务</h3><p class="muted">Cron + 时区</p></div><div class="actions">${state.serviceAccounts ? `<button class="btn ghost" onclick="app.openServiceAccountCreate()">新建服务账号</button>` : ""}<button class="btn primary" onclick="app.openScheduleCreate()">新建定时任务</button></div></div>
+      ${state.schedules.length ? `<div class="table-wrap"><table><thead><tr><th>名称</th><th>Agent</th><th>运行身份</th><th>Cron</th><th>时区</th><th>下次运行</th><th>状态</th><th>操作</th></tr></thead><tbody>
+        ${state.schedules.map((schedule) => `<tr><td><strong>${esc(schedule.name)}</strong><div class="muted mono">${esc(schedule.key)}</div></td><td>${esc(schedule.agent_name)}</td><td>${scheduleIdentity(schedule)}</td><td class="mono">${esc(schedule.cron)}</td><td>${esc(schedule.timezone)}</td><td>${fmt(schedule.next_run_at)}</td><td>${statusPill(schedule.status)}${scheduleFailure(schedule)}</td><td><div class="actions">${schedule.status === "active" ? `<button class="btn ghost small" onclick="app.scheduleAction('${esc(schedule.id)}','disable')">停用</button>` : `<button class="btn ghost small" onclick="app.scheduleAction('${esc(schedule.id)}','enable')">启用</button>`}<button class="btn ghost small" onclick="app.openScheduleEdit('${esc(schedule.id)}')">编辑</button><button class="btn ghost small" onclick="app.scheduleAction('${esc(schedule.id)}','run')">立即运行</button></div></td></tr>`).join("")}
       </tbody></table></div>` : empty("还没有定时任务", "创建一个 Cron 任务，框架会按计划提交 Run。")}
     </div>`;
+}
+
+function scheduleIdentity(schedule) {
+  if (!schedule.serviceAccountId) return `<span class="muted">服务身份（旧任务）</span>`;
+  const account = (state.serviceAccounts ?? []).find((item) => item.id === schedule.serviceAccountId);
+  if (!account) return `<span class="mono" title="${esc(schedule.serviceAccountId)}">${esc(schedule.serviceAccountId.slice(0, 8))}</span>`;
+  const disabled = account.status !== "active" ? ` <span class="muted">（已停用）</span>` : "";
+  return `${esc(account.name)}${disabled}<div class="muted mono">${esc(account.role)} · ${esc(account.dataScope)}</div>`;
+}
+
+function scheduleFailure(schedule) {
+  if (!schedule.failureCount && !schedule.lastErrorCode) return "";
+  const reason = schedule.lastErrorCode === "SCD-4801" ? "服务账号已停用或不存在，任务已暂停" : "最近一次触发失败";
+  const count = schedule.failureCount ? `，连续失败 ${schedule.failureCount} 次` : "";
+  return `<div class="muted" style="margin-top:4px">${reason}${count}${schedule.lastErrorCode ? `（${esc(schedule.lastErrorCode)}）` : ""}</div>`;
 }
 
 async function renderApps() {
@@ -962,9 +983,33 @@ const app = {
     }, decision === "approved" ? "批准" : "确认驳回", decision !== "approved");
   },
 
+  openServiceAccountCreate() {
+    openModal("新建服务账号", `
+      <p class="muted">服务账号是定时任务的运行身份，不能登录。角色和数据范围决定任务能做什么、能看到哪些数据。</p>
+      <div class="form-grid">
+        ${field("名称", "name", "")}
+        ${field("Key", "key", `svc-${Date.now()}`)}
+        ${select("角色", "role", [{ value: "user", label: "user（普通用户）" }, { value: "operator", label: "operator（运营）" }])}
+        ${select("数据范围", "dataScope", [{ value: "org", label: "org（本部门）" }])}
+      </div>`, async (data) => {
+      await api("/admin/api/service-accounts", { method: "POST", body: { name: data.get("name"), key: data.get("key"), role: data.get("role"), dataScope: data.get("dataScope") } });
+      toast("服务账号已创建");
+      await renderSchedules();
+    }, "创建");
+  },
+
   openScheduleCreate() {
     if (!state.agents.length) {
       toast("请先创建并发布一个 Agent", "error");
+      return;
+    }
+    const accounts = (state.serviceAccounts ?? []).filter((item) => item.status === "active");
+    if (!state.serviceAccounts) {
+      toast("新建定时任务需要选择服务账号，只有平台管理员能查看服务账号", "error");
+      return;
+    }
+    if (!accounts.length) {
+      toast("还没有可用的服务账号，请先点「新建服务账号」", "error");
       return;
     }
     openModal("新建定时任务", `
@@ -972,11 +1017,12 @@ const app = {
         ${field("Key", "key", `schedule-${Date.now()}`)}
         ${field("名称", "name", "每日任务")}
         <div class="full">${select("Agent", "agentId", state.agents.map((agent) => ({ value: agent.id, label: `${agent.name} (${agent.key})` })))}</div>
+        <div class="full">${select("运行身份（服务账号）", "serviceAccountId", accounts.map((item) => ({ value: item.id, label: `${item.name}（${item.role} · ${item.dataScope}）` })))}</div>
         ${field("Cron", "cron", "0 9 * * *")}
         ${field("时区", "timezone", "Asia/Shanghai")}
         <div class="full">${textarea("输入文本", "text", "执行今天的任务。", 4)}</div>
       </div>`, async (data) => {
-      await api("/admin/api/schedules", { method: "POST", body: { key: data.get("key"), name: data.get("name"), agentId: data.get("agentId"), cron: data.get("cron"), timezone: data.get("timezone"), input: { text: data.get("text") }, enabled: true } });
+      await api("/admin/api/schedules", { method: "POST", body: { key: data.get("key"), name: data.get("name"), agentId: data.get("agentId"), serviceAccountId: data.get("serviceAccountId"), cron: data.get("cron"), timezone: data.get("timezone"), input: { text: data.get("text") }, enabled: true } });
       toast("定时任务已创建");
       await renderSchedules();
     }, "创建");
