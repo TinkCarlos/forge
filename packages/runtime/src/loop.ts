@@ -314,6 +314,14 @@ export async function cancelRun(runId: string): Promise<void> {
   }
 }
 
+/** Agent statuses an admin may set (I-AGT-11): anything else is 400 CFG-8501. */
+export const AGENT_STATUSES = ["active", "disabled"] as const;
+
+/** Run entry points refuse an Agent whose status is not active (I-AGT-11): 409 CFG-8503, checked before any Run or audit is written. */
+export function assertAgentRunnable(agent: { status?: unknown }): void {
+  if (agent.status !== "active") throw new ForgeError("CFG-8503", "Agent 已停用，不能运行", 409);
+}
+
 export async function createQueuedRun(input: {
   agentId: string;
   versionId: string;

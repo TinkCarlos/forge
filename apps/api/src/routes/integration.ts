@@ -2,7 +2,7 @@ import { type FastifyInstance, type FastifyRequest } from "fastify";
 import { errors, ForgeError, type Principal } from "@forge/core";
 import { assertRunAccess } from "@forge/governance";
 import { principalForConnector, verifyConnectorPrincipal } from "@forge/identity";
-import { cancelRun, createQueuedRun } from "@forge/runtime";
+import { assertAgentRunnable, cancelRun, createQueuedRun } from "@forge/runtime";
 import { repos } from "@forge/store";
 import {
   bodyOf,
@@ -38,6 +38,7 @@ export default async function integrationRoutes(app: FastifyInstance): Promise<v
     const body = bodyOf(request);
     const agent = await repos.getAgentByKey(requireBodyString(body, "agentKey"));
     if (!agent || !agent.published_version_id) throw errors.notFound("Agent 不存在");
+    assertAgentRunnable(agent);
     const runId = await createQueuedRun({
       agentId: agent.id,
       versionId: agent.published_version_id,

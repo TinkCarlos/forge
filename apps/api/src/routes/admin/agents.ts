@@ -1,7 +1,7 @@
 import { type FastifyInstance } from "fastify";
 import { errors } from "@forge/core";
 import { visibleAgentOrgIds } from "@forge/governance";
-import { createQueuedRun } from "@forge/runtime";
+import { AGENT_STATUSES, assertAgentRunnable, createQueuedRun } from "@forge/runtime";
 import { repos } from "@forge/store";
 import {
   bodyOf,
@@ -82,7 +82,12 @@ export default async function adminAgentRoutes(app: FastifyInstance): Promise<vo
     const fields: Record<string, unknown> = {};
     if (body.name !== undefined) fields.name = stringBody(body, "name");
     if (body.description !== undefined) fields.description = stringBody(body, "description");
-    if (body.status !== undefined) fields.status = stringBody(body, "status");
+    if (body.status !== undefined) {
+      if (typeof body.status !== "string" || !(AGENT_STATUSES as readonly string[]).includes(body.status)) {
+        throw errors.invalid(`status 只能是 ${AGENT_STATUSES.join(" 或 ")}`);
+      }
+      fields.status = body.status;
+    }
     if (body.apiEnabled !== undefined) fields.api_enabled = body.apiEnabled ? 1 : 0;
     await repos.updateAgent(agent.id, fields);
     await writeAudit(session, "agent.update", "agent", agent.id, fields);
@@ -125,6 +130,7 @@ export default async function adminAgentRoutes(app: FastifyInstance): Promise<vo
     const session = await admin(request, "agent.run");
     const agent = await repos.getAgent(param(request, "id"));
     if (!agent || !(await agentAccessible(session.principal, agent))) throw errors.notFound("Agent 不存在");
+    assertAgentRunnable(agent);
     const body = bodyOf(request);
     const requestedVersion = stringBody(body, "versionId");
     const version = requestedVersion ? await repos.getAgentVersion(requestedVersion) : agent.published_version_id ? await repos.getAgentVersion(agent.published_version_id) : await repos.getPublishedVersion(agent.id);
