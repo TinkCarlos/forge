@@ -30,11 +30,11 @@
 | 22 | POST `/admin/api/providers/:id/models` | model.manage | — | 403: ◐；404: ✗ 不存在 → 404；400/边界: ✗ 重复 key → 500；数值字段传 NaN（I-MDL-05/06）；审计: ✗ `model.create` | I-MDL-05, I-MDL-06, I-RBAC-10 | ☐ |
 | 23 | PATCH `/admin/api/providers/:id` | model.manage | — | 403: ◐；404: ✗；400/边界: ✗ `apiKey` 传空串不覆盖原值（I-MDL-07）；审计: ✗ `provider.update` | I-MDL-07, I-MDL-08, I-RBAC-10 | ☐ |
 | 24 | PATCH `/admin/api/models/:id` | model.manage | — | 403: ◐；404: ✗；400/边界: ✗；审计: ✗ `model.update` | I-MDL-08, I-RBAC-10 | ☐ |
-| 25 | POST `/admin/api/providers/:id/test` | model.manage | — | 403: ◐；404: ✗；400/边界: ✗ 没有模型 → 400「Provider 还没有模型」；调用失败也返回 200 `ok:false`，`error` 里不能有内网地址（I-MDL-08~10）；审计: n/a（不写审计） | I-MDL-09, I-MDL-10, I-RBAC-10 | ☐ |
+| 25 | POST `/admin/api/providers/:id/test` | model.manage | — | 403: ◐；404: ✗；400/边界: ✗ 没有模型 → 400「Provider 还没有模型」；调用失败也返回 200 `ok:false`，`error` 里不能有内网地址（I-MDL-08~10）；审计: n/a（不写审计） | S-40, S-48, S-49, I-MDL-09, I-MDL-10, I-RBAC-10 | ☐ |
 | 26 | GET `/admin/api/mcp` | mcp.view | F-LEG-10 | 403: ◐；400/边界: ✗ 响应里不能有 `headers` | I-MCP-01, I-RBAC-10 | ☐ |
-| 27 | POST `/admin/api/mcp` | mcp.manage | S-26 | 403: ◐；400/边界: ✗ 缺 url → 400；重复 → 409；`url` 指向 `http://127.0.0.1`、`169.254.169.254` 这类私网地址不会被拦（安全项，转安全专家，I-MCP-02）；审计: ✗ `mcp.create` | I-MCP-02, I-MCP-03, I-MCP-08, I-RBAC-10 | ☐ |
+| 27 | POST `/admin/api/mcp` | mcp.manage | S-26 | 403: ◐；400/边界: ✗ 缺 url → 400；重复 → 409；`url` 指向 `http://127.0.0.1`、`169.254.169.254` 这类私网地址现状不会被拦，统一出站校验后应拦截（I-MCP-02、S-39）；审计: ✗ `mcp.create` | S-39, S-48, S-49, I-MCP-02, I-MCP-03, I-MCP-08, I-RBAC-10 | ☐ |
 | 28 | PATCH `/admin/api/mcp/:id` | mcp.manage | — | 403: ◐；404: ✗；400/边界: ✗；审计: ✗ `mcp.update` 的 details 里 `headers_json` 是明文（I-AUD-05） | I-AUD-05, I-MCP-04, I-RBAC-10 | ☐ |
-| 29 | POST `/admin/api/mcp/:id/refresh` | mcp.manage | — | 403: ◐；404: ✗；400/边界: ✗ 上游返回非 2xx → 502 HTP-4001；连不上 → 500 SYS-9001（I-MCP-05/06）；审计: ✗ `mcp.refresh` | I-MCP-05, I-MCP-06, I-MCP-07, I-RBAC-10 | ☐ |
+| 29 | POST `/admin/api/mcp/:id/refresh` | mcp.manage | — | 403: ◐；404: ✗；400/边界: ✗ 上游返回非 2xx → 502 HTP-4001；连不上 → 500 SYS-9001（I-MCP-05/06）；审计: ✗ `mcp.refresh` | S-39, I-MCP-02, I-MCP-05, I-MCP-06, I-MCP-07, I-RBAC-10 | ☐ |
 | 30 | GET `/admin/api/skills` | skill.view | F-LEG-10 | 403: ◐ | I-RBAC-10 | ☐ |
 | 31 | POST `/admin/api/skills` | skill.manage | F-LEG-10 | 403: ◐；400/边界: ✗ 缺 key → 400；重复 → 409；`publish` 不传时默认就是发布；审计: ✗ `skill.create` | I-SKL-01, I-SKL-02, I-SKL-03, I-RBAC-10 | ☐ |
 | 32 | GET `/admin/api/skills/:id` | skill.view | — | 403: ◐；404: ✗ 不存在 → 404 | I-SKL-04, I-RBAC-10 | ☐ |
@@ -56,12 +56,12 @@
 | 48 | POST `/admin/api/schedules/:id/disable` | schedule.manage | F-LEG-05、S-27 | 403: ◐；404: ✗ 跨部门 | I-AUD-04, I-RBAC-10, I-RBAC-11 | ☐ |
 | 49 | POST `/admin/api/schedules/:id/run` | schedule.run | F-SCH-11~13 | 403: ✗ OP 有 `schedule.run` 但没有 `schedule.manage`，应该能跑；AU → 403（I-SCH-13）；404: ✗ 跨部门；400/边界: ✗ agent 未发布 → 400；存量任务绑的是 PA 服务账号 → **409** SCD-4804；`dataScope=all` 的非 PA 用户能跑其他部门的任务（文档差异 23，I-SCH-14~16） | F-SCH-11c, F-SCH-11a, F-SCH-10b, I-SCH-13, I-SCH-14, I-SCH-15, I-SCH-16, I-RBAC-10, I-RBAC-11 | ☐ |
 | 50 | GET `/admin/api/apps/:id/webhook-deliveries` | apikey.view | S-22 | 403: ◐；404: ✗ 应用不存在 → 404 | I-APP-06, I-RBAC-10 | ☐ |
-| 51 | POST `/admin/api/webhook-deliveries/:id/replay` | apikey.manage | S-22 | 403: ◐；404: ✗ 不存在 → 404；400/边界: ✗ 调用后会立刻对外投递（要用 mock 接收端）；审计: ✗ `webhook.replay` | I-APP-06, I-RBAC-10 | ☐ |
+| 51 | POST `/admin/api/webhook-deliveries/:id/replay` | apikey.manage | S-22 | 403: ◐；404: ✗ 不存在 → 404；400/边界: ✗ 调用后会立刻对外投递（要用 mock 接收端）；审计: ✗ `webhook.replay` | S-42, I-APP-06, I-RBAC-10 | ☐ |
 | 52 | GET `/admin/api/apps` | apikey.view | F-LEG-07、S-22 | 403: ◐；400/边界: ✗ 不能有 secret | I-RBAC-10 | ☐ |
 | 53 | POST `/admin/api/apps` | apikey.manage | F-LEG-07 | 403: ✗ BL/OP → 403（只有 OA 有 `apikey.manage`）；400/边界: ✗ 重复 key → 500（不查重）；`scopes` 传任意值都会入库；`rateLimitPerMinute=-1/abc`；`webhookUrl` 是私网地址（I-APP-01~04）；审计: ✗ `app.create` | I-APP-01, I-APP-02, I-APP-03, I-APP-04, I-RBAC-10 | ☐ |
 | 54 | PATCH `/admin/api/apps/:id` | apikey.manage | S-22 | 403: ◐；404: ✗ 不存在 → 404；400/边界: ✗ status 改成 disabled 后用 open 接口调用 → **401** 「应用已停用」（文档写的是 403，I-APP-05）；审计: ✗ `app.update`，details 不含 webhookSecret | I-AUD-10, I-APP-05, I-RBAC-10 | ☐ |
 | 55 | GET `/admin/api/apps/:id/keys` | apikey.view | F-LEG-07 | 403: ◐；404: ✗ 应用不存在时返回 **200 空数组**，不是 404（I-APP-06） | I-APP-06, I-RBAC-10 | ☐ |
-| 56 | POST `/admin/api/apps/:id/keys` | apikey.manage | F-LEG-07、I-SCOPE-04 | 403: ◐；404: ✗ 应用不存在 → 404；400/边界: ✗ 签发的 key 没有过期时间（I-APP-07）；审计: ✗ `apikey.create` | I-APP-07, I-RBAC-10 | ☐ |
+| 56 | POST `/admin/api/apps/:id/keys` | apikey.manage | F-LEG-07、I-SCOPE-04 | 403: ◐；404: ✗ 应用不存在 → 404；400/边界: ✗ 签发的 key 没有过期时间（I-APP-07）；审计: ✗ `apikey.create` | I-SCOPE-04, I-SCOPE-06, I-APP-07, I-RBAC-10 | ☐ |
 | 57 | GET `/admin/api/users` | user.view | F-LEG-08、I-SCOPE-01 | 403: ◐；400/边界: ✗ 响应里有 `idp_subject`、`is_emergency_admin`，需要确认能不能返回（I-USR-01） | I-USR-01, I-RBAC-10 | ☐ |
 | 58 | POST `/admin/api/users` | user.manage | S-20、I-RBAC-06 | 400/边界: ✗ 不传 email → 400；email 格式随便填也能建；非法角色 → 400；重复 email → 409；重复 username → 500；密码没有长度要求；`dataScope:"foo"` 也能入库（I-USR-02~06）；审计: ✗ `user.create`，details 不能有密码 | I-AUD-10, I-USR-02, I-USR-03, I-USR-04, I-USR-05, I-USR-06, I-RBAC-10 | ☐ |
 | 59 | PATCH `/admin/api/users/:id` | user.manage | S-20/21/28、I-SCOPE-02 | 404: ✗ 不存在 → 404；400/边界: ✗ **不传 dataScope 时会被重置成角色默认值**（只改 status 也会改掉 dataScope）；`status` 传任意字符串；OA 改 PA 但不传 role → 403（I-USR-07~09）；审计: ✗ `user.update`：status 的变化不记；details 里的 dataScope 是请求原值，不传时是空串，和实际写库的值对不上（I-AUD-07） | I-AUD-07, I-USR-07, I-USR-08, I-USR-09, I-RBAC-10 | ☐ |
@@ -69,7 +69,7 @@
 | 61 | GET `/admin/api/org-units` | org.view | I-DOC-05 | — | I-RBAC-10 | ☐ |
 | 62 | GET `/admin/api/role-mappings` | sso.manage | I-RBAC-07 | — | I-RBAC-10 | ☐ |
 | 63 | POST `/admin/api/role-mappings` | sso.manage | I-RBAC-07 | 400/边界: ✗ 缺 `agentRoleCode` 或 `localRole` → 400；`localRole:"superuser"` 也能入库（I-USR-10）；审计: ✗ `role_mapping.upsert` 的 details 是整个请求体，resource_id 为空（I-USR-11） | I-AUD-11, I-USR-10, I-USR-11, I-RBAC-10 | ☐ |
-| 64 | GET `/admin/api/audit` | audit.view | I-G-08、S-25 | 403: ◐（AU、OA 能看；BL → 403）；400/边界: ◐ 缺 `0`、`1.5`、`abc`、`500`、`501`、`1e9`（I-AUD-08） | I-AUD-08, I-RBAC-10 | ☐ |
+| 64 | GET `/admin/api/audit` | audit.view | I-G-08、S-25 | 403: ◐（AU、OA 能看；BL → 403）；400/边界: ◐ 缺 `0`、`1.5`、`abc`、`500`、`501`、`1e9`（I-AUD-08） | S-38, S-41, I-AUD-08, I-RBAC-10 | ☐ |
 | 65 | GET `/admin/api/sso` | sso.manage | I-RBAC-07、F-LEG-09 | — | I-RBAC-10 | ☐ |
 | 66 | GET `/admin/api/plugins` | package.view | I-DOC-05 | — | I-RBAC-10 | ☐ |
 | 67 | POST `/admin/api/plugins/install` | plugin.install | S-29 | 403: ◐；400/边界: ✗ mcp 缺 url、provider 缺 baseUrl → 400，前面已经建好的资源留在库里；同一个 (key, version) 再装会覆盖；model 重复 → 500（I-PLG-01/02）；审计: ✗ `plugin.install` | I-PLG-01, I-PLG-02, I-RBAC-10 | ☐ |
@@ -87,7 +87,7 @@
 | 79 | POST `/open/v1/runs/:id/cancel` | runs:cancel | S-27 | 401: ✗；403: ✗ scope 只有 `runs:read` → 403；404: ✗ 跨应用；400/边界: ✗ Run 已结束 → 200 | I-OPEN-12, I-AUD-04 | ☐ |
 | 80 | GET `/open/v1/runs/:id/events` | runs:read | — | 401: ✗；403: ✗；404: ✗ | I-OPEN-13 | ☐ |
 | 81 | GET `/open/v1/runs/:id/result` | runs:read | — | 401: ✗；403: ✗；404: ✗；400/边界: ✗ 409 RUN-7002 | I-OPEN-14 | ☐ |
-| 82 | GET `/integration/v1/agents` | 无 | S-23、S-34、I-OPEN-04 | 403: ✗ 见 A5 | S-38(引用), I-INT-10, I-INT-01, I-INT-02, I-INT-03, I-INT-04, I-INT-05, I-INT-06, I-INT-12 | ☐ |
+| 82 | GET `/integration/v1/agents` | 无 | S-23、S-34、I-OPEN-04 | 403: ✗ 见 A5 | S-45(引用), I-INT-10, I-INT-01, I-INT-02, I-INT-03, I-INT-04, I-INT-05, I-INT-06, I-INT-12 | ☐ |
 | 83 | POST `/integration/v1/runs` | 无 | S-23、S-35、S-36 | 404: ✗ 不存在或未发布 → 404；400/边界: ✗ 不传 `agentKey` → 400（I-INT-07） | I-INT-10, I-INT-07, I-INT-11, I-INT-13, I-AUD-04 | ☐ |
 | 84 | GET `/integration/v1/runs/:id` | 无 | I-OPEN-04 | 403: ✗；404: ✗ | I-INT-08 | ☐ |
 | 85 | GET `/integration/v1/runs/:id/result` | 无 | I-OPEN-04 | 403: ✗；404: ✗；400/边界: ✗ 409 RUN-7002 | I-INT-09 | ☐ |

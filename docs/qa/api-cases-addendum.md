@@ -12,7 +12,7 @@
 |---|---|
 | PRE-CON | **connector 用例（I-INT-01~13、S-34~36、I-ERR CON-47xx）**：由运维在 **3197** 用临时 `.env` 起独立实例（库另建，非 `forge`/`forge_ux` 共用写入），打开 connector 开关，配置**测试用 RSA 密钥对**。**私钥只放 `/tmp`**（如 `/tmp/forge-qa-con/`，chmod 600），不入库、不进仓库、不贴群；**测完删除私钥与临时 `.env`，停实例**。3197 由谁起：待运维/后端在群里定。 |
 | PRE-OIDC | SSO-1204~1211 需 mock OIDC IdP；无 mock 时标「N/A，单测覆盖」并写明单测文件路径 |
-| PRE-MOCK | 模型类用 mock 8090（可返回 5xx / 非流式 / 超时）；MCP、webhook 用本机 mock 接收端，不对外网发请求 |
+| PRE-MOCK | 模型类用 mock 8090（可返回 5xx / 非流式 / 超时）；MCP、webhook 用本机 mock 接收端，不对外网发请求。**统一出站校验后（架构师口径）**：mock 8090 及本机接收端须**显式加入出站白名单**才放行，白名单默认为空（见 S-49）；依赖 mock 的用例前置里写明白名单配置 |
 | PRE-ROLE | 角色账号 `~/forge-qa-users.json`（PA/OA/BL/OP/AU/US/OO + 父/子部门用户各一） |
 | PRE-TMP | 需要改开关的（`ALLOW_LOCAL_LOGIN=false`、未构建控制台、OIDC issuer 不通）一律用临时端口实例，不改 3198 |
 
@@ -58,7 +58,7 @@
 | I-INT-07 | #83 POST `/integration/v1/runs` | 合法 JWT | 不传 `agentKey`；传不存在/未发布 key | 400 CFG-8501；404 RUN-7001 | P1 | |
 | I-INT-08 | #84 | 见 §1 | | | | |
 | I-INT-09 | #85 | 见 §1 | | | | |
-| **I-INT-10** | #82、#83（及 #84~#86） | 映射用户有 `idp_subject` | **a.** 用户 `status=disabled`；**b.** 用户已删除（软删/置删除态，`idp_subject` 仍在）；**c.** 用户所属部门已停用。三种情况各调 `GET /integration/v1/agents` 与 `POST /integration/v1/runs` | 三种情况均 **403 CON-4706**，不建 Run | **P0** | **已知缺陷**：`principalForConnector` 不过滤 status，现状 200 / 202。与 **S-38**（会话快照）同类，互相引用 |
+| **I-INT-10** | #82、#83（及 #84~#86） | 映射用户有 `idp_subject` | **a.** 用户 `status=disabled`；**b.** 用户已删除（软删/置删除态，`idp_subject` 仍在）；**c.** 用户所属部门已停用。三种情况各调 `GET /integration/v1/agents` 与 `POST /integration/v1/runs` | 三种情况均 **403 CON-4706**，不建 Run | **P0** | **已知缺陷**：`principalForConnector` 不过滤 status，现状 200 / 202。与 **S-45**（会话快照）同类，互相引用 |
 | I-INT-11 | #83 | 映射用户为 AU（无 `agent.run`） | 建 Run | 403 POL-2001「角色缺少权限: agent.run」 | P1 | **已知缺陷** K-06：现状 202（同 S-35） |
 | I-INT-12 | #82 | 映射用户属部门 A | 列 agents | 只含 A 部门子树可见且已发布的 Agent | P1 | **已知缺陷**：现状全局、不看 api_enabled（Q6） |
 | I-INT-13 | #83 | 映射用户属部门 A | 建 Run 后 PA 查 `GET /admin/api/runs/:id` | Run 的 org = 部门 A；subject = 映射用户 | P1 | |
@@ -157,7 +157,7 @@
 | 编号 | 路由 | 前置 | 步骤 | 预期 | 优先级 | 备注 |
 |---|---|---|---|---|---|---|
 | I-MCP-01 | #26 | MCP 有 headers | GET mcp | 无 `headers` | P0 | |
-| I-MCP-02 | #27 | — | url = `http://127.0.0.1:…`、`http://169.254.169.254/` | 400 拒绝私网地址 | P1 | **已知缺陷**（SSRF），转安全专家定级 |
+| I-MCP-02 | #27 #29 | 出站白名单为空（默认） | create 与 refresh 各一次，url 依次为回环 `http://127.0.0.1:…`、私网、链路本地、云元数据 `http://169.254.169.254/` | **拦截，返回明确错误码**（统一出站校验，与 S-39 / S-46 同码），不发起连接 | P1 | **已知缺陷**（SSRF）：现状不拦。DNS rebinding 见 S-48，8090 白名单见 S-49 |
 | I-MCP-03 | #27 | — | 缺 url；重复 key | 400；409 | P1 | |
 | I-MCP-04 | #28 | — | 不存在 id；成功改名 | 404「MCP 不存在」；审计 `mcp.update` | P2 | 敏感值见 I-AUD-05 |
 | I-MCP-05 | #29 | PRE-MOCK 上游 500 | refresh | 502 HTP-4001 | P1 | |
@@ -208,6 +208,8 @@
 | I-APR-33 | #41 | 子部门也有待审 | OA（父）/ 子部门 OP 各查 | total 只计各自可见 | P1 | |
 | I-APR-34 | #42 | — | 不传 decision；`comment` 1025 字 | 400 CFG-8501（两者） | P1 | 后者**已知缺陷**：现状 500 |
 | I-APR-35 | #42 | — | 不存在 id + 非法 decision | 404（先查存在） | P2 | |
+| I-APR-37 | #42 | 审批已 `rejected` | 再调 decide `{"decision":"approved"}` | 409 CFG-8503，状态仍 rejected，Run 不继续 | P1 | 与 I-APR-21 对称（架构师横向 a） |
+| I-APR-38 | #40 #42 | Run 处于 waiting_approval，对应审批 pending | ① cancel 该 Run ② 查审批列表 / 详情 ③ decide approved | ② 审批不可操作（不在待审或按钮不可用）③ **409**，Run 保持 cancelled、不执行工具 | P1 | 架构师横向 b；错误码执行前后端写死；现状待实测 |
 | I-APR-36 | #42 | 审批已过 `expires_at` 但未被 `timeoutApprovals` 清理 | 批准 | 409 CFG-8503，不批准 | P1 | **已知缺陷**：现状 200（`decideApproval` 不看 expires_at）。UI-034b / UI-081b |
 
 ### 6.8 定时任务接口级（I-SCH，#45~#49）
@@ -275,7 +277,7 @@
 | I-SA-07 | #72 | — | `name:""` | 200，name 不变 | P3 | |
 | I-SA-08 | #72 | — | 停用；改名 | 审计分别为 `service_account.disable` / `service_account.update`，details `{before,changes}` | P2 | |
 | I-SA-09 | #71 #72 | OO | GET/PATCH 根部门 SA；不存在 id | 均 404「服务账号不存在」，响应体相同 | P0 | |
-| I-SA-10 | #45/#46（经 R-sa）、#69/#71 | 父部门 OA；子部门 SA（服务账号接口仅 PA 可调，故经定时任务绑定间接验证 R-sa） | 父部门 OA 创建/PATCH schedule 绑定子部门 SA | **200**（统一规则：本部门 + 所有子部门） | P1 | **已知缺陷**：R-sa 精确等于，现状 404。= I-SCOPE-10c |
+| I-SA-10 | #45/#46（经 R-sa）、#69/#71 | 父部门 OA；子部门、兄弟部门、上级部门各一个 SA（服务账号接口仅 PA 可调，故经定时任务绑定间接验证 R-sa） | **正**：父部门 OA 创建/PATCH schedule 绑定子部门 SA；**反**：绑定兄弟部门 SA、上级部门 SA | 正：**200**（统一规则：本部门 + 所有子部门）；反：**404**，与 SA 不存在完全相同（状态码、错误码、message），响应不出现账号名 | P1 | 正向**已知缺陷**：R-sa 精确等于，现状 404（修复 D 已改）。= I-SCOPE-10c |
 
 ### 6.12 Open 补充（I-OPEN-15~21）
 
