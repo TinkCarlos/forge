@@ -3,6 +3,7 @@ import type { Session } from "@forge/identity";
 import { CronExpressionParser } from "cron-parser";
 import { errors, ForgeError, type Principal } from "@forge/core";
 import { buildScheduleIdentity, createQueuedRun } from "@forge/runtime";
+import { maskArgsDeep } from "@forge/governance";
 import { parseJsonValue, repos } from "@forge/store";
 import {
   bodyOf,
@@ -136,7 +137,7 @@ export default async function adminScheduleRoutes(app: FastifyInstance): Promise
       fields.next_run_at = CronExpressionParser.parse(String(fields.cron), { currentDate: new Date(), tz: String(fields.timezone ?? schedule.timezone) }).next().toDate();
     }
     await repos.updateSchedule(schedule.id as string, fields);
-    await writeAudit(session, "schedule.update", "schedule", String(schedule.id), fields);
+    await writeAudit(session, "schedule.update", "schedule", String(schedule.id), maskArgsDeep(fields));
     return { ok: true };
   });
 

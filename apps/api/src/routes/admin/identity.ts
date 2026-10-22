@@ -6,7 +6,7 @@ import {
   ROLE_PERMISSIONS,
   type Role,
 } from "@forge/core";
-import { assertCanGrant, assertCanManageUser, grantDefaultDataScope, loadVisibleUserOr404, userFilterFor } from "@forge/governance";
+import { assertCanGrant, assertCanManageUser, grantDefaultDataScope, loadVisibleUserOr404, maskArgsDeep, userFilterFor } from "@forge/governance";
 import { oidcConfigured } from "@forge/identity";
 import { repos } from "@forge/store";
 import {
@@ -85,7 +85,7 @@ export default async function adminIdentityRoutes(app: FastifyInstance): Promise
     const session = await admin(request, "sso.manage");
     const body = bodyOf(request);
     await repos.upsertRoleMapping(requireBodyString(body, "agentRoleCode"), stringBody(body, "agentRoleName"), requireBodyString(body, "localRole"));
-    await writeAudit(session, "role_mapping.upsert", "oidc_role_mapping", null, body);
+    await writeAudit(session, "role_mapping.upsert", "oidc_role_mapping", null, maskArgsDeep(body));
     return { ok: true };
   });
 

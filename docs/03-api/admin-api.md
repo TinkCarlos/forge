@@ -459,6 +459,16 @@ If-Match: "rev-2"
 }
 ```
 
+运行详情与 Run 响应里的参数脱敏（当前实现，`maskArgsDeep`，`packages/governance/src/mask-args.ts`）：
+
+- 规则和上面 `args_preview` 完全相同（同一个模块 `packages/governance/src/sensitive.ts`）：敏感键名按词匹配、值前缀和 JWT、URL 查询参数、像 JSON 的字符串、解析失败的 JSON 整体打码。区别是：**结构和字段名完全不变**，只把敏感的值换成字符串 `"***"`；不截断；敏感键下的值不论是字符串、对象还是数组都整体换成 `"***"`（`null` 保持 `null`）；像 JSON 的字符串打码后仍是字符串（重新 `JSON.stringify`，没有命中任何规则时原样返回）；循环引用和嵌套超过 32 层的部分整体换成 `"***"`。
+- `GET /admin/api/runs/{id}`：
+  - `input` 打码。
+  - `toolCalls[].args` 和 `toolCalls[].args_json` 打码（两者内容相同）；`result`、`result_json`、`result_text` 原样返回。
+  - `messages[]`：`role = user` 的 `content` 整体打码；`role = assistant` 只打码 `content.tool_calls`（其中 `function.arguments` 是 JSON 字符串，打码后仍是字符串）；`tool`、`system` 消息原样返回。
+- `GET /admin/api/runs` 列表项、`GET /open/v1/runs/{id}`、`GET /integration/v1/runs/{id}` 的 `input` 同样打码。`output`、`usage`、`/result` 接口和 SSE 事件不变（事件里不带工具参数）。
+- 数据库里存的原值不变，执行 Run 时用的仍是原值。
+
 ## 10. 定时任务
 
 | 方法 | 路径 | 说明 | 权限 |
@@ -642,6 +652,12 @@ kb.view kb.manage eval.view eval.manage
 | GET | `/health` | 组件健康 | `settings.manage` |
 | GET | `/version` | 版本、迁移版本、构建信息 | 登录用户 |
 | GET | `/openapi.json` | 管理 API 规范（管理员） | `settings.manage` |
+
+审计详情脱敏（当前实现）：以下审计在写入前先经过 `maskArgsDeep`（规则见第 9 节），库里 `audit_logs.details_json` 不再出现明文：
+
+- `mcp.update`：改动字段，其中 `headers_json` 的敏感头（如 `Authorization`、`X-Api-Key`）为 `"***"`。
+- `schedule.update`：改动字段，其中 `input_json` 按同样规则打码。
+- `role_mapping.upsert`：请求体（`agentRoleCode`、`agentRoleName`、`localRole` 原样，敏感字段打码）。
 
 ### 13.1 SSO 与 Connector
 

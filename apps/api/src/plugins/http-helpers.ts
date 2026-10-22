@@ -8,7 +8,7 @@ import {
   ROLE_PERMISSIONS,
   type Principal,
 } from "@forge/core";
-import { assertPermission, visibleAgentOrgIds } from "@forge/governance";
+import { assertPermission, maskArgsDeep, visibleAgentOrgIds } from "@forge/governance";
 import { oidcConfigured, readSignedSessionCookie, sessionCookieValue, type Session } from "@forge/identity";
 import {
   parseJsonValue,
@@ -85,6 +85,7 @@ export async function agentAccessible(principal: Principal, agent: AgentRow | nu
   return orgIds === null || orgIds.includes(agent.owner_org_unit_id);
 }
 
+/** Run DTO shared by admin, open and integration APIs. `input` is masked (maskArgsDeep); the stored row is unchanged. */
 export function presentRun(run: RunRow) {
   return {
     id: run.id,
@@ -96,7 +97,7 @@ export function presentRun(run: RunRow) {
     status: run.status,
     triggerType: run.trigger_type,
     triggerRef: run.trigger_ref,
-    input: run.input_json,
+    input: maskArgsDeep(run.input_json),
     output: run.output_json,
     usage: run.usage_json,
     costUsd: Number(run.cost_usd),

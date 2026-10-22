@@ -1,6 +1,7 @@
 import { type FastifyInstance } from "fastify";
 import { errors } from "@forge/core";
 import { discoverMcpTools, parseOpenApi } from "@forge/capabilities";
+import { maskArgsDeep } from "@forge/governance";
 import { repos } from "@forge/store";
 import {
   bodyOf,
@@ -70,7 +71,7 @@ export default async function adminCapabilityRoutes(app: FastifyInstance): Promi
     if (body.headers !== undefined) fields.headers_json = jsonBody(body, "headers", {});
     if (body.status !== undefined) fields.status = stringBody(body, "status");
     await repos.updateMcpServer(String(server.id), fields);
-    await writeAudit(session, "mcp.update", "mcp_server", String(server.id), fields);
+    await writeAudit(session, "mcp.update", "mcp_server", String(server.id), maskArgsDeep(fields));
     return { ok: true };
   });
 

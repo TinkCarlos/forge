@@ -1,6 +1,6 @@
 import { type FastifyInstance } from "fastify";
 import { errors } from "@forge/core";
-import { assertRunAccess, buildArgsPreview, runFilterFor } from "@forge/governance";
+import { assertRunAccess, buildArgsPreview, maskArgsDeep, runFilterFor } from "@forge/governance";
 import { cancelRun, executeRun } from "@forge/runtime";
 import { repos } from "@forge/store";
 import {
@@ -41,8 +41,12 @@ export default async function adminRunRoutes(app: FastifyInstance): Promise<void
     const approvals = (await repos.listApprovals()).filter((approval) => approval.run_id === run!.id);
     return {
       ...presentRun(run!),
-      messages: messages.map((message) => ({ id: message.id, seq: message.seq, role: message.role, content: message.content_json, createdAt: message.created_at })),
-      toolCalls: toolCalls.map((call) => ({ ...call, args: call.args_json, result: call.result_json })),
+      messages: messages.map((message) => ({ id: message.id, seq: message.seq, role: message.role, content: maskMessageContent(message.role, message.content_json), createdAt: message.created_at })),
+      // Tool arguments are masked (same rules as args_preview, structure kept); results are returned as stored.
+      toolCalls: toolCalls.map((call) => {
+        const args = maskArgsDeep(call.args_json);
+        return { ...call, args_json: args, args, result: call.result_json };
+      }),
       approvals,
     };
   });
@@ -93,6 +97,16 @@ export default async function adminRunRoutes(app: FastifyInstance): Promise<void
     void executeRun(approval.run_id);
     return { ok: true };
   });
+}
+
+/** User messages are user input -> masked whole; assistant messages -> only the tool_calls (their arguments) are masked. */
+function maskMessageContent(role: string, content: unknown): unknown {
+  if (role === "user") return maskArgsDeep(content);
+  if (role === "assistant" && content && typeof content === "object" && !Array.isArray(content) && "tool_calls" in content) {
+    const record = content as Record<string, unknown>;
+    return { ...record, tool_calls: maskArgsDeep(record.tool_calls) };
+  }
+  return content;
 }
 
 function positiveInt(raw: unknown, fallback: number, name: string): number {
