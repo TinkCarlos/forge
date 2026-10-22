@@ -79,6 +79,8 @@ GET /admin/v1/session
 - 被拒绝时：管理接口返回 `400 HTP-4003「目标地址不允许（内网/回环/元数据）」`；运行时工具调用返回 `errorCode: HTP-4003` 的工具结果；Webhook 投递记为 `failed`（不重试），`errorMessage` 以 `HTP-4003` 开头。响应和日志里都不回显解析出的地址。
 - 白名单：环境变量 `OUTBOUND_ALLOWLIST`，逗号分隔的 `host:port`（IPv6 写成 `[::1]:9000`），默认空。只放行完全一致的主机和端口（默认端口按 80/443 计），按规范化后的主机名匹配；白名单不放开非 http(s) 协议。旧开关 `TOOL_ALLOW_PRIVATE_NETWORK` 不再绕过出站校验。
 
+**请求体解析失败**（当前实现，K-09 / I-CSRF-06，所有入口：管理端、登录、开放平台、Connector）：体积超过上限（JSON 2 MiB）→ `413 OPN-4504「请求体过大」`；Content-Type 声明为 JSON 但内容不是合法 JSON → `400 CFG-8501「请求体不是合法的 JSON」`；声明为 JSON 却是空体 → `400 CFG-8501「请求体为空，但 Content-Type 声明为 JSON」`；Content-Type 不受支持（如 `application/xml`、`application/x-www-form-urlencoded`）→ `415 OPN-4505「不支持的 Content-Type」`。不再返回 `500 SYS-9001`。中间件顺序不变：解析在 CSRF 校验之前，所以坏请求体即使没带 CSRF 令牌也先得到上面的 400/413/415；能解析的请求体没带 CSRF 仍是 403。
+
 **HTTP 状态**：`200` 成功、`201` 创建、`202` 已接受、`204` 无内容、`400` 校验、`401` 未登录、`403` 权限、`404` 不存在、`409` 冲突/状态、`413` 超限、`422` 语义错误、`429` 限流、`500` 内部。
 
 ## 3. Agent
