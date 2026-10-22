@@ -175,8 +175,28 @@ async function init() {
   }
 }
 
+function setApiStatus(ok) {
+  const el = $("#api-status");
+  if (!el) return;
+  el.classList.toggle("down", !ok);
+  el.querySelector(".status-text").textContent = ok ? "API 正常" : "API 异常";
+  el.title = ok ? "API 与数据库就绪" : "API 或数据库不可用，请联系运维";
+}
+
+async function checkHealth() {
+  try {
+    const response = await fetch("/readyz", { cache: "no-store", credentials: "same-origin" });
+    setApiStatus(response.ok);
+  } catch {
+    setApiStatus(false);
+  }
+}
+
 async function enterApp() {
   showApp();
+  checkHealth();
+  clearInterval(checkHealth.timer);
+  checkHealth.timer = setInterval(checkHealth, 30000);
   $("#user-chip").innerHTML = `<strong>${esc(state.session.user.name)}</strong><span>${esc(state.session.user.role)} · ${esc(state.session.user.dataScope)}</span>`;
   renderNav();
   await switchTab(location.hash.slice(1) || "dashboard");
@@ -498,12 +518,13 @@ async function renderSso() {
 
 // ---------- modal ----------
 
-function openModal(title, body, onSubmit, submitLabel = "保存") {
+function openModal(title, body, onSubmit, submitLabel = "保存", danger = false) {
   const dialog = $("#modal");
   $("#modal-title").textContent = title;
   $("#modal-body").innerHTML = body;
   const submit = $("#modal-submit");
   submit.textContent = submitLabel;
+  submit.className = `btn ${danger ? "danger" : "primary"}`;
   submit.type = "submit";
   const form = $("#modal-form");
   form.querySelectorAll('button[value="cancel"]').forEach((button) => {
@@ -523,6 +544,14 @@ function openModal(title, body, onSubmit, submitLabel = "保存") {
     }
   };
   dialog.showModal();
+}
+
+function confirmAction(title, message, confirmLabel, danger = true) {
+  return new Promise((resolve) => {
+    let confirmed = false;
+    openModal(title, `<p style="margin:0">${esc(message)}</p>`, async () => { confirmed = true; }, confirmLabel, danger);
+    $("#modal").addEventListener("close", () => resolve(confirmed), { once: true });
+  });
 }
 
 function field(label, name, value = "", type = "text", extra = "") {
@@ -716,6 +745,7 @@ const app = {
       const detail = await api(`/admin/api/agents/${id}`);
       const draft = (detail.versions ?? []).find((version) => version.status === "draft") ?? detail.versions?.[0];
       if (!draft) throw new Error("没有可发布版本");
+      if (!(await confirmAction("发布 Agent", `将把版本 ${draft.version} 发布为线上版本，开放 API 和定时任务会立即改用这个版本。`, "确认发布", false))) return;
       await api(`/admin/api/agents/${id}/publish`, { method: "POST", body: { versionId: draft.id } });
       toast(`已发布版本 ${draft.version}`);
       await renderAgents();
@@ -726,6 +756,7 @@ const app = {
 
   async toggleAgentApi(id, enabled) {
     try {
+      if (!enabled && !(await confirmAction("关闭开放 API", "关闭后，外部应用对这个 Agent 的调用会被拒绝，之后可以随时重新开放。", "确认关闭"))) return;
       await api(`/admin/api/agents/${id}`, { method: "PATCH", body: { apiEnabled: enabled } });
       toast(enabled ? "已开放 API" : "已关闭 API");
       await renderAgents();
@@ -866,6 +897,7 @@ const app = {
 
   async uninstallPackage(id) {
     try {
+      if (!(await confirmAction("卸载能力包", "卸载只标记包状态，不会删除已经创建的 Agent、Skill、MCP 等资源。", "确认卸载"))) return;
       await api(`/admin/api/plugins/${id}/uninstall`, { method: "POST", body: {} });
       toast("已标记卸载");
       await renderPackages();
@@ -908,7 +940,7 @@ const app = {
       await api(`/admin/api/approvals/${id}/decide`, { method: "POST", body: { decision, comment: data.get("comment") } });
       toast(decision === "approved" ? "已批准，Run 将继续" : "已驳回");
       await renderApprovals();
-    }, decision === "approved" ? "批准" : "驳回");
+    }, decision === "approved" ? "批准" : "确认驳回", decision !== "approved");
   },
 
   openScheduleCreate() {
@@ -939,6 +971,7 @@ const app = {
         await switchTab("runs");
         return;
       }
+      if (action === "disable" && !(await confirmAction("停用定时任务", "停用后不会再按 Cron 自动运行，之后可以随时重新启用。", "确认停用"))) return;
       await api(`/admin/api/schedules/${id}/${action}`, { method: "POST", body: {} });
       toast(action === "enable" ? "已启用" : "已停用");
       await renderSchedules();

@@ -14,8 +14,8 @@
         <h1>Forge</h1>
         <p class="muted">企业级 Agent 开发框架</p>
         <form id="login-form">
-          <label>邮箱<input name="email" type="email" autocomplete="username" value="admin@forge.local" required /></label>
-          <label>密码<input name="password" type="password" autocomplete="current-password" value="change-me-now" required /></label>
+          <label>邮箱<input name="email" type="email" autocomplete="username" placeholder="name@company.com" required /></label>
+          <label>密码<input name="password" type="password" autocomplete="current-password" required /></label>
           <button class="btn primary block" type="submit">本地登录</button>
         </form>
         <a class="btn ghost block hidden" id="sso-login" href="/auth/oidc/login">使用统一 SSO 登录</a>
@@ -39,7 +39,7 @@
             <p id="page-subtitle" class="muted"></p>
           </div>
           <div class="top-actions">
-            <span class="status-dot" title="API 在线"></span>
+            <span id="api-status" class="api-status" title="正在检查 API 状态"><span class="status-dot"></span><span class="status-text">检查中</span></span>
             <button id="refresh" class="btn ghost small">刷新</button>
           </div>
         </header>
