@@ -35,6 +35,16 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (builderSession) destroySession(builderSession.token);
+  if (agentId) {
+    // Runs created by manual-run tests: cancel still-queued ones so no worker picks them up, wait (bounded) for claimed ones.
+    await execute("UPDATE runs SET status = 'cancelled', completed_at = UTC_TIMESTAMP(3) WHERE agent_id = ? AND status = 'queued'", [agentId]);
+    const deadline = Date.now() + 15000;
+    while (Date.now() < deadline && (await repos.listRuns({ limit: 200 })).some((run) => run.agent_id === agentId && run.status === "running" && !String(run.claimed_by ?? "").startsWith("it-hold-"))) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+    await execute("DELETE FROM runs WHERE agent_id = ?", [agentId]);
+    await execute("DELETE FROM threads WHERE agent_id = ?", [agentId]);
+  }
   for (const id of createdSchedules) {
     await execute("DELETE FROM audit_logs WHERE resource_type = 'schedule' AND resource_id = ?", [id]);
     await execute("DELETE FROM schedules WHERE id = ?", [id]);
@@ -140,5 +150,68 @@ describe("schedule binding to a service account", () => {
     await repos.updateServiceAccount(otherId, { status: "disabled" });
     const enable = await app.inject({ method: "POST", url: `/admin/api/schedules/${id}/enable`, headers: adminHeaders, payload: {} });
     expect(enable.statusCode).toBe(409);
+  });
+});
+
+describe("manual schedule run (POST /admin/api/schedules/:id/run)", () => {
+  const ACCOUNT_ORG = "01J0000000000000000000SVC1";
+  const account = async (status: "active" | "disabled"): Promise<string> => {
+    const id = await repos.createServiceAccount({ key: `it-sa-run-${suffix}-${createdAccounts.length}`, name: "IT run-as", orgUnitId: ACCOUNT_ORG, role: "operator", dataScope: "org", createdBy: ADMIN_ID });
+    if (status === "disabled") await repos.updateServiceAccount(id, { status: "disabled" });
+    createdAccounts.push(id);
+    return id;
+  };
+  const schedule = async (serviceAccountId: string | null): Promise<string> => {
+    const id = await repos.createSchedule({
+      key: `it-sa-run-sch-${suffix}-${createdSchedules.length}`, name: "IT manual run", agentId, orgUnitId: ORG,
+      subjectType: serviceAccountId ? "service" : "user", subjectId: serviceAccountId ?? ADMIN_ID, serviceAccountId,
+      cron: "0 9 * * 1", timezone: "Asia/Shanghai", input: { text: "manual" }, createdBy: ADMIN_ID,
+    });
+    createdSchedules.push(id);
+    return id;
+  };
+  const run = (id: string): Promise<LightMyRequestResponse> => app.inject({ method: "POST", url: `/admin/api/schedules/${id}/run`, headers: adminHeaders, payload: {} });
+
+  it("runs as the bound service account, not the clicking admin", async () => {
+    const accountId = await account("active");
+    const res = await run(await schedule(accountId));
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { runId: string; trigger: string };
+    expect(body.trigger).toBe("schedule");
+    const created = (await repos.getRun(body.runId))!;
+    expect(created).toMatchObject({ subject_type: "service", subject_id: accountId, org_unit_id: ACCOUNT_ORG, trigger_type: "schedule" });
+    expect(created.subject_id).not.toBe(ADMIN_ID);
+  });
+
+  it("legacy schedule (no service account) runs with the legacy service identity", async () => {
+    const res = await run(await schedule(null));
+    expect(res.statusCode).toBe(200);
+    const created = (await repos.getRun((res.json() as { runId: string }).runId))!;
+    expect(created).toMatchObject({ subject_type: "service", subject_id: ADMIN_ID, org_unit_id: ORG });
+  });
+
+  it("disabled or missing service account -> 409 SCD-4801, no run", async () => {
+    const id = await schedule(await account("disabled"));
+    const res = await run(id);
+    expect(res.statusCode).toBe(409);
+    expect((res.json() as { error: { code: string } }).error.code).toBe("SCD-4801");
+    await execute("UPDATE schedules SET service_account_id = ? WHERE id = ?", [`svc_gone_${suffix}`.slice(0, 26), id]);
+    expect((await run(id)).statusCode).toBe(409);
+    expect((await repos.listRuns({ limit: 200 })).some((r) => r.trigger_ref === id)).toBe(false);
+  });
+
+  it("concurrency skip: a run of this schedule still in flight -> 409 SCD-4802", async () => {
+    const accountId = await account("active");
+    const id = await schedule(accountId);
+    const threadId = await repos.createThread({ agentId, orgUnitId: ACCOUNT_ORG, subjectType: "service", subjectId: accountId });
+    const held = await repos.createRun({
+      threadId, agentId, agentVersionId: versionId, orgUnitId: ACCOUNT_ORG, subjectType: "service", subjectId: accountId,
+      triggerType: "schedule", triggerRef: id, input: { text: "held" }, status: "running", claimedBy: `it-hold-${suffix}`, leaseSeconds: 600,
+    });
+    const res = await run(id);
+    expect(res.statusCode).toBe(409);
+    expect((res.json() as { error: { code: string } }).error.code).toBe("SCD-4802");
+    await repos.updateRun(held, { status: "cancelled" });
+    expect((await run(id)).statusCode).toBe(200);
   });
 });

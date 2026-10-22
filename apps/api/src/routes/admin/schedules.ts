@@ -1,7 +1,7 @@
 import { type FastifyInstance } from "fastify";
 import { CronExpressionParser } from "cron-parser";
 import { errors, ForgeError, type Principal } from "@forge/core";
-import { createQueuedRun } from "@forge/runtime";
+import { buildScheduleIdentity, createQueuedRun } from "@forge/runtime";
 import { parseJsonValue, repos } from "@forge/store";
 import {
   bodyOf,
@@ -128,15 +128,26 @@ export default async function adminScheduleRoutes(app: FastifyInstance): Promise
     if (!schedule) throw errors.notFound("定时任务不存在");
     const agent = await repos.getAgent(String(schedule.agent_id));
     if (!agent?.published_version_id) throw errors.invalid("Agent 尚未发布");
+    // Manual "run now" executes as the schedule's identity (bound service account, or the legacy service identity),
+    // never as the clicking user; the clicking user only needs schedule.run (checked above).
+    let account = null;
+    if (schedule.service_account_id) {
+      account = await repos.getServiceAccount(String(schedule.service_account_id));
+      if (!account || account.status !== "active") throw new ForgeError("SCD-4801", "服务账号已停用，不能运行定时任务", 409);
+    }
+    const principal = buildScheduleIdentity(schedule, account);
+    if (String(schedule.concurrency_policy ?? "skip") === "skip" && (await repos.hasInFlightScheduleRun(String(schedule.id)))) {
+      throw new ForgeError("SCD-4802", "该定时任务已有运行中的 Run（并发策略 skip）", 409);
+    }
     const runId = await createQueuedRun({
       agentId: agent.id,
       versionId: agent.published_version_id,
-      principal: session.principal,
+      principal,
       input: parseJsonValue(schedule.input_json, { text: "" }),
       triggerType: "schedule",
       triggerRef: String(schedule.id),
     });
-    await writeAudit(session, "schedule.run", "schedule", String(schedule.id), { runId });
-    return { runId };
+    await writeAudit(session, "schedule.run", "schedule", String(schedule.id), { runId, runAs: { type: principal.type, id: principal.id } });
+    return { runId, trigger: "schedule" };
   });
 }
