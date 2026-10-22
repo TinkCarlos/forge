@@ -176,6 +176,8 @@ export const errors = {
   conflict: (message = "资源状态冲突") => new ForgeError("CFG-8503", message, 409),
   model: (message = "模型调用失败", details?: unknown) => new ForgeError("MDL-3001", message, 502, details, true),
   tool: (message = "工具调用失败", details?: unknown) => new ForgeError("HTP-4001", message, 502, details, false),
+  /** Infrastructure temporarily unavailable (e.g. the database during an identity lookup): 503, retryable, no internal details. */
+  unavailable: (message = "服务暂时不可用，请稍后重试") => new ForgeError("SYS-9003", message, 503, undefined, true),
   budget: (message = "预算已耗尽") => new ForgeError("BUD-5001", message, 400),
 };
 

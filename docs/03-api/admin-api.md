@@ -12,6 +12,7 @@
 - 自动化/CLI 使用短期 Bearer Token（`Authorization: Bearer ...`），由 `/auth/token` 或在部署配置中签发；不使用用户密码。
 - 未认证：`401 AUTH-1001`；已认证但无权限：`403 POL-2001`。
 - 会话身份实时读取（当前实现，S-38）：会话里只保存用户 id、CSRF Token 和过期时间，不保存登录时的角色/部门/数据范围快照。每个需要身份的请求（`/admin/api/*`、`GET /auth/session`）都用 `loadActivePrincipal` 重新读库（一条查询：`users` JOIN `org_units`，加部门链子查询），拿当前的角色、部门和数据范围来判定权限和数据范围；登录后被降级、换部门，下一次请求立即按新值生效。用户不存在、`status` 不是 `active`（停用、已删除）、所属部门不存在或部门链上任一级 `status` 不是 `active` 时返回 `401 AUTH-1001`，并删除该会话（之后即使恢复也要重新登录）。本地登录同样经过这一检查，不满足时和密码错误一样返回 401。CSRF 校验和注销只读内存里的会话，不查库。`/integration/v1` 的 Connector 主体用的是同一个函数（不满足时为 `403 CON-4706`）。
+- 身份查库失败（当前实现）：会话认证、`/integration/v1` 的 Connector 主体、本地登录在查库出错（连接断开、超时等任何异常）时返回 `503 SYS-9003「身份校验暂时不可用，请稍后重试」`（`retryable: true`），不当成用户不可用：不返回 401/403、不当成密码错误、**不删除会话**，数据库恢复后同一个 Cookie 继续可用。响应里不带数据库地址等内部信息。
 - 所有变更写审计；响应头返回 `X-Request-Id`。
 - 管理 API **不向 Agent Connector 入站开放**；集成调用使用专用 `/integration/v1`，见 [sso-and-connector.md](../02-architecture/sso-and-connector.md)。
 

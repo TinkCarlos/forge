@@ -49,8 +49,20 @@ export function toPrincipal(user: UserRow): Principal {
  * missing or it or any parent department is not active. Shared by session authentication and the Connector principal.
  */
 export async function loadActivePrincipal(userId: string): Promise<Principal | null> {
-  const user = await repos.getActiveUserById(userId);
+  const user = await identityLookup(() => repos.getActiveUserById(userId));
   return user ? toPrincipal(user) : null;
+}
+
+/**
+ * Runs an identity database lookup. A database failure (connection lost, timeout, any error) is never treated as
+ * "user unusable": it becomes 503 SYS-9003 so callers do not log the user out or answer 401/403. The cause is not exposed.
+ */
+async function identityLookup<T>(lookup: () => Promise<T>): Promise<T> {
+  try {
+    return await lookup();
+  } catch {
+    throw errors.unavailable("身份校验暂时不可用，请稍后重试");
+  }
 }
 
 /** Stores only `principal.id`; the returned session carries the given principal for the login response. */
@@ -114,7 +126,7 @@ export async function readSignedSessionCookie(value: string | undefined): Promis
 
 export async function loginLocal(email: string, password: string): Promise<Principal> {
   if (!config.ALLOW_LOCAL_LOGIN) throw errors.forbidden("本地登录已关闭，请使用统一 SSO");
-  const user = await repos.getUserByEmail(email);
+  const user = await identityLookup(() => repos.getUserByEmail(email));
   if (!user || !user.password_hash || !verifyPassword(password, user.password_hash)) {
     throw errors.unauthorized("邮箱或密码错误");
   }
@@ -363,7 +375,7 @@ export async function verifyConnectorPrincipal(token: string, cfg: ConnectorConf
 }
 
 export async function principalForConnector(payload: ConnectorPrincipal): Promise<Principal> {
-  const user = await repos.getUserByIdpSubject(payload.subject);
+  const user = await identityLookup(() => repos.getUserByIdpSubject(payload.subject));
   // Same check as session authentication (loadActivePrincipal). Disabled/deleted users and users of a disabled or
   // missing department (or disabled parent) get exactly the same error as an unregistered subject.
   const principal = user ? await loadActivePrincipal(user.id) : null;
