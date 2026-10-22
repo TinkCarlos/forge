@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <title>Forge Console</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body>
+    <div id="login-view" class="login-shell hidden">
+      <div class="login-card">
+        <div class="brand-mark">F</div>
+        <h1>Forge</h1>
+        <p class="muted">企业级 Agent 开发框架</p>
+        <form id="login-form">
+          <label>邮箱<input name="email" type="email" autocomplete="username" value="admin@forge.local" required /></label>
+          <label>密码<input name="password" type="password" autocomplete="current-password" value="change-me-now" required /></label>
+          <button class="btn primary block" type="submit">本地登录</button>
+        </form>
+        <a class="btn ghost block hidden" id="sso-login" href="/auth/oidc/login">使用统一 SSO 登录</a>
+        <p class="hint" id="login-hint">本地账号仅用于初始化和 SSO 故障应急。</p>
+      </div>
+    </div>
+
+    <div id="app-view" class="app-shell hidden">
+      <aside class="sidebar">
+        <div class="sidebar-brand"><span class="brand-mark small">F</span><span>Forge</span></div>
+        <nav id="nav"></nav>
+        <div class="sidebar-footer">
+          <div id="user-chip" class="user-chip"></div>
+          <button id="logout" class="btn ghost small">退出</button>
+        </div>
+      </aside>
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <h2 id="page-title">总览</h2>
+            <p id="page-subtitle" class="muted"></p>
+          </div>
+          <div class="top-actions">
+            <span class="status-dot" title="API 在线"></span>
+            <button id="refresh" class="btn ghost small">刷新</button>
+          </div>
+        </header>
+        <section id="content" class="content"></section>
+      </main>
+    </div>
+
+    <dialog id="modal">
+      <form method="dialog" id="modal-form">
+        <header class="modal-head">
+          <h3 id="modal-title"></h3>
+          <button class="icon-btn" value="cancel" aria-label="关闭">×</button>
+        </header>
+        <div id="modal-body" class="modal-body"></div>
+        <footer class="modal-foot">
+          <button class="btn ghost" value="cancel">取消</button>
+          <button class="btn primary" id="modal-submit" value="default">确定</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <div id="toast" class="toast hidden" role="status"></div>
+    <script src="/assets/app.js" type="module"></script>
+  </body>
+</html>

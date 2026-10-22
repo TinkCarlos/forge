@@ -1,0 +1,10 @@
+node_modules/
+dist/
+coverage/
+.env
+.env.local
+data/
+uploads/
+*.log
+.DS_Store
+apps/console/public/vendor/

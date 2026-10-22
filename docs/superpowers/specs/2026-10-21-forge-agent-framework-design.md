@@ -1,5 +1,7 @@
 # Forge 企业级 Agent 开发框架 设计文档
 
+> **历史版本（V1）**：保留用于追溯。最新设计见 [V2 总体设计](../../02-architecture/system-design.md)，需求见 [产品需求](../../01-requirements/product-requirements.md)，统一登录/权限/发布见 [文档索引](../../README.md)。
+
 日期：2026-10-21　状态：设计已确认，待用户审阅
 
 ## 1. 目标与约束
