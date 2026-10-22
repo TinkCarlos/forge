@@ -186,7 +186,8 @@ function setApiStatus(ok) {
 async function checkHealth() {
   try {
     const response = await fetch("/readyz", { cache: "no-store", credentials: "same-origin" });
-    setApiStatus(response.ok);
+    const body = await response.json().catch(() => null);
+    setApiStatus(response.ok && body?.database !== false);
   } catch {
     setApiStatus(false);
   }
