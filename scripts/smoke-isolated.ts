@@ -2,6 +2,8 @@
 // Flow: reset + migrate + seed FORGE_SMOKE_DB, start a private API, run smoke, stop the API.
 // The private API needs the mock services on :8090 (pnpm mock:services), same as plain smoke.
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { mkdirSync, rmSync, writeFileSync, readFileSync } from "node:fs";
+import { createServer } from "node:net";
 
 const baseUrl = new URL(process.env.DATABASE_URL ?? "mysql://forge:forge_dev_password@127.0.0.1:3306/forge");
 const dbName = process.env.FORGE_SMOKE_DB ?? "forge_test";
@@ -35,6 +37,27 @@ async function waitHealthy(url: string, timeoutMs = 30_000): Promise<void> {
   throw new Error(`API on ${url} not healthy in ${timeoutMs}ms`);
 }
 
+// One run at a time: concurrent runs would reset the same database and race for the port.
+const lockDir = `/tmp/forge-smoke-isolated-${dbName}.lock`;
+try {
+  mkdirSync(lockDir);
+  writeFileSync(`${lockDir}/pid`, String(process.pid));
+} catch {
+  let owner = "?";
+  try { owner = readFileSync(`${lockDir}/pid`, "utf8"); } catch {}
+  console.error(`Refusing: another smoke:isolated is running on ${dbName} (pid ${owner}). Remove ${lockDir} if it is stale.`);
+  process.exit(1);
+}
+const portFree = await new Promise<boolean>((resolve) => {
+  const probe = createServer().once("error", () => resolve(false)).once("listening", () => probe.close(() => resolve(true)));
+  probe.listen(Number(port), "0.0.0.0");
+});
+if (!portFree) {
+  rmSync(lockDir, { recursive: true, force: true });
+  console.error(`Refusing: port ${port} is already in use; set FORGE_SMOKE_PORT to a free port.`);
+  process.exit(1);
+}
+
 let api: ChildProcess | null = null;
 let code = 0;
 try {
@@ -53,5 +76,6 @@ try {
   if (api?.pid) {
     try { process.kill(-api.pid, "SIGTERM"); } catch {}
   }
+  rmSync(lockDir, { recursive: true, force: true });
 }
 process.exit(code);
