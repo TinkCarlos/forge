@@ -60,7 +60,7 @@ const tabMeta = {
   packages: ["能力包", "以声明式 JSON 安装 Agent / Skill / MCP / Provider"],
   runs: ["运行中心", "查看执行日志、工具调用与实时事件"],
   approvals: ["审批中心", "处理高风险工具调用"],
-  schedules: ["定时任务", "按 Cron 以服务身份运行 Agent"],
+  schedules: ["定时任务", "按 Cron 以服务身份运行（普通用户权限，数据范围为创建者所在部门）"],
   apps: ["应用与密钥", "开放平台 API Key、配额与 Webhook"],
   users: ["用户与权限", "功能角色与数据范围"],
   sso: ["SSO / Connector", "统一登录与 Agent 平台接入状态"],
@@ -462,7 +462,7 @@ async function renderSchedules() {
   state.agents = agents.items ?? [];
   $("#content").innerHTML = `
     <div class="card">
-      <div class="card-head"><div><h3>定时任务</h3><p class="muted">Cron + 时区；以当前账号身份运行</p></div><button class="btn primary" onclick="app.openScheduleCreate()">新建定时任务</button></div>
+      <div class="card-head"><div><h3>定时任务</h3><p class="muted">Cron + 时区；以服务身份运行（普通用户权限，数据范围为创建者所在部门）</p></div><button class="btn primary" onclick="app.openScheduleCreate()">新建定时任务</button></div>
       ${state.schedules.length ? `<div class="table-wrap"><table><thead><tr><th>名称</th><th>Agent</th><th>Cron</th><th>时区</th><th>下次运行</th><th>状态</th><th>操作</th></tr></thead><tbody>
         ${state.schedules.map((schedule) => `<tr><td><strong>${esc(schedule.name)}</strong><div class="muted mono">${esc(schedule.key)}</div></td><td>${esc(schedule.agent_name)}</td><td class="mono">${esc(schedule.cron)}</td><td>${esc(schedule.timezone)}</td><td>${fmt(schedule.next_run_at)}</td><td>${statusPill(schedule.status)}</td><td><div class="actions">${schedule.status === "active" ? `<button class="btn ghost small" onclick="app.scheduleAction('${esc(schedule.id)}','disable')">停用</button>` : `<button class="btn ghost small" onclick="app.scheduleAction('${esc(schedule.id)}','enable')">启用</button>`}<button class="btn ghost small" onclick="app.openScheduleEdit('${esc(schedule.id)}')">编辑</button><button class="btn ghost small" onclick="app.scheduleAction('${esc(schedule.id)}','run')">立即运行</button></div></td></tr>`).join("")}
       </tbody></table></div>` : empty("还没有定时任务", "创建一个 Cron 任务，框架会按计划提交 Run。")}
@@ -774,7 +774,7 @@ const app = {
   async toggleAgentApi(id, enabled) {
     try {
       const agent = state.agents.find((item) => item.id === id);
-      if (!enabled && !(await confirmAction(`关闭「${agent?.name ?? id}」的开放 API`, "关闭后外部应用调用会返回 403，之后可以随时重新开放。", "确认关闭"))) return;
+      if (!enabled && !(await confirmAction(`关闭「${agent?.name ?? id}」的开放 API`, "关闭后外部应用无法再发起新调用；已在运行的任务会继续完成，结果仍可查询。之后可以随时重新开放。", "确认关闭"))) return;
       await api(`/admin/api/agents/${id}`, { method: "PATCH", body: { apiEnabled: enabled } });
       toast(enabled ? "已开放 API" : "已关闭 API");
       await renderAgents();
