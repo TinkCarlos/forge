@@ -89,7 +89,7 @@ afterAll(async () => {
 });
 
 describe("route set", () => {
-  it("matches the 81-route baseline (79 pre-split + GET /next, /next/*; excluding auto HEAD and /assets/*)", () => {
+  it("matches the 85-route baseline (79 pre-split + /next ×2 + service-accounts ×4; excluding auto HEAD and /assets/*)", () => {
     const baseline = readFileSync(path.resolve(import.meta.dirname, "fixtures/routes-baseline.txt"), "utf8")
       .split("\n")
       .map((line) => line.trim())
@@ -102,7 +102,7 @@ describe("route set", () => {
           .map((r) => `${r.method} ${r.url}`),
       ),
     ].sort();
-    expect(baseline).toHaveLength(81);
+    expect(baseline).toHaveLength(85);
     expect(actual).toEqual(baseline);
     expect(app.hasRoute({ method: "GET", url: "/assets/*" })).toBe(true);
   });

@@ -83,3 +83,7 @@ GET /admin/api/service-accounts
 POST /admin/api/service-accounts
 GET /admin/api/service-accounts/:id
 PATCH /admin/api/service-accounts/:id
+GET /admin/api/service-accounts
+POST /admin/api/service-accounts
+GET /admin/api/service-accounts/:id
+PATCH /admin/api/service-accounts/:id
