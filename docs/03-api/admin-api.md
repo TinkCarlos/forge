@@ -441,7 +441,12 @@ If-Match: "rev-2"
     - **按键名**：把键名按 `_`、`-`、`.`、驼峰、连续大写缩写、字母和数字的边界拆成小写的词，任何一个词等于 `password`、`passwords`、`pwd`、`passwd`、`token`、`tokens`、`secret`、`secrets`、`key`、`keys`、`authorization`、`credential`、`credentials`、`cookie`、`cookies` 时，整个值写成 `***`。例如 `api_key`、`apiKey`、`APIKey`、`X-Api-Key`、`accessToken`、`DB_PWD`、`set_cookies`、`Set-Cookie` 会脱敏，`keyword`、`monkey`、`tokenizer`、`secretary` 不会。
     - **按值**：字符串去掉首尾空白后，以 `Bearer `、`Basic `、`sk-`、`ghp_`、`xox` 开头（都不区分大小写，`SK-`、`GHP_`、`BEARER ` 同样命中），或形如 JWT（`^eyJ[\w-]*\.[\w-]*\.[\w-]*$`）时，不论键名是什么都写成 `***`。
     - **URL 和问号**：能被解析的 `http`/`https` 地址里，名为 `token`、`access_token`、`key`、`secret`、`sig`、`signature`（不区分大小写）的参数值写成 `***`，地址其余部分原样保留。其他“像地址”的字符串（含 `://`，或去掉首尾空白后以 `/` 或 `www.` 开头）如果解析不了又含 `?`，第一个 `?` 之后的内容整体写成 `***`，`?` 本身保留，例如 `/cb?token=x` 写成 `/cb?***`、`ftp://h/?k=1` 写成 `ftp://h/?***`。普通文字里的问号不处理，例如 `明天开会?` 原样显示。
-    - **JSON 字符串**：去掉首尾空白后以 `{` 或 `[` 开头、且能被 `JSON.parse` 解析成对象或数组的字符串值，先解析，再按上面同样的规则逐层脱敏，按同样格式展示，例如 `body='{"password":"x"}'` 显示为 `body={password=***}`。解析失败的按普通字符串处理。
+    - **JSON 字符串**：去掉首尾空白后以 `{` 或 `[` 开头、并且跳过这个括号和其后的空白后，下一个字符是 `"`、`'`、`{` 或 `[` 的字符串，视为“像 JSON”。像 JSON 且 `JSON.parse` 成功的，先解析，再按上面同样的规则逐层脱敏，按同样格式展示，例如 `body='{"password":"x"}'` 显示为 `body={password=***}`；像 JSON 但解析失败的（比如被截断的 `{ "password":"x"`、`{'token': 'x'`、`[{"k":`），整个值写成 `***`。不像 JSON 的括号开头文字按普通字符串处理，例如 `[草稿] 周报`、`{名字} 你好`、`[1, 2]` 原样显示。
+    - **已知限制**（以下情况目前不会脱敏，`tests/args-preview.test.ts` 里固定了当前输出，行为一旦变化测试会提醒）：
+      - 能被解析的 `http`/`https` 地址里 `#` 之后的内容原样保留，例如 `https://app.test/cb#access_token=…`。
+      - 不带协议、也不以 `/` 或 `www.` 开头的“像地址”的值不按地址处理，例如 `ex.com/a?token=…`、`api.ex.com:8443/v1?key=…`。
+      - 夹在普通文字里的秘密不识别，例如 `密码是 hunter2，token=abc123`、`use Authorization: Bearer abc`（只有整串以 `Bearer ` 开头才命中）。
+      - 全角 `？` 不算查询分隔符，例如 `/cb？token=…` 原样显示。
     - 脱敏之后，每个值截到 80 字符；整串不超过 300 字符，截断处以 `…` 结尾。键的顺序以数据库 JSON 存储顺序为准。
 - 响应里永远不包含原始参数（`args_json`）。
 

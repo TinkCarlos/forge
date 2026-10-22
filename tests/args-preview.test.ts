@@ -128,8 +128,46 @@ describe("buildArgsPreview", () => {
       list: '[{"token":"T4"},"sk-T5"]',
       bad: '{"password": broken',
     })!;
-    expect(preview).toBe('body={to=a@b.com, auth={apiKey=***}, h=[***], cb=https://x.test/?sig=***}, list=[{token=***}, ***], bad={"password": broken');
+    expect(preview).toBe('body={to=a@b.com, auth={apiKey=***}, h=[***], cb=https://x.test/?sig=***}, list=[{token=***}, ***], bad=***');
     for (const raw of ["K1", "B2", "S3", "T4", "sk-T5"]) expect(preview).not.toContain(raw);
     expect(buildArgsPreview('{"secret":"top"}')).toBe("{secret=***}");
+  });
+
+  it("JSON-like strings ({ or [ followed by \" ' { or [) that do not parse are masked whole; other bracket text is plain", () => {
+    expect(buildArgsPreview({ a: '{ "password":"x"' })).toBe("a=***");
+    expect(buildArgsPreview({ a: "{'token': 'x'" })).toBe("a=***");
+    expect(buildArgsPreview({ a: '[{"k":' })).toBe("a=***");
+    expect(buildArgsPreview({ a: '  [ ["sk-' })).toBe("a=***");
+    expect(buildArgsPreview("{\"broken")).toBe("***");
+    expect(buildArgsPreview({ d: "[草稿] 周报" })).toBe("d=[草稿] 周报");
+    expect(buildArgsPreview({ d: "{名字} 你好" })).toBe("d={名字} 你好");
+    expect(buildArgsPreview({ d: "[1, 2", e: "{not json}", f: "[1, 2]", g: "{}" })).toBe("d=[1, 2, e={not json}, f=[1, 2], g={}");
+    expect(buildArgsPreview({ d: "[草稿] /cb?token=T" })).toBe("d=[草稿] /cb?token=T");
+  });
+
+  // Known limitations, pinned to the CURRENT output so any change in behaviour is noticed.
+  // These values are NOT masked today; see docs/03-api/admin-api.md "已知限制".
+  describe("known limitations (pinned current output)", () => {
+    it("secrets after # in a URL are kept", () => {
+      expect(buildArgsPreview({ u: "https://app.test/cb#access_token=FRAG1" })).toBe("u=https://app.test/cb#access_token=FRAG1");
+      expect(buildArgsPreview({ u: "https://app.test/cb?a=1&token=Q#token=FRAG2" })).toBe("u=https://app.test/cb?a=1&token=***#token=FRAG2");
+      expect(buildArgsPreview({ u: "/cb?x=1#token=FRAG3" })).toBe("u=/cb?***");
+    });
+
+    it("URL-ish values without a scheme, leading / or www. are not treated as URLs", () => {
+      expect(buildArgsPreview({ u: "ex.com/a?token=NOSCHEME" })).toBe("u=ex.com/a?token=NOSCHEME");
+      expect(buildArgsPreview({ u: "api.ex.com:8443/v1?key=NOSCHEME2" })).toBe("u=api.ex.com:8443/v1?key=NOSCHEME2");
+    });
+
+    it("secrets inside free text are kept", () => {
+      expect(buildArgsPreview({ note: "密码是 hunter2，token=abc123" })).toBe("note=密码是 hunter2，token=abc123");
+      expect(buildArgsPreview({ note: "use Authorization: Bearer abc" })).toBe("note=use Authorization: Bearer abc");
+    });
+
+    it("full-width ？ is not a query separator", () => {
+      expect(buildArgsPreview({ u: "/cb？token=FW1" })).toBe("u=/cb？token=FW1");
+      expect(buildArgsPreview({ u: "https://x.test/p？token=FW2" })).toBe("u=https://x.test/p？token=FW2");
+      expect(buildArgsPreview({ u: "www.x.test/p？token=FW3" })).toBe("u=www.x.test/p？token=FW3");
+    });
   });
 });

@@ -100,15 +100,30 @@ export function maskQueryString(value: string): string {
   return `${value.slice(0, at + 1)}${MASK}`;
 }
 
-/** Parses strings that hold a JSON object/array (trimmed starts with `{` or `[`); anything else -> undefined. */
-function parseJsonContainer(value: string): object | undefined {
+const UNPARSEABLE_JSON = Symbol("unparseable-json");
+
+/**
+ * JSON-like: the trimmed value starts with `{` or `[`, and the next non-whitespace character is `"`, `'`, `{` or `[`
+ * (so `{"a":…`, `{'token':…`, `[{…`, `["…` are JSON-like; `[草稿] 周报`, `{名字} 你好`, `[1, 2]` are not).
+ */
+export function looksLikeJson(value: string): boolean {
   const text = value.trim();
-  if (!text.startsWith("{") && !text.startsWith("[")) return undefined;
+  if (!text.startsWith("{") && !text.startsWith("[")) return false;
+  return /^["'{[]/.test(text.slice(1).trimStart());
+}
+
+/**
+ * For JSON-like strings ({@link looksLikeJson}): the parsed object/array, or {@link UNPARSEABLE_JSON} when it does not
+ * parse (it may be truncated/broken JSON with secrets in it, so the caller masks it entirely). Anything else -> undefined.
+ */
+function parseJsonContainer(value: string): object | typeof UNPARSEABLE_JSON | undefined {
+  if (!looksLikeJson(value)) return undefined;
+  const text = value.trim();
   try {
     const parsed: unknown = JSON.parse(text);
-    return parsed !== null && typeof parsed === "object" ? parsed : undefined;
+    return parsed !== null && typeof parsed === "object" ? parsed : UNPARSEABLE_JSON;
   } catch {
-    return undefined;
+    return UNPARSEABLE_JSON;
   }
 }
 
@@ -121,7 +136,9 @@ function renderScalar(value: string | number | boolean | bigint | symbol, depth:
   if (typeof value !== "string") return clip(String(value), ARGS_PREVIEW_VALUE_MAX);
   if (isSecretValue(value)) return MASK;
   // JSON-encoded bodies (e.g. body='{"password":"x"}') are masked with the same rules as real objects.
+  // JSON-like text that does not parse is masked whole (it may be broken JSON with secrets in it).
   const embedded = parseJsonContainer(value);
+  if (embedded === UNPARSEABLE_JSON) return MASK;
   if (embedded !== undefined) return render(embedded, depth);
   return clip(maskQueryString(value), ARGS_PREVIEW_VALUE_MAX);
 }
@@ -157,7 +174,8 @@ function renderEntries(obj: Record<string, unknown>, depth: number): string {
  * - Parseable http(s) URL strings: values of query params token/access_token/key/secret/sig/signature -> `***`, rest kept.
  *   Other URL-looking strings (`://`, leading `/` or `www.`) containing `?`: everything after the first `?` -> `***`.
  *   Plain text with `?` is left alone.
- * - Strings holding a JSON object/array are parsed and rendered/masked like nested objects.
+ * - JSON-like strings ({@link looksLikeJson}) are parsed and rendered/masked like nested objects; JSON-like strings that
+ *   do not parse become `***`. Other bracket-prefixed text (`[草稿] 周报`) follows the normal string rules.
  * - Every other value is stringified and cut to {@link ARGS_PREVIEW_VALUE_MAX} chars (ending in `…`);
  *   the whole preview is cut to {@link ARGS_PREVIEW_TOTAL_MAX} chars.
  */
