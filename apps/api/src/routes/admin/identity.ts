@@ -9,7 +9,7 @@ import {
 } from "@forge/core";
 import { assertCanGrant, assertCanManageUser, grantDefaultDataScope, loadVisibleUserOr404, maskArgsDeep, userFilterFor } from "@forge/governance";
 import { oidcConfigured } from "@forge/identity";
-import { repos } from "@forge/store";
+import { repos, type UserRow } from "@forge/store";
 import {
   bodyOf,
   param,
@@ -20,13 +20,35 @@ import {
   enumBody,
 } from "../../plugins/http-helpers.js";
 
+/**
+ * User list DTO (I-USR-01): explicit whitelist instead of spreading the row. Field names stay snake_case because the
+ * legacy console (apps/console/public/app.js) and smoke.ts read them; password_hash is never output, idp_subject and
+ * is_emergency_admin only for platform_admin.
+ */
+function presentUser(user: UserRow, platformAdmin: boolean) {
+  return {
+    id: user.id,
+    username: user.username,
+    email: user.email,
+    display_name: user.display_name,
+    role: user.role,
+    data_scope: user.data_scope,
+    org_unit_id: user.org_unit_id,
+    status: user.status,
+    created_at: user.created_at,
+    updated_at: user.updated_at,
+    ...(platformAdmin ? { idp_subject: user.idp_subject, is_emergency_admin: Boolean(Number(user.is_emergency_admin)) } : {}),
+  };
+}
+
 export default async function adminIdentityRoutes(app: FastifyInstance): Promise<void> {
   // Users: a non-platform_admin sees and manages only users in its own data scope (filtered in SQL; others -> same 404
   // as nonexistent), cannot grant a higher role or wider dataScope (403 POL-2001) and cannot modify a platform_admin.
   app.get("/admin/api/users", async (request) => {
     const session = await admin(request, "user.view");
     const users = await repos.listUsers(await userFilterFor(session.principal));
-    return { items: users.map((user) => ({ ...user, password_hash: undefined })) };
+    const platformAdmin = session.principal.role === "platform_admin";
+    return { items: users.map((user) => presentUser(user, platformAdmin)) };
   });
 
   app.post("/admin/api/users", async (request) => {

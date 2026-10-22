@@ -11,6 +11,7 @@ export interface UserRow {
   status: string;
   is_emergency_admin: number;
   created_at: Date;
+  updated_at: Date;
 }
 
 /** Data-scope filter for user lists: `{}` = all users; `orgIds` = users in these departments; `userId` = only this user. */

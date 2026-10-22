@@ -668,7 +668,7 @@ kb.view kb.manage eval.view eval.manage
 | `auditor` | 审计与用量只读 |
 | `user` | 仅使用被授权的 Agent |
 
-用户管理（当前实现）：`GET /admin/api/users` 需 `user.view`，`POST /admin/api/users`、`PATCH /admin/api/users/{id}` 需 `user.manage`（文档上表的 `org.view`/`org.manage` 尚未实现）。用户 `status`（T）：建用户和 PATCH 用户时 `status` 只接受 `active`、`disabled`（代码里没有写入 `deleted` 的路径；登录与会话只认 `active`），其他值返回 `400 CFG-8501`，不写库；建用户不传 `status` 时为 `active`。
+用户管理（当前实现）：`GET /admin/api/users` 需 `user.view`，`POST /admin/api/users`、`PATCH /admin/api/users/{id}` 需 `user.manage`（文档上表的 `org.view`/`org.manage` 尚未实现）。用户 `status`（T）：建用户和 PATCH 用户时 `status` 只接受 `active`、`disabled`（代码里没有写入 `deleted` 的路径；登录与会话只认 `active`），其他值返回 `400 CFG-8501`，不写库；建用户不传 `status` 时为 `active`。`GET /admin/api/users`（I-USR-01）只输出白名单字段：`id`、`username`、`email`、`display_name`、`role`、`data_scope`、`org_unit_id`、`status`、`created_at`、`updated_at`（沿用旧控制台在用的 snake_case 命名，不改名）；`idp_subject` 和 `is_emergency_admin`（布尔）只对 platform_admin 输出；`password_hash` 任何角色都不输出。
 
 - 数据范围在 SQL 里过滤：platform_admin 和 `dataScope = all` 看全部用户；`org` 只看本部门及下级部门的用户（`org_unit_id` 为空的用户不可见）；`self` 只看自己。org_admin 不再能看到其他部门的用户。
 - `PATCH /users/{id}`：先校验 `user.manage`（无权限 → 403），再按列表同一数据范围查用户；其他部门的用户与不存在的用户返回完全相同的 `404 RUN-7001「用户不存在」`。
