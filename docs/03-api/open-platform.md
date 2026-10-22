@@ -352,7 +352,7 @@ data: {"type":"run.completed","seq":15,"runId":"...","data":{"status":"succeeded
 
 ### `POST /open/v1/runs/{runId}/cancel`
 
-- 幂等：已取消/已结束返回当前 Run 对象（`200`）。
+- 已结束（`succeeded`、`failed`、`cancelled`、`budget_exhausted`）：`409 RUN-7005「Run 已结束，不能取消」`，`details.status` 为当前状态；和管理端、Connector 入口一致（#79 / I-RUN-06）。当前实现成功时返回 `200 { "ok": true, "status": "<取消后的实际状态>" }`（`queued`/`waiting_approval` 立即变为 `cancelled`；`running` 在 worker 停下前仍是 `running`），不再返回 `cancelling`。
 - 可取消状态：`queued`、`running`、`waiting_approval`。
 - 取消不保证外部副作用回滚；文档明确提示调用方使用幂等写接口。
 - 响应 `202` + Run 对象；最终状态以查询为准。
@@ -481,7 +481,7 @@ v1 = hex(HMAC_SHA256(webhookSecret, signed))
 | 401 | Key 缺失、无效、过期 | `AUTH-1001` |
 | 403 | Scope 不足、应用停用 | `POL-2001` |
 | 404 | Agent/Run/文件不存在或未开放 | `RUN-7001` |
-| 409 | 状态不允许、幂等冲突 | `RUN-7002`、`OPN-4503` |
+| 409 | 状态不允许、Run 已结束、幂等冲突 | `RUN-7002`、`RUN-7005`、`OPN-4503` |
 | 413 | 请求体/文件超限 | `OPN-4504` |
 | 415 | Content-Type 不支持 | `OPN-4505` |
 | 429 | 限流/配额耗尽 | `OPN-4501`/`OPN-4502` |

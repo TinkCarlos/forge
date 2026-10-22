@@ -447,7 +447,7 @@ Pi 内置 bash/文件工具在服务端禁用。文档解析与浏览器在独�
 | `OPN-45xx` / `WHK-46xx` | 开放平台/Webhook | `OPN-4501` 配额耗尽；`WHK-4601` 验签失败 |
 | `CON-47xx` / `SCD-48xx` | Connector/定时任务 | `CON-4701` Principal 验签失败；`SCD-4801` 服务账号停用；`SCD-4803` 触发时出现未分类异常；SCD-4804 服务账号角色不允许（platform_admin 不可绑定定时任务） |
 | `BUD-5xxx` / `OUT-6xxx` | 预算/输出 | `BUD-5001` 成本耗尽 |
-| `RUN-7xxx` | 运行 | `RUN-7001` Run 不存在；`RUN-7002` 状态不允许 |
+| `RUN-7xxx` | 运行 | `RUN-7001` Run 不存在；`RUN-7002` 状态不允许；`RUN-7005` Run 已结束，操作不可再进行（取消、审批决定），409 |
 | `PKG-8xxx` / `CFG-85xx` | 包/配置 | `PKG-8001` manifest 非法；`CFG-8501` 配置缺失 |
 | `SYS-9xxx` | 基础设施 | `SYS-9002` 凭据读取失败 |
 

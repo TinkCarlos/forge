@@ -304,10 +304,17 @@ export async function executeRun(runId: string, workerId = currentWorkerId()): P
   await runClaimed(claimed, workerId);
 }
 
+/** Run already finished: the operation (cancel, approval decision) is no longer possible. 409. */
+export const RUN_FINISHED_CODE = "RUN-7005";
+
+/**
+ * Requests cancellation. A Run that already finished cannot be cancelled: 409 RUN-7005「Run 已结束，不能取消」
+ * (#79 / I-RUN-06), the same for admin, open and integration; callers write their audit only after this returns.
+ */
 export async function cancelRun(runId: string): Promise<void> {
   const run = await repos.getRun(runId);
   if (!run) return;
-  if (TERMINAL.includes(run.status)) return;
+  if (TERMINAL.includes(run.status)) throw new ForgeError(RUN_FINISHED_CODE, "Run 已结束，不能取消", 409, { status: run.status });
   await repos.requestCancel(runId);
   if (run.status === "queued" || run.status === "waiting_approval") {
     await finalize(run, "cancelled");

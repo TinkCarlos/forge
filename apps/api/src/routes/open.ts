@@ -201,7 +201,9 @@ export default async function openRoutes(app: FastifyInstance): Promise<void> {
     const run = await repos.getRun(param(request, "id"));
     if (!run || run.app_id !== String(context.app.id)) throw errors.notFound("Run 不存在");
     await cancelRun(run.id);
-    return { ok: true, status: "cancelling" };
+    // Report the real status (queued/waiting_approval -> cancelled; running stays running until the worker stops).
+    const fresh = await repos.getRun(run.id);
+    return { ok: true, status: fresh?.status ?? run.status };
   });
 
   app.get("/open/v1/openapi.json", async () => ({

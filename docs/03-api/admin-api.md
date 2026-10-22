@@ -441,6 +441,8 @@ POST /admin/v1/llm/providers
 | POST | `/approvals/{approvalId}/decide` | 批准/驳回 + 评论 | `approval.decide` |
 | POST | `/approvals/{approvalId}/delegate` | 转交（P1） | `approval.decide` |
 
+取消已结束的 Run（当前实现，#79 / I-RUN-06）：`POST /admin/api/runs/{id}/cancel`、`POST /open/v1/runs/{id}/cancel`、`POST /integration/v1/runs/{id}/cancel` 对状态为 `succeeded`、`failed`、`cancelled`、`budget_exhausted` 的 Run 统一返回 `409 RUN-7005「Run 已结束，不能取消」`（`details.status` 为当前状态），状态不变、不写 `run.cancel` 审计。此前三个入口都返回 200（admin 没有专门的码）。
+
 审批：
 
 ```http
