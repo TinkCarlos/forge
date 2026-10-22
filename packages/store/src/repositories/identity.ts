@@ -32,11 +32,12 @@ export const identityRepo = {
     passwordHash?: string | null;
     idpSubject?: string | null;
     emergency?: boolean;
+    status?: string;
   }): Promise<string> {
     const id = ulidWithPrefix("usr");
     await execute(
-      `INSERT INTO users (id, username, email, display_name, password_hash, role, data_scope, org_unit_id, idp_subject, is_emergency_admin)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO users (id, username, email, display_name, password_hash, role, data_scope, org_unit_id, idp_subject, is_emergency_admin, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         input.username,
@@ -48,6 +49,7 @@ export const identityRepo = {
         input.orgUnitId ?? null,
         input.idpSubject ?? null,
         input.emergency ? 1 : 0,
+        input.status ?? "active",
       ],
     );
     return id;

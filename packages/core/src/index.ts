@@ -4,6 +4,11 @@ import { ulid } from "ulid";
 export * from "./config";
 export * from "./outbound";
 
+/** User status values written by the code (T): login / loadActivePrincipal only accept "active". */
+export const USER_STATUSES = ["active", "disabled"] as const;
+/** Skill status values (K-12 / I-SKL-07): getPublishedSkillContent only serves "active". */
+export const SKILL_STATUSES = ["active", "disabled"] as const;
+
 export type Role = "platform_admin" | "org_admin" | "builder" | "operator" | "auditor" | "user";
 export type DataScope = "all" | "org" | "self" | "app";
 

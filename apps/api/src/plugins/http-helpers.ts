@@ -36,6 +36,19 @@ export function stringBody(body: Record<string, unknown>, key: string, fallback 
   return asString(body[key], fallback);
 }
 
+/**
+ * Enumerated body field (status whitelists, T / K-12): undefined when absent; otherwise must be one of `allowed`
+ * (exact, case-sensitive string) or 400 CFG-8501. Never coerces, so a typo cannot silently become another state.
+ */
+export function enumBody<T extends string>(body: Record<string, unknown>, key: string, allowed: readonly T[]): T | undefined {
+  const value = body[key];
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || !(allowed as readonly string[]).includes(value)) {
+    throw errors.invalid(`${key} 只能是 ${allowed.join(" 或 ")}`);
+  }
+  return value as T;
+}
+
 export function arrayBody(body: Record<string, unknown>, key: string): string[] {
   const value = body[key];
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];

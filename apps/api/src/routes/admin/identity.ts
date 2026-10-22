@@ -5,6 +5,7 @@ import {
   hashPassword,
   ROLE_PERMISSIONS,
   type Role,
+  USER_STATUSES,
 } from "@forge/core";
 import { assertCanGrant, assertCanManageUser, grantDefaultDataScope, loadVisibleUserOr404, maskArgsDeep, userFilterFor } from "@forge/governance";
 import { oidcConfigured } from "@forge/identity";
@@ -16,6 +17,7 @@ import {
   admin,
   writeAudit,
   requireBodyString,
+  enumBody,
 } from "../../plugins/http-helpers.js";
 
 export default async function adminIdentityRoutes(app: FastifyInstance): Promise<void> {
@@ -31,6 +33,7 @@ export default async function adminIdentityRoutes(app: FastifyInstance): Promise
     const session = await admin(request, "user.manage");
     const body = bodyOf(request);
     const email = requireBodyString(body, "email");
+    const status = enumBody(body, "status", USER_STATUSES);
     if (await repos.getUserByEmail(email)) throw errors.conflict("邮箱已存在");
     const role = stringBody(body, "role", "user");
     if (!Object.keys(ROLE_PERMISSIONS).includes(role)) throw errors.invalid("非法角色");
@@ -45,6 +48,7 @@ export default async function adminIdentityRoutes(app: FastifyInstance): Promise
       // Always the caller's own department; body.orgUnitId is ignored.
       orgUnitId: session.principal.orgUnitId,
       passwordHash: stringBody(body, "password") ? hashPassword(stringBody(body, "password")) : null,
+      status,
     });
     await writeAudit(session, "user.create", "user", id, { email, role });
     return { id };
@@ -60,7 +64,7 @@ export default async function adminIdentityRoutes(app: FastifyInstance): Promise
     if (!Object.keys(ROLE_PERMISSIONS).includes(role)) throw errors.invalid("非法角色");
     const dataScope = stringBody(body, "dataScope") || grantDefaultDataScope(session.principal, role as Role);
     assertCanGrant(session.principal, role, dataScope);
-    const status = body.status !== undefined ? stringBody(body, "status") : undefined;
+    const status = enumBody(body, "status", USER_STATUSES);
     await repos.updateUser(target.id, { role, dataScope, status });
     await writeAudit(session, "user.update", "user", target.id, { role, dataScope: stringBody(body, "dataScope"), ...(status !== undefined ? { status } : {}) });
     return { ok: true };

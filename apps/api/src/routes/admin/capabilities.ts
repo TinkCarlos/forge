@@ -1,5 +1,5 @@
 import { type FastifyInstance } from "fastify";
-import { assertOutboundUrlStatic, errors } from "@forge/core";
+import { SKILL_STATUSES, assertOutboundUrlStatic, errors } from "@forge/core";
 import { discoverMcpTools, parseOpenApi } from "@forge/capabilities";
 import { maskArgsDeep } from "@forge/governance";
 import { repos } from "@forge/store";
@@ -11,6 +11,7 @@ import {
   admin,
   writeAudit,
   requireBodyString,
+  enumBody,
 } from "../../plugins/http-helpers.js";
 
 export default async function adminCapabilityRoutes(app: FastifyInstance): Promise<void> {
@@ -126,12 +127,13 @@ export default async function adminCapabilityRoutes(app: FastifyInstance): Promi
     const skill = await repos.getSkill(param(request, "id"));
     if (!skill) throw errors.notFound("Skill 不存在");
     const body = bodyOf(request);
+    const status = enumBody(body, "status", SKILL_STATUSES);
     await repos.updateSkill(skill.id as string, {
       name: body.name !== undefined ? stringBody(body, "name") : undefined,
       description: body.description !== undefined ? stringBody(body, "description") : undefined,
-      status: body.status !== undefined ? stringBody(body, "status") : undefined,
+      status,
     });
-    await writeAudit(session, "skill.update", "skill", String(skill.id), { name: body.name });
+    await writeAudit(session, "skill.update", "skill", String(skill.id), { name: body.name, ...(status !== undefined ? { status } : {}) });
     return { ok: true };
   });
 
