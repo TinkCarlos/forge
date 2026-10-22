@@ -253,7 +253,7 @@
 | U-04 | 样式 | P2 | 浅色 `muted-foreground` | 对比度 ≥4.5:1（axe） → 映射 **UI-055**，不单独计 fail |
 | U-05 | 样式 | P3 | ⌘K 提示字号 | ≥12px → 映射 **UI-056**，不单独计 fail |
 | U-06 | 样式 | P3 | favicon | 无 404 → 映射 **UI-058**，不单独计 fail |
-| U-07 | 样式 | P3 | Tab padding 3px | Tabs 的 3px 内边距是 shadcn 自带样式，记为已知例外，不记 fail；**前提**：触屏下 Tab 点击区仍须 ≥44，按 **UI-054** 测——修复前实测只有 29；`04ef9a8` 已给触屏下的 Tab 加了 min-height 44；等干净克隆复验量完，结果作为 UI-054 的证据，**实测仍是 29 就计 fail** → 映射 **UI-057**（间距）/ **UI-054**（点击区），不单独计 fail |
+| U-07 | 样式 | P3 | Tab padding 3px | Tabs 的 3px 内边距是 shadcn 自带样式，记为已知例外，不记 fail；前提：触屏下 Tab 点击区须 ≥44，按 **UI-054** 测（修复前实测 29；`04ef9a8` 加了 min-height 44）。**复验 44，pass（mock 实测）**：375 / 768 / 1023 下 Agents 页 3 个 Tab 触屏模拟高度均 44，computed min-height 44px → 映射 **UI-057**（间距）/ **UI-054**（点击区），不单独计 fail |
 | U-08 | 样式 | P1 | 1440/1280 浅+深 | 间距抽查关键组件为 4 的倍数；无意外重叠 → 映射 **UI-052 / UI-057**，不单独计 fail |
 | U-09 | 样式 | P1 | 减少动态效果 | 同 F-APR-11 → 映射 **UI-062**，不单独计 fail |
 | U-10 | 样式 | P1 | 5 个确认弹窗焦点归还 | Esc/取消/确认（行消失→h1） → 映射 **UI-060 / UI-061**，不单独计 fail |
@@ -331,7 +331,7 @@
 | S-27 | #8 审计缺口 | P1 | enable/disable schedule、open/integration cancel、integration 建 run | 成功后 audit 应有记录——无则缺陷或改文档 |
 | S-28 | #9 会话不失效 | P0 | PA 停用某用户后，该用户旧会话调 API | 401。**已知缺陷 K-04**：会话为登录时内存快照，8h 内仍 200。扩展场景见 **S-45** |
 | S-29 | #10 plugin 部分写入 | P1 | install 缺顶层 key（先建子资源） | 应事务回滚或补偿；残留无审计 → 缺陷 |
-| S-30 | #11 OIDC returnTo | P0 | `/auth/oidc/login?returnTo=//evil.example` | 应拒绝；若 302 到外域 → 开放重定向缺陷 |
+| S-30 | #10 OIDC returnTo（开放重定向） | **P1** | `/auth/oidc/login?returnTo=` 依次取：`//evil.example`、`/\evil.example`、`/%2F%2Fevil.example`、`https://evil.example`、`/%09/evil.example`（控制字符）；完成 OIDC 登录看最终跳转 | 一律**回落到 `/next/`**，不跳外域。规则（修复 R）：必须以单个 `/` 开头，拒绝 `//`、`/\` 和控制字符；再以本站 origin 为 base 解析，origin 必须等于本站。**已知缺陷 K-14（P1）**：现状 `//` 开头被放过（`auth.ts:54,67`） |
 | S-31 | Run 详情不打码 | P0 | builder/auditor/user 调 `GET /runs/:id` 含敏感 tool args | 应打码或 403；原文暴露 → 缺陷 |
 | S-32 | 登录时序 | P2 | 邮箱不存在 vs 密码错误的耗时 | 记录差值；过大则记建议 |
 
@@ -430,6 +430,7 @@
 | OPS-024 | **P0**，与 S-45 / S-45b 互引。MySQL 断开 30 秒后恢复：断开期间带会话的请求返回 **503**（不是 401），会话不能被删；恢复后同一 cookie 直接继续用，不用重新登录。**界面预期**：新控制台收到 503 时**不跳登录页**，页面显示错误提示和**重试按钮**，会话保留；数据库恢复后点重试即可继续 |
 | OPS-025 | P2。autocannon 测修复 F 前后的 p95 延迟（只读接口如 `GET /admin/api/agents`，30s，c=20）；涨幅 >20% 记一般问题；EXPLAIN 检查用户 + 部门链查询走索引 |
 | OPS-文档 | 出站白名单环境变量写进 `.env.example`，带注释，**默认为空**（修复 G 上线时补；变量名以后端实现为准） |
+| OPS-026 | **P1**。测试启动时检查库名：未设置或库名不以 `_test` 结尾 → **报错退出**；只有设了 `FORGE_ALLOW_NON_TEST_DB=1` 才放行（修复 Z）。子用例：**OPS-026a** 未设置 `DATABASE_URL` → 拒绝；**OPS-026b** 设为 `forge` → 拒绝；**OPS-026c** 设为 `forge_test` → 通过。**已知缺陷 K-16**：现状未设置时落到默认库 `forge`（本次干净克隆复验时实际发生） |
 
 ## 12. 架构师横向补洞（合并进 UI / F）
 
@@ -476,6 +477,11 @@
 | K-08 | S-25 | 400 | runs/audit 非法 limit → 500 |
 | K-09 | I-CSRF-06（及 I-G-06 / I-G-07） | 坏 JSON 400、超 2MB 413、Content-Type 不对 415、空 JSON 体 400 | 均 500 SYS-9001（body 先于 CSRF 解析，顺序保留） |
 | K-10 | I-MDL-11（执行表 #21～#25） | Provider / 模型只有 PA 能写，OA / BL → 403 | OA、BL 持有 `model.manage`，可写（越权，P1；架构师推荐 C 方案，【待 Cursor Jackson 拍板】；修复 **Q**） |
+| K-12 | I-SKL-07（执行表 #33） | `status` 非法 → 400 CFG-8501，不入库 | `status:"foo"` 200 入库，Skill 静默下线；超 16 字符 500 |
+| K-13 | I-APR-38（执行表 #42），P1 | Run 已结束 → decide 409 RUN-7005，Run 不恢复 | decide 200，Run 继续执行（修复 W） |
+| K-14 | S-30（执行表 #10），P1 | 开放重定向：非本站 origin 一律回落 `/next/` | `//evil.example` 被放过，跳外域（修复 R） |
+| K-15 | UI-056，P2 | 字号只用 12/13/14/16/20/28 | 登录页标题「登录 Forge 控制台」18px、Agents 页 H1 24px；不在 `04ef9a8` 改动范围；前端确认 P2，等测试问题汇总后一起改，不动本次冻结基线 |
+| K-16 | OPS-026，P1 | 测试库名非 `_test` 结尾或未设置 → 拒绝运行 | 未设 `DATABASE_URL` 时 `pnpm test` 落到默认库 `forge`（干净克隆复验时实际发生）；修复 Z |
 | K-11 | UI-095 | 确认框内操作收到 401 / 403 时确认框自动关闭，只留错误提示 | 发布收到 403 后确认框不关闭 |
 
 ### 14.3 新增
@@ -523,6 +529,7 @@ MCP discover / call、Provider test、web_fetch、webhook **统一走同一个�
 | 会话快照 | **S-45 定 P0** | S-45、S-28、K-04 |
 | 建用户 / 服务账号不能指定部门 | **P2 功能缺陷**（不算安全问题），本轮不修。以后的规则：请求可选填 `orgUnitId`；PA 可填任意部门，org_admin 只能填本部门或子部门，超出范围 403 POL-2001；不填即调用者自己的部门；PATCH 改部门规则相同。本轮需要跨部门数据的用例（I-SCOPE-10c、I-SA-10）由运维在 3196 的 `forge_ops` 改库造 | I-SCOPE-10c、I-SA-10 |
 | MCP / Skill / 工具源写权限不分部门 | **设计缺口 P2**，本轮执行**不按 fail 计**。目标设计（C 方案）：资源带归属部门字段；OA / BL 可新建、可改本部门及子部门的资源；无归属部门的全局资源只有 PA 能改。需改表，下一轮做。【待 Cursor Jackson 拍板】，架构师推荐 C 方案 | 执行表 #27～#29、#31、#33、#34、#36 |
+| 插件卸载不按部门判定 | 本轮修复 P 只做「卸载不存在的插件 → 404」和「org_admin 卸载 → 403」测试；按插件 owner 部门判定放到**下一轮**，与 MCP、Skill 归属部门迁移一起做（plugins 表目前只有 `created_by`） | I-PLG-04、执行表 #68 |
 | 没有写权限时隐藏编辑和删除按钮 | 本轮**不测**；等 Cursor Jackson 拍板方案 C 之后由前端实现，到时再补用例（权限不足时的 403 提示见 UI-093） | 待补 |
 
 ### 15.5 横向补充（架构师）
@@ -542,7 +549,7 @@ Agent专家所列 UX 批次（UI-053～UI-057 改 4 条；新增 UI-059、UI-065
 ## 16. 后端修复串复验清单
 
 - 分支 `fix/blockers-authz-mask`（worktree `/Users/libo/projects/forge-blockers`，仅本地，未推送），基于 `4c2555e`。
-- 提交依次：**A** `dfef71f` · **B** `22b5254` · **C** `020c1e0` · **D** `eed019d` · **E** `e97cbba` · **F** `cf41287` · **G** 出站私网拦截（待定）· **H**（待定，内容待后端说明）· **I** 查库失败返回 503（待定）· **J** 定时任务重新校验身份（待定）· **L** agent 停用 409 + status 只收两值（待定）· **M** 取消已结束 Run 返回 409（待定）· **N** cron 先解析再建 Run（待定）· **O** body 解析返回 413 / 400 / 415（待定）· **P** 卸载插件按 owner 部门子树判定（待后端提交）· **Q** K-10：收回 org_admin、builder 的 `model.manage`（待 Cursor Jackson 拍板方案 C；后端确认单独提交，不并入 P）。
+- 提交依次（按后端给的顺序）：**A** `dfef71f` · **B** `22b5254` · **C** `020c1e0` · **D** `eed019d` · **E** `e97cbba` · **F** `cf41287` · **G** 出站私网拦截（待定）· **H**（待定，内容待后端说明）· **I** `fda5a74` 查库失败返回 503 SYS-9003 · **J** 定时任务重新校验身份（待定）· **L** agent 停用 409 + status 只收两值 + integration 建 Run 复用 `agentAccessible`（I-INT-17）（待定）· **M** 取消已结束 Run 返回 409 RUN-7005（待定）· **N** cron 先解析再建 Run（待定）· **O** body 解析返回 413 / 400 / 415（待定）· **P** 卸载不存在的插件返回 404 + org_admin 卸载 403 测试（待后端提交；后端建议本轮只做卸载不存在的插件返回 404、按部门判定放到下一轮，架构师已同意）· **R** 开放重定向（已同意，本轮修）· **T** 用户 status 白名单（已同意，本轮修）· **V** 用户列表 presenter，`idp_subject` / `is_emergency_admin` 只给 PA（已同意，本轮修）· **W** I-APR-38：`decideApproval` 判关联 Run 已结束 → 409 RUN-7005 并置审批不可操作（已同意，本轮修）· **X** 无主 Agent 只允许 PA 写（已同意，本轮修）· **Y** 补 6 个审计 action（`auth.logout`、`schedule.enable`、`schedule.disable`、`open.run.cancel`、`integration.run.create`、`integration.run.cancel`）· **Z** 测试库名守卫（OPS-026）。另：**Q** K-10 收回 org_admin、builder 的 `model.manage`（**待拍板**；单独提交，不并入 P）。
 - 复验时机：本轮执行测实问题后，按下表排队复验；复验结论记到对应用例 ID。
 
 | 复验用例 | 说明 |
@@ -557,12 +564,20 @@ Agent专家所列 UX 批次（UI-053～UI-057 改 4 条；新增 UI-059、UI-065
 | OPS-025 | 修复 F 前后 p95 与索引 |
 | S-39、S-40、S-42、S-46～S-49（含 S-48a～d）、I-MCP-02 | 出站私网拦截（G） |
 | （H） | 待后端说明 |
+| S-30（执行表 #10） | 开放重定向回落 `/next/`（R，K-14） |
+| I-USR-01（执行表 #57）、执行表 #59 | 用户 status 白名单（T）；用户列表 presenter，敏感字段只给 PA（V） |
+| I-APR-38（执行表 #42） | Run 已结束 → decide 409 RUN-7005（W，K-13） |
+| I-AGT-13（执行表 #16～#18） | 无主 Agent 只允许 PA 写（X） |
+| I-INT-17（执行表 #83） | integration 建 Run 复用 `agentAccessible`（L） |
+| I-AUD-01 / 执行表 #9 #47 #48 #79 #83 #86 | 补 6 个审计 action（Y） |
+| OPS-026a～c | 测试库名守卫（Z，K-16） |
+| I-SKL-07（执行表 #33） | Skill status 非法 → 400（K-12，提交待后端定） |
 | I-MDL-11（执行表 #21～#25） | 收回 org_admin、builder 的 `model.manage`，Provider / 模型只有 PA 能写（K-10，P1，修复 **Q**：待 Cursor Jackson 拍板方案 C；单独提交，不并入 P） |
-| I-PLG-04、执行表 #68 | 卸载插件按 owner 部门及子部门判定，范围外 404，PA 不受限，权限映射不动（P，**待后端提交**）。P 的单元测试覆盖四种情况：① 非 PA 但有卸载权限的身份卸载外部门插件 → 404；② 卸载本部门插件成功；③ PA 卸载任意部门插件成功；④ org_admin 卸载 → 403 |
+| I-PLG-04、I-PLG-03、执行表 #68 | 本轮 P 只做：卸载不存在的插件 → 404 不写审计；补「org_admin 卸载 → 403」测试（**待后端提交**）。单测四种：① 非 PA 有卸载权限的身份卸载外部门插件 → 404（**下一轮**）② 卸载本部门插件成功（**下一轮**）③ PA 卸载任意部门插件成功 ④ org_admin 卸载 → 403 |
 | S-45b、I-INT-10d（原 I-INT-10b）、OPS-024 | 查库失败返回 503，会话保留（I） |
 | F-SCH-14、F-SCH-15、F-SM-04a、F-SM-04b | 定时任务重新校验身份：SA 部门停用；未绑 SA 的老任务存的用户不可用（J） |
 | I-AGT-05、I-AGT-11、I-AGT-11b、I-AGT-11c | agent 停用 409 CFG-8503；status 只接受 active / disabled（L） |
-| I-RUN-06、I-OPEN-23（执行表 #79）、I-INT-16 | 取消已结束 Run 返回 409（M） |
+| I-RUN-06、I-OPEN-23（执行表 #79）、I-INT-16 | 取消已结束 Run 返回 409 RUN-7005「Run 已结束，不能取消」（M） |
 | I-SCH-17、I-ERR-20 | cron 先解析再建 Run（N） |
 | I-G-06、I-G-07、I-CSRF-06 | 413 / 400 / 415（O） |
 
@@ -587,3 +602,4 @@ Agent专家所列 UX 批次（UI-053～UI-057 改 4 条；新增 UI-059、UI-065
 | 2026-10-22 | UX 复核修正：删去「UX 批次未合入」等过时说法，改为「已在 `7823da5` 合入」（§15.6、变更记录）；F-APR-10 降为 P3（行高不影响功能，与 UI-057 一致）；UI-053 前置加 1024（表格布局）；UI-065 加 768；U-07 保留 Tabs 3px（shadcn 自带）为例外，但触屏 Tab 点击区须 ≥44 按 UI-054 测（修复前 29，`04ef9a8` 加 min-height 44，干净克隆复验结果作 UI-054 证据，仍为 29 计 fail） |
 | 2026-10-22 | UI-093 替代验证改为 operator 在 Agents 页打开「开放 API」开关（`PATCH /admin/api/agents/:id` 需 agent.manage → 403；备选「发布」需 agent.publish），删去原「builder 审批中心点批准」建议；新增 UI-094（builder 打开审批中心，列表 403：表格内错误行 + 错误码 + 重试，不跳登录、不丢登录态、无「批准」按钮，P2） |
 | 2026-10-22 | 前端核对代码更正：UI-093 删去「并确认」（「开放 API」开关不弹确认框、点击即发请求，403 后保持关闭）；UI-093 备选「发布」注明确认框不自动关闭不计入本条、由 UI-095 判，UI-093 只判错误提示 / 是否跳登录 / 登录态；新增 UI-095（P3，确认框内操作遇 401/403 应自动关闭，5xx / 网络错误可保留），现状记已知缺陷 **K-11** |
+| 2026-10-22 | 合后端执行表第 2 轮逐格核对（`/tmp/forge-logs/matrix-review-2.md`）：改 403 角色列表（#42 BL/AU/US、#43 #49 AU/US、#64 BL/OP/US）、#16～#18 无主 Agent 403、#21～#25 OA/BL 403 越权 P1（#25 按写操作处理）、#82 补 401 AUTH-1001 与 503 SYS-9003（修复 I `fda5a74`）、#10 / #24 / #51 / #57 / #67 等格；审计 6 格定名（Y）。架构师裁定：开放重定向 P1（K-14，修复 R，S-30 五种写法回落 `/next/`）；修复提交改名 T / V / W / X（不用 S、U），新增 Y、Z；P 缩为「不存在 404 + OA 403 测试」，按部门判定下一轮；取消已结束 Run 定 **409 RUN-7005「Run 已结束，不能取消」**，CFG-8503 只用于「Agent 已停用」。写死 I-USR-01、I-RUN-06 / I-OPEN-23 / I-INT-16、I-SKL-07（K-12）、I-AGT-13、I-INT-17、I-APR-38（K-13）现状。合 `04ef9a8` 复验：UI-056 字号 K-15（P2）、UI-053/054 已知例外依据、UI-054 Tab 44 证据、U-07 复验 pass、新增 OPS-026a～c（K-16，修复 Z） |

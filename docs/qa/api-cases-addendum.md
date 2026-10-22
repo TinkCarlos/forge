@@ -70,8 +70,8 @@
 | I-INT-13 | #83 | 映射用户属部门 A | 建 Run 后 PA 查 `GET /admin/api/runs/:id` | Run 的 org = 部门 A；subject = 映射用户 | P1 | |
 | I-INT-14 | #84 GET `/integration/v1/runs/:id` | PRE-CON；映射用户无 `run.view` | 读本范围内 Run | 403 | P3 | 内置角色都有 `run.view`，测不出，记设计；现状无权限检查 |
 | I-INT-15 | #86 POST `/integration/v1/runs/:id/cancel` | PRE-CON | ① 取消范围外 Run ② 映射用户为 BL / AU / US（无 `run.cancel`）取消本范围 Run | ① 404（`assertRunAccess`）② 403 | P1 | ② **已知缺陷**：现状 200 |
-| I-INT-16 | #86 同上 | PRE-CON；已结束的 Run | cancel | **409**，状态不变，不写审计（与 I-RUN-06、I-OPEN-23 统一） | P2 | 现状待实测；修复 M |
-| I-INT-17 | #83 POST `/integration/v1/runs` | PRE-CON；映射用户属部门 A；部门 B（非 A 子树）有已发布 Agent | 用该 Agent 的 key 建 Run | **404 RUN-7001**，不建 Run（只能跑映射用户部门子树内已发布的 Agent，与 #82 一致） | P1 | **已知缺陷**：现状不检查 agent 部门可见性 |
+| I-INT-16 | #86 同上 | PRE-CON；已结束的 Run | cancel | **409 RUN-7005「Run 已结束，不能取消」**，状态不变，不写审计（与 I-RUN-06、I-OPEN-23 统一）；断言同时查错误码和文案 | P2 | **已知缺陷**：现状 200 `{ok:true}`，状态不变（`integration.ts:68-74`）。修复 M |
+| I-INT-17 | #83 POST `/integration/v1/runs` | PRE-CON（3197 connector 实例开 inbound）；映射用户属部门 A，**必须用 operator 或 builder（dataScope=org）**——不要用 dataScope=all 的用户（如 auditor），否则可见范围是全局，会误判；部门 B（非 A 子树）有已发布 Agent | 用该 Agent 的 key 建 Run | **404 RUN-7001**，不建 Run（只能跑映射用户部门子树内已发布的 Agent，与 #82 一致） | P1 | **已知缺陷**：现状只看「存在且已发布」，返回 202（`integration.ts:39-40`）；修复 L（复用 `agentAccessible`） |
 
 ## 4. 审计（I-AUD）
 
@@ -149,7 +149,7 @@
 | I-AGT-11b | #75 POST `/open/v1/agents/:key/runs` | 同上（已开放 API 的 agent） | 用合法 key 建 Run | 409 CFG-8503「Agent 已停用，不能运行」，不建 Run，不写审计 | P1 | **已知缺陷**：现状可建。修复 L |
 | I-AGT-11c | #83 POST `/integration/v1/runs` | 同上；PRE-CON | 建 Run | 409 CFG-8503「Agent 已停用，不能运行」，不建 Run，不写审计 | P1 | **已知缺陷**：现状可建。修复 L |
 | I-AGT-12 | #19 | — | 无可用版本；`threadId` 属他人；OO 跑根部门 agent | 400「Agent 没有可用版本」；404「会话不存在」；404「Agent 不存在」 | P1 | 审计 `run.create` |
-| I-AGT-13 | #16 #17 #18 | owner 为 NULL 的无主 Agent | ① OA（及 BL）对它 PATCH / 建版本 / 发布 ② PA 做同样操作 ③ 任一角色 GET | ① **403**，不改动、不写审计 ② 200 ③ 可读 | P1 | 架构师口径：无主 Agent 所有人可读、只有 PA 能写。现状待实测（静态看 R-agent 对 owner NULL 放行，可能 200） |
+| I-AGT-13 | #16 #17 #18 | owner 为 NULL 的无主 Agent。**造数据**：由运维在 3196 的 `forge_ops` 执行 `UPDATE agents SET owner_org_unit_id=NULL WHERE id=<id>`；执行前先 `SHOW CREATE TABLE agents` 核对并导出该表备份，SQL 原样贴进执行日志；禁止在 `forge`、`forge_ux` 上做 | ① OA（及 BL）对它 PATCH / 建版本 / 发布 ② PA 做同样操作 ③ 任一角色 GET | ① **403 POL-2001**（文案执行前定），不改动、不写审计 ② 200 ③ 可读 | P1 | **已知缺陷**：现状 OA / BL 三种写操作均 200 并写审计（`agentAccessible` 遇 owner NULL 直接放行，`http-helpers.ts:83`）；③ 现状可读（pass）。修复 X |
 
 ### 6.2 模型（I-MDL，#20~#25）
 
@@ -190,7 +190,7 @@
 | I-SKL-04 | #32/#33 | — | 不存在 id GET / PATCH | 404「Skill 不存在」 | P2 | |
 | I-SKL-05 | #34 | — | 缺 version | 400 CFG-8501 | P2 | |
 | I-SKL-06 | #34 | — | 重复 version | 409 CFG-8503 | P2 | **已知缺陷**：现状 500 |
-| I-SKL-07 | #33 PATCH `/admin/api/skills/:id` | — | ① `status:"foo"` ② 合法改名 | ① 400 CFG-8501 ② 200，审计 `skill.update` | P2 | 现状待实测 |
+| I-SKL-07 | #33 PATCH `/admin/api/skills/:id` | — | ① `status:"foo"`；`status` 超过 16 字符 ② 合法改名 | ① 400 CFG-8501，不入库 ② 200，审计 `skill.update` | P2 | **已知缺陷 K-12**：① 现状 200 `{ok:true}` 并入库，之后该 Skill 从提示词里消失（等于静默下线）；超 16 字符 500 SYS-9001。修复提交待后端定 |
 
 ### 6.5 工具源（I-TS，#35~#36）
 
@@ -210,7 +210,7 @@
 | I-RUN-03 | #37 | — | `status=succeeded`；`status=foo` | 仅 succeeded；空列表 | P2 | |
 | I-RUN-04 | #37 | US（self） | 列 runs | 只含本人发起 | P0 | |
 | I-RUN-05 | #40 | BL/AU/US（带 CSRF） | cancel | 403「角色缺少权限: run.cancel」 | P0 | |
-| I-RUN-06 | #40 | 已结束 Run | cancel | **409**（不可取消），状态不变，不写审计；admin / open / integration 三入口统一（I-OPEN-23、I-INT-16） | P2 | **已知缺陷**：现状 200 且记审计（`admin/runs.ts:58-63`）。修复 M |
+| I-RUN-06 | #40 | 已结束 Run | cancel | **409 RUN-7005「Run 已结束，不能取消」**，状态不变，不写审计；admin / open / integration 三入口统一（I-OPEN-23、I-INT-16）；断言同时查错误码和文案 | P2 | **已知缺陷**：现状 200 `{ok:true}`，Run 状态不变，还多写一条 `run.cancel` 审计（`admin/runs.ts:57-64`）。修复 M |
 | I-RUN-07 | #39 | 见 §1 | | | | |
 | I-RUN-08 | #39 | 见 §1 | | | | |
 
@@ -225,7 +225,7 @@
 | I-APR-34 | #42 | — | 不传 decision；`comment` 1025 字 | 400 CFG-8501（两者） | P1 | 后者**已知缺陷**：现状 500 |
 | I-APR-35 | #42 | — | 不存在 id + 非法 decision | 404（先查存在） | P2 | |
 | I-APR-37 | #42 | 审批已 `rejected` | 再调 decide `{"decision":"approved"}` | 409 CFG-8503，状态仍 rejected，Run 不继续 | P1 | 与 I-APR-21 对称（架构师横向 a） |
-| I-APR-38 | #40 #42 | Run 处于 waiting_approval，对应审批 pending | ① cancel 该 Run ② 查审批列表 / 详情 ③ decide approved | ② 审批不可操作（不在待审或按钮不可用）③ **409**，Run 保持 cancelled、不执行工具 | P1 | 架构师横向 b；错误码执行前后端写死；现状待实测 |
+| I-APR-38 | #40 #42 | Run 处于 waiting_approval，对应审批 pending | ① cancel 该 Run ② 查审批列表 / 详情 ③ decide approved | ② 审批不可操作 ③ **409 RUN-7005「Run 已结束，不能取消」**（关联 Run 已结束 → `decideApproval` 返回 409 RUN-7005 并把审批置为不可操作），Run 保持 cancelled、不恢复、不执行工具；断言同时查错误码和文案 | P1 | **已知缺陷 K-13**：现状 decide 200，并触发 `executeRun`，Run 继续执行（`loop.ts:307-315`、`runs.ts:282-288`）。修复 W |
 | I-APR-36 | #42 | 审批已过 `expires_at` 但未被 `timeoutApprovals` 清理 | 批准 | 409 CFG-8503，不批准 | P1 | **已知缺陷**：现状 200（`decideApproval` 不看 expires_at）。UI-034b / UI-081b |
 
 ### 6.8 定时任务接口级（I-SCH，#45~#49）
@@ -268,7 +268,7 @@
 
 | 编号 | 路由 | 前置 | 步骤 | 预期 | 优先级 | 备注 |
 |---|---|---|---|---|---|---|
-| I-USR-01 | #57 | OA | GET users | 无 `password_hash`；`idp_subject`/`is_emergency_admin` 是否可返回待架构师确认 | P1 | |
+| I-USR-01 | #57 | OA、PA 各一 | GET users | OA 响应不含 `idp_subject`、`is_emergency_admin`、`password_hash`；PA 含前两者；字段走 camelCase 白名单（id、username、email、displayName、role、dataScope、orgUnitId、status、createdAt） | P1 | **已知缺陷**：现状 `SELECT *` 只去掉 `password_hash`，`idp_subject`、`is_emergency_admin`、`org_unit_id` 等整行 snake_case 字段一起返回（`admin/identity.ts:25`）；修复 V |
 | I-USR-02 | #58 | — | 不传 email；email=`abc` | 400；400 | P1 | 后者**已知缺陷**：现状 200 |
 | I-USR-03 | #58 | — | 非法 role；重复 email | 400；409「邮箱已存在」 | P1 | |
 | I-USR-04 | #58 | — | 重复 username | 409 CFG-8503 | P2 | **已知缺陷**：现状 500 |
@@ -287,7 +287,7 @@
 | I-PLG-01 | #67 | — | resources 中 mcp 缺 url（前面 agent 合法） | 400，且之前资源回滚、无残留 | P1 | **已知缺陷**（S-29）：现状残留且无审计 |
 | I-PLG-02 | #67 | — | 同 (key,version) 再装；model key 重复 | upsert 行为记录；重复 model → 409 | P2 | 后者**已知缺陷**：现状 500 |
 | I-PLG-03 | #68 | PA | uninstall 不存在 id | 404，不写审计 | P2 | **已知缺陷**：现状 200 且写审计 |
-| I-PLG-04 | #68 POST `/admin/api/plugins/:id/uninstall` | 部门 B 装的插件；调用者为部门 A 的 org_admin | 卸载该插件 | **403 POL-2001**「角色缺少权限: plugin.uninstall」，不卸载、不写审计 → pass | P2 | 现状卸载是**全局的，不按部门判定**（后端确认）。修复提交 **P**（排在 O 之后）会加上按插件安装时记录的 owner 部门及其子部门判定，范围外 404，PA 不受限，权限映射不动。P 的单元测试覆盖四种情况：① 非 PA 但有卸载权限的身份卸载外部门插件 → 404；② 卸载本部门插件成功；③ PA 卸载任意部门插件成功；④ org_admin 卸载 → 403（§16，待后端提交） |
+| I-PLG-04 | #68 POST `/admin/api/plugins/:id/uninstall` | 部门 B 装的插件；调用者为部门 A 的 org_admin | 卸载该插件 | **403 POL-2001**「角色缺少权限: plugin.uninstall」，不卸载、不写审计 → pass | 现状卸载是全局的，不按部门判定；plugins 表只有 `created_by`、没有 owner 列。**本轮修复 P 只做**：卸载不存在的插件返回 404 不写审计（I-PLG-03），并补「org_admin 卸载返回 403」的测试。按部门判定的部分放到**下一轮**，与 MCP、Skill 归属部门迁移一起做。原计划的四种单元测试：① 非 PA 有卸载权限的身份卸载外部门插件 → 404（**下一轮**）；② 卸载本部门插件成功（**下一轮**）；③ PA 卸载任意部门插件成功；④ org_admin 卸载 → 403 | 现状卸载是**全局的，不按部门判定**（后端确认）。修复提交 **P**（排在 O 之后）会加上按插件安装时记录的 owner 部门及其子部门判定，范围外 404，PA 不受限，权限映射不动。P 的单元测试覆盖四种情况：① 非 PA 但有卸载权限的身份卸载外部门插件 → 404；② 卸载本部门插件成功；③ PA 卸载任意部门插件成功；④ org_admin 卸载 → 403（§16，待后端提交） |
 | I-SA-01 | #70 | PA | 不传 name | 400 CFG-8501 | P2 | |
 | I-SA-02 | #70 | — | 非法 role | 400 CFG-8501 | P2 | |
 | I-SA-03 | #70 | — | `dataScope:"self"` | 400 CFG-8501 | P2 | |
@@ -311,7 +311,7 @@
 | I-OPEN-20 | #75 | `rateLimitPerMinute=2` | 1 分钟内调三次 | 第三次 429 OPN-4502 | P1 | |
 | I-OPEN-21 | #76 | — | `wait` = 0 / 121 / abc / 1.7；Run 已结束 vs 未结束 | 夹到 1 / 120 / 30 / 取整；结束 200、未结束 202 | P2 | 审计 `open.run.create` |
 | I-OPEN-22 | #75 POST runs、#76 invoke | 合法 key | ① 不带 key ② key 无 `runs:create` ③ agent 不可见 ④ 成功建 Run 后查审计 | ① 401 ② 403 ③ 404 ④ 审计 `open.run.create`，actor_type 为 app | P0 | |
-| I-OPEN-23 | #79 POST `/open/v1/runs/:id/cancel` | 本应用已结束的 Run | cancel | **409**，状态不变（与 I-RUN-06 一致） | P2 | **已知缺陷**：现状 200（`routes/open.ts:196-200`）。修复 M |
+| I-OPEN-23 | #79 POST `/open/v1/runs/:id/cancel` | 本应用已结束的 Run | cancel | **409 RUN-7005「Run 已结束，不能取消」**，状态不变，不写审计（与 I-RUN-06 一致）；断言同时查错误码和文案 | P2 | **已知缺陷**：现状 200 `{ok:true,status:"cancelling"}`，实际什么都没做（`routes/open.ts:196-202`）。修复 M |
 
 ## 7. 文档与代码不一致（I-DOC-10~45，一处一条）
 
