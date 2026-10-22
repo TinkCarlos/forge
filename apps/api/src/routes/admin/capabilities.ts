@@ -1,5 +1,5 @@
 import { type FastifyInstance } from "fastify";
-import { SKILL_STATUSES, assertOutboundUrlStatic, errors } from "@forge/core";
+import { SKILL_STATUSES, assertNoEnvRefs, assertOutboundUrlStatic, errors } from "@forge/core";
 import { discoverMcpTools, parseOpenApi } from "@forge/capabilities";
 import { maskArgsDeep } from "@forge/governance";
 import { repos } from "@forge/store";
@@ -39,6 +39,7 @@ export default async function adminCapabilityRoutes(app: FastifyInstance): Promi
     const key = requireBodyString(body, "key");
     if (await repos.getMcpServerByKey(key)) throw errors.conflict("MCP key 已存在");
     assertOutboundUrlStatic(requireBodyString(body, "url"));
+    assertNoEnvRefs({ headers: jsonBody(body, "headers", {}) }); // AG (S-61)
     const id = await repos.createMcpServer({
       key,
       name: stringBody(body, "name", key),
@@ -73,7 +74,10 @@ export default async function adminCapabilityRoutes(app: FastifyInstance): Promi
       fields.url = stringBody(body, "url");
       assertOutboundUrlStatic(String(fields.url));
     }
-    if (body.headers !== undefined) fields.headers_json = jsonBody(body, "headers", {});
+    if (body.headers !== undefined) {
+      fields.headers_json = jsonBody(body, "headers", {});
+      assertNoEnvRefs({ headers: fields.headers_json }); // AG (S-61)
+    }
     if (body.status !== undefined) fields.status = stringBody(body, "status");
     await repos.updateMcpServer(String(server.id), fields);
     await writeAudit(session, "mcp.update", "mcp_server", String(server.id), maskArgsDeep(fields));
@@ -177,6 +181,7 @@ export default async function adminCapabilityRoutes(app: FastifyInstance): Promi
     const parsed = parseOpenApi(spec as Record<string, unknown>, stringBody(body, "baseUrl"));
     if (!parsed.baseUrl) throw errors.invalid("缺少 baseUrl 或 servers[0].url");
     assertOutboundUrlStatic(parsed.baseUrl);
+    assertNoEnvRefs({ headers: jsonBody(body, "headers", {}) }); // AG (S-61)
     const sourceId = await repos.createToolSource({
       key,
       name: stringBody(body, "name", key),

@@ -1,5 +1,5 @@
 import { type FastifyInstance } from "fastify";
-import { asRecord, assertOutboundUrlStatic, config, encryptSecret, errors } from "@forge/core";
+import { asRecord, assertNoEnvRefs, assertOutboundUrlStatic, config, encryptSecret, errors } from "@forge/core";
 import { discoverMcpTools } from "@forge/capabilities";
 import { repos } from "@forge/store";
 import {
@@ -25,6 +25,12 @@ export default async function adminPluginRoutes(app: FastifyInstance): Promise<v
     // Outbound guard (S-46): check every URL in the package before creating anything (static: scheme, IP literals, localhost).
     for (const raw of Array.isArray(resources.mcp) ? resources.mcp : []) assertOutboundUrlStatic(requireBodyString(asRecord(raw), "url"));
     for (const raw of Array.isArray(resources.providers) ? resources.providers : []) assertOutboundUrlStatic(requireBodyString(asRecord(raw), "baseUrl"));
+    // AG (S-61): no `env:` header / apiKey anywhere in the package, checked before anything is created.
+    for (const raw of Array.isArray(resources.mcp) ? resources.mcp : []) assertNoEnvRefs({ headers: jsonBody(asRecord(raw), "headers", {}) });
+    for (const raw of Array.isArray(resources.providers) ? resources.providers : []) {
+      const provider = asRecord(raw);
+      assertNoEnvRefs({ headers: jsonBody(provider, "headers", {}), apiKey: provider.apiKey });
+    }
     const created: Record<string, string[]> = { agents: [], skills: [], mcp: [], providers: [] };
     if (Array.isArray(resources.agents)) {
       for (const raw of resources.agents) {

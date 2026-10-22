@@ -1,5 +1,5 @@
 import { type FastifyInstance } from "fastify";
-import { assertOutboundUrlStatic, config, encryptSecret, errors, ForgeError, OUTBOUND_BLOCKED_CODE } from "@forge/core";
+import { ENV_REF_CODE, assertNoEnvRefs, assertOutboundUrlStatic, config, encryptSecret, errors, ForgeError, OUTBOUND_BLOCKED_CODE } from "@forge/core";
 import { callModel } from "@forge/models";
 import { repos } from "@forge/store";
 import {
@@ -44,6 +44,7 @@ export default async function adminModelRoutes(app: FastifyInstance): Promise<vo
     if (await repos.getProviderByKey(key)) throw errors.conflict("Provider key 已存在");
     const apiKey = stringBody(body, "apiKey");
     assertOutboundUrlStatic(requireBodyString(body, "baseUrl"));
+    assertNoEnvRefs({ headers: jsonBody(body, "headers", {}), apiKey }); // AG (S-61)
     const providerId = await repos.createProvider({
       key,
       name: stringBody(body, "name", key),
@@ -89,6 +90,7 @@ export default async function adminModelRoutes(app: FastifyInstance): Promise<vo
       fields.base_url = stringBody(body, "baseUrl");
       assertOutboundUrlStatic(String(fields.base_url));
     }
+    assertNoEnvRefs({ headers: body.headers !== undefined ? jsonBody(body, "headers", {}) : undefined, apiKey: body.apiKey }); // AG (S-61)
     if (body.apiKey) fields.api_key_encrypted = encryptSecret(stringBody(body, "apiKey"), config.FORGE_MASTER_KEY);
     if (body.headers !== undefined) fields.headers_json = jsonBody(body, "headers", {});
     if (body.timeoutMs !== undefined) fields.timeout_ms = Number(body.timeoutMs);
@@ -134,6 +136,8 @@ export default async function adminModelRoutes(app: FastifyInstance): Promise<vo
     } catch (error) {
       // Refused outbound target (S-46) is a request error, not a provider failure.
       if (error instanceof ForgeError && error.code === OUTBOUND_BLOCKED_CODE) throw error;
+      // A stored `env:` header / apiKey (AG, S-61) is a configuration error: 400 CFG-8504, never sent upstream.
+      if (error instanceof ForgeError && error.code === ENV_REF_CODE) throw error;
       return { ok: false, error: error instanceof ForgeError ? error.message : String(error) };
     }
   });

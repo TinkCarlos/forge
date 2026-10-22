@@ -1,6 +1,10 @@
 import {
   assertOutboundAllowed,
   config,
+  ENV_REF_CODE,
+  ENV_REF_MESSAGE,
+  isEnvRefError,
+  literalHeaders,
   errors,
   ForgeError,
   OUTBOUND_BLOCKED_CODE,
@@ -24,14 +28,14 @@ function toolNameFor(kind: string, source: string, name: string): string {
   return `${raw.slice(0, 55)}_${hash}`;
 }
 
+/** Stored headers as literals. AG (S-61): `env:` is no longer expanded; a stored `env:` value throws CFG-8504. */
 function envHeaders(raw: unknown): Record<string, string> {
-  const headers: Record<string, string> = {};
-  const object = parseJson<Record<string, unknown>>(raw, {});
-  for (const [key, value] of Object.entries(object)) {
-    if (typeof value !== "string") continue;
-    headers[key] = value.startsWith("env:") ? (process.env[value.slice(4)] ?? "") : value;
-  }
-  return headers;
+  return literalHeaders(raw);
+}
+
+/** Tool-call shape for a refused `env:` header (no value, no name of the variable). */
+function envRefToolResult(error: unknown): ToolResult | null {
+  return isEnvRefError(error) ? { ok: false, content: ENV_REF_MESSAGE, errorCode: ENV_REF_CODE } : null;
 }
 
 export function httpToolErrorCode(status: number): string | undefined {
@@ -171,7 +175,14 @@ export async function discoverMcpTools(server: Record<string, unknown>): Promise
 
 export async function callMcpTool(server: Record<string, unknown>, toolName: string, args: Record<string, unknown>): Promise<ToolResult> {
   const url = String(server.url);
-  const headers = envHeaders(server.headers_json);
+  let headers: Record<string, string>;
+  try {
+    headers = envHeaders(server.headers_json);
+  } catch (error) {
+    const refused = envRefToolResult(error);
+    if (refused) return refused;
+    throw error;
+  }
   let sessionId: string | null = null;
   try {
     await assertOutboundAllowed(url);
@@ -287,7 +298,14 @@ export async function executeOpenApiTool(input: {
     if (blocked) return blocked;
     return { ok: false, content: `openapi tool failed: ${String(error)}`, errorCode: "HTP-4002" };
   }
-  const headers = envHeaders(input.source.headers_json);
+  let headers: Record<string, string>;
+  try {
+    headers = envHeaders(input.source.headers_json);
+  } catch (error) {
+    const refused = envRefToolResult(error);
+    if (refused) return refused;
+    throw error;
+  }
   let body: string | undefined;
   if (method === "GET" || method === "DELETE" || method === "HEAD") {
     for (const [key, value] of Object.entries(args)) url.searchParams.set(key, String(value));

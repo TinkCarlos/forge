@@ -68,3 +68,11 @@ describe("S-60 CSRF on percent-encoded admin paths", () => {
     expect(res.statusCode).toBe(404);
   });
 });
+
+describe("S-60 encoded admin path that matches no route", () => {
+  it("POST /%61dmin/api/no-such-route without token -> 403 POL-2001 (not let through as 404)", async () => {
+    const res = await app.inject({ method: "POST", url: "/%61dmin/api/no-such-route", headers: cookieOnly, payload: {} });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.code).toBe("POL-2001");
+  });
+});
