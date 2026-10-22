@@ -1,14 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
-import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
+import Fastify, { type FastifyRequest } from "fastify";
 import cookie from "@fastify/cookie";
 import fastifyStatic from "@fastify/static";
 import multipart from "@fastify/multipart";
 import { CronExpressionParser } from "cron-parser";
 import {
   asRecord,
-  asString,
   config,
   defaultDataScope,
   encryptSecret,
@@ -16,32 +15,12 @@ import {
   ForgeError,
   hashApiKey,
   hashPassword,
-  parseJson,
   ROLE_PERMISSIONS,
   type Principal,
   type Role,
 } from "@forge/core";
-import {
-  assertPermission,
-  assertRunAccess,
-  assertScope,
-  runFilterFor,
-  visibleAgentOrgIds,
-} from "@forge/governance";
-import {
-  authenticateApiKey,
-  buildOidcAuthorizeUrl,
-  createSession,
-  destroySession,
-  handleOidcCallback,
-  loginLocal,
-  oidcConfigured,
-  principalForConnector,
-  readSignedSessionCookie,
-  sessionCookieValue,
-  verifyConnectorPrincipal,
-  type Session,
-} from "@forge/identity";
+import { assertRunAccess, assertScope, runFilterFor, visibleAgentOrgIds } from "@forge/governance";
+import { authenticateApiKey, oidcConfigured, principalForConnector, verifyConnectorPrincipal } from "@forge/identity";
 import { discoverMcpTools, parseOpenApi } from "@forge/capabilities";
 import { callModel } from "@forge/models";
 import {
@@ -56,14 +35,26 @@ import {
   startRuntime,
   waitForRun,
 } from "@forge/runtime";
+import { parseJsonValue, repos, type AgentRow, type RunRow } from "@forge/store";
 import {
-  parseJsonValue,
-  repos,
-  type AgentRow,
-  type AgentVersionRow,
-  type RunRow,
-} from "@forge/store";
+  reqId,
+  bodyOf,
+  param,
+  stringBody,
+  arrayBody,
+  jsonBody,
+  readSession,
+  admin,
+  writeAudit,
+  agentAccessible,
+  presentRun,
+  presentAgent,
+  requireBodyString,
+  streamRun,
+  sessionPayload,
+} from "./plugins/http-helpers.js";
 import healthRoutes from "./routes/health.js";
+import authRoutes from "./routes/auth.js";
 
 const app = Fastify({
   logger: {
@@ -80,166 +71,6 @@ await app.register(fastifyStatic, {
   root: path.resolve(process.cwd(), "apps/console/public"),
   prefix: "/assets/",
 });
-
-// ---------- helpers ----------
-
-function reqId(request: FastifyRequest): string {
-  return String(request.id);
-}
-
-function bodyOf(request: FastifyRequest): Record<string, unknown> {
-  return asRecord(request.body);
-}
-
-function param(request: FastifyRequest, key: string): string {
-  return String((request.params as Record<string, unknown>)[key] ?? "");
-}
-
-function stringBody(body: Record<string, unknown>, key: string, fallback = ""): string {
-  return asString(body[key], fallback);
-}
-
-function arrayBody(body: Record<string, unknown>, key: string): string[] {
-  const value = body[key];
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
-}
-
-function jsonBody(body: Record<string, unknown>, key: string, fallback: unknown): unknown {
-  const value = body[key];
-  if (typeof value === "string") return parseJson(value, fallback);
-  return value ?? fallback;
-}
-
-function readSession(request: FastifyRequest): Session | null {
-  return readSignedSessionCookie(request.cookies.forge_session);
-}
-
-async function admin(request: FastifyRequest, permission?: string): Promise<Session> {
-  const session = readSession(request);
-  if (!session) throw errors.unauthorized();
-  if (permission) assertPermission(session.principal, permission);
-  return session;
-}
-
-function setSessionCookie(reply: FastifyReply, session: Session): void {
-  reply.setCookie("forge_session", sessionCookieValue(session), {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: config.NODE_ENV === "production",
-    path: "/",
-    maxAge: 8 * 60 * 60,
-  });
-}
-
-async function writeAudit(
-  session: Session,
-  action: string,
-  resourceType: string,
-  resourceId: string | null,
-  details?: unknown,
-): Promise<void> {
-  await repos.audit({ actorType: "user", actorId: session.principal.id, action, resourceType, resourceId, details });
-}
-
-async function agentAccessible(principal: Principal, agent: AgentRow | null): Promise<boolean> {
-  if (!agent) return false;
-  if (!agent.owner_org_unit_id) return true;
-  const orgIds = await visibleAgentOrgIds(principal);
-  return orgIds === null || orgIds.includes(agent.owner_org_unit_id);
-}
-
-function presentRun(run: RunRow) {
-  return {
-    id: run.id,
-    threadId: run.thread_id,
-    agentId: run.agent_id,
-    agentVersionId: run.agent_version_id,
-    appId: run.app_id,
-    orgUnitId: run.org_unit_id,
-    status: run.status,
-    triggerType: run.trigger_type,
-    triggerRef: run.trigger_ref,
-    input: run.input_json,
-    output: run.output_json,
-    usage: run.usage_json,
-    costUsd: Number(run.cost_usd),
-    errorCode: run.error_code,
-    errorMessage: run.error_message,
-    createdAt: run.created_at,
-    startedAt: run.started_at,
-    completedAt: run.completed_at,
-  };
-}
-
-function presentAgent(agent: AgentRow, version?: AgentVersionRow | null) {
-  return {
-    id: agent.id,
-    key: agent.key,
-    name: agent.name,
-    description: agent.description,
-    status: agent.status,
-    ownerOrgUnitId: agent.owner_org_unit_id,
-    apiEnabled: Boolean(agent.api_enabled),
-    publishedVersionId: agent.published_version_id,
-    publishedVersion: version?.version ?? null,
-    createdAt: agent.created_at,
-  };
-}
-
-function requireBodyString(body: Record<string, unknown>, key: string): string {
-  const value = stringBody(body, key).trim();
-  if (!value) throw errors.invalid(`缺少字段: ${key}`);
-  return value;
-}
-
-async function streamRun(request: FastifyRequest, reply: FastifyReply, runId: string): Promise<void> {
-  const header = request.headers["last-event-id"];
-  let lastSeq = Number(Array.isArray(header) ? header[0] : header ?? 0) || 0;
-  reply.hijack();
-  reply.raw.writeHead(200, {
-    "Content-Type": "text/event-stream; charset=utf-8",
-    "Cache-Control": "no-cache, no-transform",
-    Connection: "keep-alive",
-    "X-Accel-Buffering": "no",
-  });
-  reply.raw.write(": forge stream\n\n");
-  let closed = false;
-  let heartbeat = 0;
-  const poll = async (): Promise<void> => {
-    if (closed) return;
-    try {
-      const events = await repos.listEvents(runId, lastSeq);
-      for (const event of events) {
-        lastSeq = Number(event.seq);
-        const data = JSON.stringify({
-          type: event.type,
-          seq: event.seq,
-          runId,
-          ts: new Date(event.created_at).toISOString(),
-          data: parseJsonValue(event.data_json, {}),
-        });
-        reply.raw.write(`id: ${event.seq}\nevent: ${event.type}\ndata: ${data}\n\n`);
-      }
-      const run = await repos.getRun(runId);
-      if (run && ["succeeded", "failed", "cancelled", "budget_exhausted"].includes(run.status) && events.length === 0) {
-        closed = true;
-        reply.raw.end();
-        clearInterval(timer);
-      }
-    } catch {
-      closed = true;
-      reply.raw.end();
-    }
-    heartbeat += 1;
-    if (!closed && heartbeat % 15 === 0) reply.raw.write(": heartbeat\n\n");
-  };
-  const timer = setInterval(() => void poll(), 500);
-  request.raw.on("close", () => {
-    closed = true;
-    clearInterval(timer);
-  });
-  await poll();
-}
 
 // ---------- errors / CSRF ----------
 
@@ -275,70 +106,7 @@ app.addHook("preHandler", async (request) => {
 
 await app.register(healthRoutes);
 
-app.get("/auth/config", async () => ({
-  localLogin: config.ALLOW_LOCAL_LOGIN,
-  oidcConfigured: oidcConfigured(),
-  ssoMode: config.SSO_MODE,
-}));
-
-app.post("/auth/local/login", async (request, reply) => {
-  const body = bodyOf(request);
-  const email = requireBodyString(body, "email");
-  const password = requireBodyString(body, "password");
-  const principal = await loginLocal(email, password);
-  const session = createSession(principal);
-  setSessionCookie(reply, session);
-  await repos.audit({ actorType: "user", actorId: principal.id, action: "auth.login.local", resourceType: "user", resourceId: principal.id });
-  return sessionPayload(session);
-});
-
-app.get("/auth/session", async (request) => {
-  const session = readSession(request);
-  if (!session) throw errors.unauthorized();
-  return sessionPayload(session);
-});
-
-app.post("/auth/logout", async (request, reply) => {
-  const session = readSession(request);
-  if (session) destroySession(session.token);
-  reply.clearCookie("forge_session", { path: "/" });
-  return { ok: true };
-});
-
-app.get("/auth/oidc/login", async (request, reply) => {
-  if (!oidcConfigured()) throw new ForgeError("SSO-1201", "SSO 尚未配置", 503);
-  const query = request.query as Record<string, unknown>;
-  const returnTo = typeof query.returnTo === "string" && query.returnTo.startsWith("/") ? query.returnTo : "/";
-  return reply.redirect(await buildOidcAuthorizeUrl(returnTo));
-});
-
-app.get("/auth/oidc/callback", async (request, reply) => {
-  const query = request.query as Record<string, unknown>;
-  const code = typeof query.code === "string" ? query.code : "";
-  const state = typeof query.state === "string" ? query.state : "";
-  if (!code || !state) throw new ForgeError("SSO-1203", "回调参数缺失", 400);
-  const { principal, returnTo } = await handleOidcCallback(code, state);
-  const session = createSession(principal);
-  setSessionCookie(reply, session);
-  await repos.audit({ actorType: "user", actorId: principal.id, action: "auth.login.oidc", resourceType: "user", resourceId: principal.id });
-  return reply.redirect(returnTo.startsWith("/") ? returnTo : "/");
-});
-
-function sessionPayload(session: Session) {
-  return {
-    user: {
-      id: session.principal.id,
-      name: session.principal.name,
-      role: session.principal.role,
-      orgUnitId: session.principal.orgUnitId,
-      dataScope: session.principal.dataScope,
-    },
-    permissions: session.principal.role === "platform_admin" ? ["*"] : ROLE_PERMISSIONS[session.principal.role],
-    csrfToken: session.csrfToken,
-    oidcConfigured: oidcConfigured(),
-    localLogin: config.ALLOW_LOCAL_LOGIN,
-  };
-}
+await app.register(authRoutes);
 
 // ---------- dashboard / agents ----------
 
