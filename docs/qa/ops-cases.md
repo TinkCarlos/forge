@@ -14,7 +14,7 @@
 | OPS-009 | 健康检查 | 异常 | 运行中停掉 MySQL | GET /healthz、/readyz | healthz 200、readyz 非 200（503）；恢复后 readyz 自动回 200，无需重启 | P0 |
 | OPS-010 | 运行中断连 | 异常 | 运行中停 MySQL 30s 再恢复 | 期间访问管理接口；恢复后再访问 | 期间 5xx 且有结构化错误日志、无堆栈外泄给客户端；恢复后正常，进程不退出 | P0 |
 | OPS-011 | 优雅停机 | 功能 | 有运行中的 Run | 发 SIGTERM | 不再接新请求、在途请求完成、租约释放，日志有 shutdown 记录；退出码 0 | P1 |
-| OPS-012 | 重启恢复 | 功能 | 已登录会话、已有定时任务、kill -9 中断一个 Run | 重启 | 会话仍有效；定时任务照常触发且不重复触发；被中断的 Run 租约过期后被接管或标记失败，不永远卡 running | P0 |
+| OPS-012 | 重启恢复 | 功能 | 已登录会话、已有定时任务、kill -9 中断一个 Run | 重启 | 会话全部失效（会话存在进程内存 `packages/identity/src/index.ts` 的 sessions Map，属设计行为），页面跳登录页且写请求不成功；定时任务照常触发且不重复触发；被中断的 Run 租约过期后被接管或标记失败，不永远卡 running | P0 |
 | OPS-013 | 嵌入 worker | 功能 | EMBEDDED_WORKER=true/false 各一次 | 启动并跑一个 Run | true 时 api 内处理；false 时只有单独起 apps/worker 才处理 | P2 |
 | OPS-014 | 日志 | 安全 | LOG_LEVEL=debug；已知 app.ts 的 pino 未配 redact，Fastify 默认请求日志不记头和 cookie | ① 请求 URL 查询串带 token/key/secret/password（如 `/next/cb?token=T`、`/admin/api/runs?api_key=K`）② 触发会主动 log 错误对象的路径：坏 JSON、校验失败、模型/工具调用失败（请求体含 apiKey、webhookSecret、password 字段）③ 登录错误口令 | 日志全文 grep 不到查询串里的密钥值和请求体中的敏感字段原文；有明文则定 P0，修复走 args-preview 共用判定函数 + pino redact 路径 | 待实测定级 |
 | OPS-015 | 日志 | 功能 | 制造 400/401/403/404/409/500 | 查日志 | 每条有时间、级别、请求 id、路由、状态码；500 有堆栈但只在服务端日志 | P1 |
@@ -28,3 +28,5 @@
 | OPS-023 | 部署文档 | 文档 | 无 | 按 docs/06-operations/deployment.md 从零走一遍 | 文档步骤能直接跑通，含 build:console | P2 |
 
 读代码顺带发现（待用例测实）：仓库里 grep 不到 `redact`，logger 可能没配日志脱敏 → OPS-014 重点。
+
+补充（读 4c2555e 代码）：会话在登录时快照 principal（role/orgUnitId/dataScope），8 小时有效。需补用例：用户被停用、降级或换部门后，其已登录会话在 8 小时内是否仍按旧权限通过（若是，记为严重缺陷候选）。多实例部署时会话不共享，也写进部署文档。

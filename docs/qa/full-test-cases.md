@@ -26,7 +26,7 @@
 | 章节 | 审查人 | 状态 |
 |---|---|---|
 | §1 功能（新/旧控制台） | 前端 + UX（Agent专家转交） | 待审 |
-| §2 接口与错误码 | 后端（底稿 `api-inventory.md`） | 待审；inventory 未齐前用路由基线 86 条 |
+| §2 接口与错误码 | 后端（底稿 `api-inventory.md`） | 已审 `b7bfce9`（有遗漏 + 9 条错预期）→ 本轮已改，见 §14，待复审 |
 | §3 安全 | 安全专家（Agent专家转交）；架构师审威胁模型 | 待审 |
 | §4 样式 | 前端 + UX | 待审（前端审计 `~/forge-fe-shots/audit/` 已出 P1–P3，用例需对齐） |
 | §5 日志与运维 | 运维补写细节后自审 | 待审 |
@@ -143,11 +143,11 @@
 | I-G-01 | 接口 | P0 | 无 cookie 调所有 `/admin/api/*` | 401 |
 | I-G-02 | 接口 | P0 | 篡改 `forge_session` 签名 | 401 |
 | I-G-03 | 接口 | P0 | 过期会话 | 401 |
-| I-G-04 | 接口 | P0 | 有会话但无/错 `X-CSRF-Token` 的 POST/PATCH | 403 CSRF |
+| I-G-04 | 接口 | P0 | 有会话但无/错 `X-CSRF-Token` 的 POST/PATCH | 403 POL-2001，message「CSRF Token 缺失或无效」；无会话时为 401 AUTH-1001（不是 403）。CSRF 先于权限检查，细分见 I-CSRF-01～05（`api-cases-addendum.md`） |
 | I-G-05 | 接口 | P1 | GET 带错 CSRF | 仍 200（GET 不校验） |
-| I-G-06 | 边界 | P1 | body > 2MB | 413 或框架等价，无崩溃 |
-| I-G-07 | 异常 | P1 | `Content-Type: application/json` + 非法 JSON | 400，无堆栈 |
-| I-G-08 | 接口 | P1 | 每个写操作成功后 | `GET /admin/api/audit` 有对应 action |
+| I-G-06 | 边界 | P1 | body > 2MB | **413**，无堆栈。**已知缺陷**（W-01a）：现状 500 SYS-9001（`plugins/errors.ts` 不看 `error.statusCode`），执行如实记 fail |
+| I-G-07 | 异常 | P1 | `Content-Type: application/json` + 非法 JSON；另测空 JSON 体、不支持的 Content-Type | **400 CFG-8501**，无堆栈（不支持的类型目标 415）。**已知缺陷 K-01**：现状均 500 SYS-9001，执行如实记 fail |
+| I-G-08 | 接口 | P1 | 每个写操作成功后 | `GET /admin/api/audit` 有对应 action（逐路由 action 见 I-AUD-01 / `route-exec-matrix.md`）。**已知缺陷 K-03**：6 个接口不写审计——`POST /auth/logout`、schedules enable / disable、open runs cancel、integration 建 Run / cancel；`user.update` 不记 status 变化 |
 | I-G-09 | 接口 | P0 | 错误响应 | 无 `password`/`token` 明文、无 SQL、无绝对路径 |
 | I-G-10 | 接口 | P1 | 公开：`/healthz` `/readyz` `/auth/config` `/open/v1/openapi.json` | 无需登录 |
 
@@ -161,7 +161,7 @@
 | I-APR-04 | 边界 | P1 | `pageSize=101` | 夹紧到 100（文档已写） |
 | I-APR-05 | 边界 | P1 | `page=0` / 负 / 非整数 | 400 CFG-8501 |
 | I-APR-06 | 边界 | P1 | `pageSize=0` / 负 / `abc` | 400 |
-| I-APR-07 | 安全 | P1 | `page=1' OR '1'='1` | 400 或安全忽略，不 500 |
+| I-APR-07 | 安全 | P1 | `page=1' OR '1'='1` | 400 CFG-8501，不 500（后端已核对代码） |
 
 ### 2.3 `args_preview` 回归（已有 59 单测，执行期抽 API）
 
@@ -176,8 +176,8 @@
 
 | ID | 覆盖 | P | 预期 |
 |---|---|---|---|
-| I-RBAC-01 | 权限矩阵 | P0 | 无权限 → 403；有权限 → 非 403（校验失败可以是 400） |
-| I-RBAC-02 | OO 对根部门 Agent/Run/Schedule/Approval | P0 | 列表不含；按 id GET/PATCH/决定 → 404（与不存在同形） |
+| I-RBAC-01 | 权限矩阵 | P0 | **前置：所有写请求带本会话 `X-CSRF-Token`**（否则一律 403 CSRF，矩阵整体误判）。判定：无权限 → 403 message「角色缺少权限: <key>」；有权限 → **不出现** message 为「角色缺少权限: <key>」的 403（业务 403 如 OA 授 org_admin/PA「不能授予该角色」、OA 改他人 org_admin 不传 role 不算 fail；400 校验失败也可）。逐路由期望见 I-RBAC-10 |
+| I-RBAC-02 | OO 对根部门 Agent/Run/Schedule/Approval | P0 | 列表不含；按 id：Agent GET/PATCH、Run GET/**cancel**、Schedule GET/PATCH、Approval **decide**（Run/Approval 无 PATCH 路由）→ 404，与打不存在 id 时**完全相同**（状态码、错误码、message）。decide 跨部门预期：404、与审批不存在相同错误码、文案「**审批不存在**」，报错中不得出现 Run 名或 Run id。**已知缺陷**（W-03）：现状跨部门返回「Run 不存在」，可据此判断 id 是否存在，执行如实记 fail。其余 R-xxx 子路由见 I-RBAC-11 |
 | I-RBAC-03 | US 调 `approval.decide` / `user.manage` | P0 | 403 |
 | I-RBAC-04 | BL 调 `approval.decide` | P0 | 403 |
 | I-RBAC-05 | AU 无 `schedule.view` | P0 | schedules GET 403 |
@@ -188,10 +188,10 @@
 
 | ID | 类型 | P | 步骤 | 预期（产品确认前按「应隔离」写，不符则 fail） |
 |---|---|---|---|---|
-| I-SCOPE-01 | 安全/接口 | P0 | OO：`GET /admin/api/users` | 仅本部门用户（当前实现若返回全站 → **缺陷**） |
-| I-SCOPE-02 | 安全/接口 | P0 | OO：`PATCH` 根部门用户 | 404/403（若 200 → **缺陷**） |
-| I-SCOPE-03 | 安全/接口 | P0 | OO：`GET /admin/api/dashboard` | 统计仅本部门（若含他部 pending/agents → **缺陷**） |
-| I-SCOPE-04 | 安全/接口 | P0 | OO：对根部门 `apps/:id/keys` POST | 404/403（若 200 建出 key → **缺陷**） |
+| I-SCOPE-01 | 安全/接口 | P0 | OO：`GET /admin/api/users` | 仅本部门（含子部门）用户。**已知缺陷 K-05**：现状全局，返回全站 |
+| I-SCOPE-02 | 安全/接口 | P0 | OO：`PATCH` 根部门用户 | 404，同不存在。**已知缺陷 K-05**：现状 200 |
+| I-SCOPE-03 | 安全/接口 | P0 | OO：`GET /admin/api/dashboard` | 统计仅本部门（含子部门）。**已知缺陷 K-05**：现状含全库 |
+| I-SCOPE-04 | 安全/接口 | P0 | OO：对根部门 `apps/:id/keys` POST | 404，不建 key。**已知缺陷 K-05**：现状 200 建出 key |
 | I-SCOPE-05 | 接口 | P1 | OO：skills/mcp/providers 全局共享若为设计 | 文档写明；否则应隔离——**架构师确认** |
 
 ### 2.6 Open / Integration
@@ -199,13 +199,13 @@
 | ID | 类型 | P | 步骤 | 预期 |
 |---|---|---|---|---|
 | I-OPEN-01 | 接口 | P0 | 无 key 调 `/open/v1/agents` 与 invoke | 401 |
-| I-OPEN-02 | 接口 | P0 | 错误/过期 key | 401，消息不枚举 |
+| I-OPEN-02 | 接口 | P0 | 错误/过期 key、格式错、应用停用 | 401，消息统一不枚举。**已知缺陷 K-02**（待安全专家定级）：现状 4 种文案「API Key 格式不正确 / 无效 / 已过期 / 应用已停用」 |
 | I-OPEN-03 | 接口 | P1 | 合法 key 调已开放 Agent | 按文档 2xx |
 | I-OPEN-04 | 接口 | P1 | `/integration/v1/*` 无凭证 | 401 |
 
 ### 2.7 接口清单勾选
 
-执行时对 `routes-baseline.txt` 86 行逐行打勾（另表 `docs/qa/api-execution-sheet.md`，执行阶段生成）。每行至少：未登录、一拒绝角色、一允许角色、非法参数（若有 body）。
+**执行表已生成：`docs/qa/route-exec-matrix.md`**（86 行，源 `api-inventory.md` §1 + 后端审阅 A2 + `api-cases-addendum.md`）。每行至少：未登录、一拒绝角色、一允许角色、非法参数（若有 body）；签字前请后端复核。
 
 ---
 
@@ -216,7 +216,7 @@
 | S-01 | 安全 | P0 | CSRF 见 I-G-04 | 写操作无 token 拒绝 |
 | S-02 | 安全 | P0 | Cookie 无 `HttpOnly` 则 fail；生产缺 `Secure` 记缺陷 | 开发环境 Secure 可关，需文档说明 |
 | S-03 | 安全 | P0 | 登录错误消息统一 | 防用户枚举 |
-| S-04 | 安全 | P0 | 登录爆破 20+ 次/分钟 | 应限流或锁定；**无则缺陷**（运维/安全确认现状） |
+| S-04 | 安全 | P0 | 登录爆破 20+ 次/分钟 | 应限流或锁定。**已知缺陷 K-07**：代码无任何限流/锁定 |
 | S-05 | 安全 | P0 | Agent 名存 `<script>…`，新/旧 UI 展示 | 文本转义，不执行 |
 | S-06 | 安全 | P0 | 审批 args 含脚本/HTML | 仅文本展示 |
 | S-07 | 安全 | P0 | SQL 注入字符进 query/body | 400/转义，表还在 |
@@ -262,7 +262,7 @@
 | O-05 | 日志 | P0 | 制造 401/403/500 | 结构化日志；**无口令/token** | 运维 |
 | O-06 | 日志 | P1 | 日志轮转/路径 | 落在约定目录 | 运维 |
 | O-07 | 运维 | P1 | DB 断开时 `/healthz` `/readyz` | 文档化状态码 | 运维 |
-| O-08 | 运维 | P1 | 重启 API | 定时任务恢复策略符合设计；内存会话失效 | 运维 |
+| O-08 | 运维 | P1 | 重启 API | 会话存进程内存，重启后全部失效属**设计行为**：页面跳登录页，写操作不成功（401、无副作用）；定时任务恢复策略符合设计（同 OPS-012） | 运维 |
 | O-09 | 运维 | P2 | `build:console` 体积基线 | 记录 JS/gzip；对照 1036KB | 运维 |
 | O-10 | 运维 | P2 | 首屏时间 | 3198 `/next/` 冷/热 | 运维 |
 
@@ -312,13 +312,13 @@
 |---|---|---|---|---|
 | S-20 | #1 dataScope 提升 | P0 | OA：`POST /users` 带 `dataScope:"all"`；再 `PATCH` 把 org 用户改成 all | 应 400/403；若 200 → 缺陷 |
 | S-21 | #2 跨部门改用户 | P0 | OA：`PATCH` 其他部门用户 / 把 PA 改成 `role:user` | 应 403/404；若 200 → 缺陷 |
-| S-22 | #3 跨部门 apps/keys | P0 | OO：读/改根部门 app、签发 key、replay webhook | 应 403/404；若 200 → 缺陷 |
+| S-22 | #3 跨部门 apps/keys | P0 | OO：读/改根部门 app、签发 key、replay webhook | 404（同不存在）。**已知缺陷 K-05**：现状全局，200 |
 | S-23 | #4 integration | P0 | 合法 Connector JWT（映射普通用户）调 `GET /integration/v1/agents`、`POST .../runs` | 记录实际可见范围与是否写审计；默认预期：应按映射用户数据范围限制且写审计——不符则缺陷 |
 | S-24 | #5 app token 调 admin | P1 | `Authorization: Bearer fsk_…` 调 `GET /admin/api/runs` | 401 AUTH-1001（不认 Bearer） |
-| S-25 | #6 参数 500 | P1 | `runs?limit=abc`、`audit?limit=-1`、坏 JSON、3MiB body、非法 cron 且 active | 期望 400；若 500 SYS-9001 → 缺陷（可降 P2 若仅内部） |
+| S-25 | #6 参数 500 | P1 | `runs?limit=abc/1.5`、`audit?limit=-1/1.5/abc`、坏 JSON、3MiB body、非法 cron 且 active；6 处撞唯一键：apps key、users username、agent version、skill version、model key、schedule key；cron 非法不带 status（I-ERR-22） | 400 / 409，不 500。**已知缺陷 K-08**：上述现状 500 SYS-9001（cron 不带 status 直接入库） |
 | S-26 | #7 报错泄露 | P1 | MCP create 失败、provider test 失败 | 响应 `warning`/`error` 不应含内网地址/SQL；日志可有完整错误但无口令 |
 | S-27 | #8 审计缺口 | P1 | enable/disable schedule、open/integration cancel、integration 建 run | 成功后 audit 应有记录——无则缺陷或改文档 |
-| S-28 | #9 会话不失效 | P0 | PA 停用某用户后，该用户旧会话调 API | 应 401；若仍 200 → 缺陷 |
+| S-28 | #9 会话不失效 | P0 | PA 停用某用户后，该用户旧会话调 API | 401。**已知缺陷 K-04**：会话为登录时内存快照，8h 内仍 200。扩展场景见 **S-38** |
 | S-29 | #10 plugin 部分写入 | P1 | install 缺顶层 key（先建子资源） | 应事务回滚或补偿；残留无审计 → 缺陷 |
 | S-30 | #11 OIDC returnTo | P0 | `/auth/oidc/login?returnTo=//evil.example` | 应拒绝；若 302 到外域 → 开放重定向缺陷 |
 | S-31 | Run 详情不打码 | P0 | builder/auditor/user 调 `GET /runs/:id` 含敏感 tool args | 应打码或 403；原文暴露 → 缺陷 |
@@ -330,7 +330,7 @@
 |---|---|---|---|---|
 | I-DOC-01 | 接口 | P2 | 抽查 10 条 admin 路径 | 实际为 `/admin/api`；文档差异记「文档债」，不挡功能 pass |
 | I-DOC-02 | 接口 | P1 | 错误体字段 | 有 `retryable`，无 `remedy` |
-| I-DOC-03 | 接口 | P1 | 创建类 POST | HTTP 200（非 201），除非 open runs=202 |
+| I-DOC-03 | 接口 | P1 | 创建类 POST | HTTP 200（非 201）。例外：`POST /open/v1/agents/:key/runs` → 202；`POST /integration/v1/runs` → 202；`POST /open/v1/agents/:key/invoke` Run 已结束 → 200、未结束 → 202；Idempotency 重放 → 200 |
 | I-DOC-04 | 接口 | P2 | 文档有、代码无的码（APR-2103 等 11 个） | 不出现在响应；报告列「仅文档」 |
 | I-DOC-05 | 接口 | P1 | 仅 PA 的 6 个权限 key | OA/BL 调对应接口 → 403；与 ROLE_PERMISSIONS 表一致即 pass |
 
@@ -338,13 +338,15 @@
 
 | ID | 类型 | P | 步骤 | 预期 |
 |---|---|---|---|---|
-| I-SCOPE-10 | 接口 | P1 | 子部门用户看父部门 schedule | R-sched 为精确等于：应不可见（与 runs 子树规则不同） |
+| I-SCOPE-10a | 接口 | P1 | 统一规则（架构师定）：**本部门 + 所有子部门**。父部门用户 GET 子部门 Run（`/admin/api/runs/:id`、列表） | 200，可见 → pass |
+| I-SCOPE-10b | 接口 | P1 | 同一父部门用户 GET 子部门 schedule（`/schedules/:id`、列表） | **200**，可见。**已知缺陷**：R-sched 精确等于，现状 404，执行如实记 fail |
+| I-SCOPE-10c | 接口 | P1 | R-sa：同一父部门 OA 创建/PATCH schedule 绑定子部门服务账号（SA 接口仅 PA，故经绑定验证） | **200**。**已知缺陷**：R-sa 精确等于，现状 404（= I-SA-10） |
 | I-SCOPE-11 | 接口 | P1 | `self` 用户看 Agent 列表 | 与 `org` 相同（按部门子树），不是「仅自己创建」 |
 | I-SCOPE-12 | 接口 | P1 | owner=NULL 的 Agent：列表空部门用户 vs 详情 | 列表/详情一致性；不一致记缺陷 |
 
 ### 8.5 执行表
 
-冻结后生成 `docs/qa/api-execution-sheet.md`：86 行 ×（未登录 / 拒绝角色 / 允许角色 / 非法参），勾选来源 inventory 编号 #1–#86。
+已生成 **`docs/qa/route-exec-matrix.md`**（86 行：# / METHOD path / 权限 / 已有用例 / 缺口摘要 / 计划新用例 / 执行勾选），替代原计划的 `api-execution-sheet.md`。逐角色期望 = I-RBAC-10。
 
 ---
 
@@ -358,6 +360,7 @@
 | UI-021 Agents 分页 | 代码列表无分页（inventory）：造 0/1/大量条测滚动/空态；「每页条数」若 UI 无控件则标 N/A |
 | UI-025 Agents 详情 | `/next` 若尚未做详情路由，则「旧控制台详情 + ⋯菜单跳转」满足即 pass，缺页记缺口 |
 | UI-032 | 同时覆盖审批预览打码 **与** 运行详情（旧控制台 Run）敏感字段；与 S-31 捆绑，任一侧明文即 fail |
+| UI-034 / UI-081 | 拆 a/b：**a.** 审批已被清理为 expired → 批准 409 CFG-8503；**b.** 已过 `expires_at` 但未被 `timeoutApprovals` 清理 → 预期 409、不能批准。**已知缺陷**（W-06 / I-APR-36）：b 现状 200 批准成功，执行如实记 fail |
 | UI-050～058 | 基线 `543b664` **预期 fail**（修复在 `fe/responsive` `1ae3963`，开测前若已推入 main 则改预期） |
 
 执行清单（按模块）：UI-001～006 登录会话 · UI-010～014 导航 · UI-020～025 Agents · UI-030～034 审批 · UI-040～043 通用异常/XSS · UI-050～058 响应式样式 · UI-060～064 无障碍动效 · UI-070～071 主题兼容。
@@ -368,11 +371,15 @@
 |---|---|---|---|---|
 | S-33 | 安全 | P1 | 登录前记下匿名 cookie（若有）；登录成功后再看 `forge_session` | 登录后 token 与登录前不同（防固定） |
 | S-34 | 安全 | P1 | Connector 开关关：带任意 Bearer 调 `/integration/v1/agents` | 503 CON-4703（或文档码） |
-| S-35 | 安全 | P1 | 开关开：签名有效但映射用户无 `agent.run`，`POST /integration/v1/runs` | 期望 403；若 202 → 缺陷（Q6） |
+| S-35 | 安全 | P1 | 开关开：签名有效但映射用户无 `agent.run`，`POST /integration/v1/runs` | 403。**已知缺陷 K-06**：现状 202（= I-INT-11） |
 | S-36 | 安全 | P1 | 有效调用 integration 写接口后查 audit | 应有记录；无则缺陷 |
+| S-38 | 安全 | **P0 候选** | 用户 X 已登录（保留旧 cookie）。PA 依次对 X 做三种操作（每种单独一轮）：**停用**、**降级**（如 OA→US）、**换部门**；X 用旧会话立刻发下一次请求（读 + 写各一） | 下一次请求即生效：停用 → 401；降级 / 换部门 → 按新角色、新部门判定（原权限 403 / 原部门对象 404）。**已知缺陷**：会话是登录时快照（内存 Map，8h），现状仍按旧权限放行。与 **I-INT-10**（connector 侧停用/删除/部门停用）互相引用；S-28 为其子集 |
 | S-37 | 安全 | P2 | open 列表若含 cursor：篡改 cursor | 不可看到他应用数据 |
-| F-SCH-10 | 功能 | P1 | 绑定 platform_admin 服务账号创建/更新 schedule | 400 或 409 SCD-4804（以代码为准，记文档差） |
-| F-SCH-11 | 功能 | P1 | 服务账号 disabled 后 trigger/manual run | SCD-4801，任务暂停 |
+| F-SCH-10a | 功能 | P1 | 创建（POST）或更新（PATCH）schedule 时绑定 platform_admin 服务账号 | **400** SCD-4804（`requireUsableServiceAccount`） |
+| F-SCH-10b | 功能 | P1 | 存量任务已绑 PA 服务账号（库内构造），调 `POST /schedules/:id/run` | **409** SCD-4804（`buildScheduleIdentity`） |
+| F-SCH-11a | 功能 | P1 | 服务账号 disabled 后手动 `POST /schedules/:id/run` | 409 SCD-4801；schedule 状态**不变** |
+| F-SCH-11b | 功能 | P1 | 服务账号 disabled 后 `POST /schedules/:id/enable` | 409 SCD-4801 |
+| F-SCH-11c | 功能 | P1 | 服务账号 disabled 后等调度器自动触发 | 任务被暂停（只有调度器路径会暂停） |
 | F-SCH-12 | 功能 | P1 | 并发手动 run 触发 skip | 409 SCD-4802 |
 | F-SCH-13 | 日志 | P1 | OA 点手动 run | audit 含操作者用户 id + 执行用服务账号 id |
 | O-11 | 运维 | P1 | 检查 3100 监听地址 | 记录 0.0.0.0 vs 127.0.0.1；改 HOST 需 Cursor Jackson 批准（群里已有卡片） |
@@ -388,7 +395,7 @@
 | 重点 | 说明 |
 |---|---|
 | OPS-014 | 日志脱敏：步骤含 URL query 密钥 + 主动 log 的错误对象；有明文则定 P0。修复方向：共用 args-preview 判定 + pino `redact`（架构师意见） |
-| OPS-012 | kill -9 后会话「仍有效」与当前**内存会话**设计冲突——执行时记录实际行为；若会话失效则改预期为「需重登」，并单列「多实例粘滞」建议 |
+| OPS-012 | 会话存进程内存，重启后全部失效属**设计行为**：预期改为「重启后跳登录页，写操作不成功」（运维新版已改）；多实例部署会话不共享写进部署文档 |
 | OPS-021 | 与群里 HOST 卡片联动；Cursor Jackson 未批准前只记录现状 |
 
 ## 12. 架构师横向补洞（合并进 UI / F）
@@ -398,8 +405,47 @@
 | UI-042a | 扩 UI-042 | P0 | 分别用 PA / OA / 部门成员(BL或OP) / AU(只读) 登录，走侧栏各页与关键按钮 | 与角色×接口矩阵一致：无权限入口隐藏或禁用；直打 API 403 有中文提示 |
 | UI-042b | 地址栏越权 | P0 | OA 或部门成员：URL 换成他部 Agent id / 审批 id（新控制台若无详情则旧控制台/`/admin/api`+UI） | 与「不存在」相同的 404 空态，**不露出名称** |
 | UI-080 | 状态：重复发布 | P1 | 已发布 Agent 再点发布（或两标签同时确认发布） | 一方成功；另一方可理解冲突/已发布，不双份脏数据 |
-| UI-081 | 状态：过期瞬间批准 | P1 | A 标签看将过期审批；过期时刻 B 点批准 | 提示已过期/不可处理，**不能**成功批准 |
+| UI-081a | 状态：过期瞬间批准 | P1 | 审批已被清理为 expired；B 标签点批准 | 409 CFG-8503，提示已过期/不可处理，**不能**成功批准 |
+| UI-081b | 状态：过期未清理 | P1 | 已过 `expires_at` 但未清理；B 标签点批准 | 预期同 a（409、不能批准）。**已知缺陷** I-APR-36：现状 200 批准成功，执行如实记 fail |
 | UI-082 | 会话：多标签退出 | P0 | A 退出登录后，B 标签立刻点批准/发布等写操作 | 跳转登录；写请求失败（401），服务端无成功副作用 |
+
+## 14. 后端接口审阅合入（审 `b7bfce9`，`/tmp/forge-logs/api-cases-review.md`）
+
+口径（架构师）：预期写**正确行为**，代码不符标「已知缺陷」，执行如实记 fail；不写「两种结果都算通过」。
+
+### 14.1 B1 错预期修正（9 条）
+
+| 审阅编号 | 用例 | 修正后 |
+|---|---|---|
+| W-01a | I-G-06 | 413；现状 500 SYS-9001，已知缺陷 |
+| W-01b | F-SCH-10 | 拆 F-SCH-10a（创建/更新绑 PA SA → 400）/ 10b（存量绑 PA 手动 run → 409） |
+| W-02 | F-SCH-11 | 拆 11a 手动 run 409 状态不变 / 11b enable 409 / 11c 调度器触发才暂停 |
+| W-03 | I-RBAC-02 | 改测 cancel / decide；decide 跨部门预期与不存在完全相同（「审批不存在」），现状「Run 不存在」→ 已知缺陷 |
+| W-04 | I-SCOPE-10 | 统一「本部门 + 子部门」：10a Run 200 pass；10b schedule 预期 200（现状 404 缺陷）；10c R-sa 预期 200（现状 404 缺陷） |
+| W-05 | I-RBAC-01 | 前置带本会话 CSRF；判定「不出现『角色缺少权限: <key>』的 403」 |
+| W-06 | UI-034 / UI-081 | 拆 a（已清理 → 409 CFG-8503）/ b（过期未清理 → 预期 409，现状 200 缺陷，I-APR-36） |
+| W-07 | I-G-04 | 403 POL-2001「CSRF Token 缺失或无效」；无会话 401；指向 I-CSRF-01～05 |
+| W-08 | I-DOC-03 | 例外补全：open runs 202、integration runs 202、invoke 结束 200 / 未结束 202 |
+
+### 14.2 B2 已知缺陷标注（K-01～K-08）
+
+| 编号 | 用例 | 预期 | 现状 |
+|---|---|---|---|
+| K-01 | I-G-07 | 400 | 500 SYS-9001 |
+| K-02 | I-OPEN-02 | 文案统一 | 4 种文案（待安全定级） |
+| K-03 | I-G-08 | 写操作皆审计 | 6 个接口不写（含 logout）；user.update 不记 status |
+| K-04 | S-28（扩展 S-38） | 401 | 200，会话快照 8h |
+| K-05 | I-SCOPE-01～04、S-22 | 按部门隔离 | 全局 200 |
+| K-06 | S-35 / I-INT-11 | 403 | 202 |
+| K-07 | S-04 | 限流 / 锁定 | 无 |
+| K-08 | S-25 | 400 | runs/audit 非法 limit → 500 |
+
+### 14.3 新增
+
+- **`docs/qa/api-cases-addendum.md`**：I-PUB / I-AUTH / I-AGT / I-MDL / I-MCP / I-SKL / I-TS / I-RUN / I-APR-30～36 / I-SCH / I-APP / I-USR / I-PLG / I-SA / I-OPEN-10～21 / **I-INT-01～13（I-INT-10 P0：停用、删除用户、部门停用均 403 CON-4706）** / I-CSRF-01～05 / I-AUD-01～11 / I-ERR-01～22 / I-DOC-10～45 / I-RBAC-10～11。connector 前置：3197 开开关 + 测试 RSA，私钥仅 `/tmp`，测完删。
+- **`docs/qa/route-exec-matrix.md`**：86 行执行矩阵（§2.7 / §8.5 指向）。
+- **S-38**（§10）：停用 / 降级 / 换部门后旧会话下一次请求即生效；与 I-INT-10 互引。
+- 后端顺带缺陷候选已用例化：PATCH user 不传 dataScope 被重置（I-USR-07）、PATCH schedule 非法 cron 不带 status 入库（I-SCH-09）、`apps/:id/keys` / `plugins/:id/uninstall` 不存在 id 返回 200（I-APP-06 / I-PLG-03）。
 
 ## 13. 变更记录
 
@@ -407,3 +453,4 @@
 |---|---|
 | 2026-10-22 | 初稿 → inventory → UI → 威胁映射 |
 | 2026-10-22 | 合入 OPS-001～023；补 UI-042a/b、UI-080～082 |
+| 2026-10-22 | 合后端接口审阅（`b7bfce9`）：修 9 条错预期（W-01a～W-08）、标已知缺陷 K-01～K-08；按架构师口径改 I-SCOPE-10（统一子树规则）、I-RBAC-02（decide 同「审批不存在」）、UI-034/081、I-G-06/07；新增 S-38；O-08 / OPS-012 改为重启后会话失效属设计；OPS 用例换运维新版；新增 `api-cases-addendum.md`、`route-exec-matrix.md`（86 行）；威胁清单 T1 加 S-38、T5 加 I-INT-10 |
