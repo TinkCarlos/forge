@@ -1,3 +1,4 @@
+import { safeRedirectPath } from '@/lib/safe-redirect'
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useNavigate } from '@tanstack/react-router'
@@ -31,8 +32,10 @@ export function UserAuthForm({ className, redirectTo }: { className?: string; re
     setError(null)
     try {
       setSession(await api<Session>('/auth/local/login', { method: 'POST', body: { email, password } }))
-      // redirect 是 router 记下的完整 href（含 /next 前缀），用 history 跳回
-      if (redirectTo) await navigate({ href: redirectTo.replace(/^\/next/, '') || '/', replace: true })
+      // redirect 是 router 记下的站内路径（不含 /next）；不合法一律回到首页（/next/）
+      const target = redirectTo === undefined ? null : safeRedirectPath(redirectTo)
+      if (target) await navigate({ href: target, replace: true })
+      else if (redirectTo !== undefined) await navigate({ to: '/', replace: true })
       else await navigate({ to: '/agents', replace: true })
     } catch (err) {
       setError(err instanceof ApiError ? err : new ApiError('登录失败，请稍后再试', 0))
