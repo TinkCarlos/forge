@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ARGS_PREVIEW_TOTAL_MAX, ARGS_PREVIEW_VALUE_MAX, buildArgsPreview, isSensitiveKey, keySegments, maskUrlQuery } from "../packages/governance/src/args-preview.js";
+import { ARGS_PREVIEW_TOTAL_MAX, ARGS_PREVIEW_VALUE_MAX, buildArgsPreview, isSecretValue, isSensitiveKey, keySegments, maskQueryString, maskUrlQuery } from "../packages/governance/src/args-preview.js";
 
 describe("buildArgsPreview", () => {
   it("null/undefined args -> null", () => {
@@ -49,7 +49,7 @@ describe("buildArgsPreview", () => {
     for (const key of ["api_key", "apiKey", "APIKey", "accessToken", "X-Api-Key", "password", "DB_PASSWORD", "client.secret", "Authorization", "key", "token2"]) {
       expect(isSensitiveKey(key), key).toBe(true);
     }
-    for (const key of ["keyword", "monkey", "tokenizer", "passwords_reset_count", "secretary", "keys", "author"]) {
+    for (const key of ["keyword", "monkey", "tokenizer", "secretary", "author", "cookbook", "pwdx"]) {
       expect(isSensitiveKey(key), key).toBe(false);
     }
     expect(buildArgsPreview({ keyword: "合同", monkey: "m", tokenizer: "bpe", "X-Api-Key": "abc123" })).toBe("keyword=合同, monkey=m, tokenizer=bpe, X-Api-Key=***");
@@ -85,5 +85,51 @@ describe("buildArgsPreview", () => {
     const long = buildArgsPreview({ u: `https://a.test/${"p".repeat(100)}?token=zzz` })!;
     expect(Array.from(long.slice(2))).toHaveLength(ARGS_PREVIEW_VALUE_MAX);
     expect(long).not.toContain("zzz");
+  });
+
+  it("plural/variant key words: passwords, pwd, passwd, tokens, secrets, keys, credential(s), cookie(s)", () => {
+    for (const key of ["passwords", "DB_PWD", "userPasswd", "refreshTokens", "client_secrets", "apiKeys", "credential", "awsCredentials", "Cookie", "set_cookies", "Set-Cookie", "passwords_reset_count"]) {
+      expect(isSensitiveKey(key), key).toBe(true);
+    }
+    expect(isSensitiveKey("secretary")).toBe(false);
+    expect(buildArgsPreview({ pwd: "p1", cookies: ["a=1"], credentials: { user: "u" }, secretary: "Ms Li" })).toBe("pwd=***, cookies=***, credentials=***, secretary=Ms Li");
+  });
+
+  it("value prefixes are case-insensitive: SK-, GHP_, XOXB-, BEARER, basic", () => {
+    for (const value of ["SK-PROJ-1", "Sk-x", "GHP_abc", "XOXB-1-2", "BEARER abc", "bearer abc", "BASIC dXNl", " sk-trim "]) {
+      expect(isSecretValue(value), value).toBe(true);
+    }
+    for (const value of ["skill", "ghp", "Bearer", "basically"]) expect(isSecretValue(value), value).toBe(false);
+    expect(buildArgsPreview({ a: "SK-UPPER-1", b: ["GHP_UP"], c: "BEARER UP" })).toBe("a=***, b=[***], c=***");
+  });
+
+  it("URL-looking strings with ? that are not parseable http(s) URLs lose everything after the first ?", () => {
+    expect(maskQueryString("ftp://x.test/?token=t&a=1")).toBe("ftp://x.test/?***");
+    expect(maskQueryString("/api/v1/hook?sig=abc&x=1")).toBe("/api/v1/hook?***");
+    expect(maskQueryString("https://exa mple.com/p?token=t")).toBe("https://exa mple.com/p?***");
+    expect(maskQueryString("http://[::1/x?key=k")).toBe("http://[::1/x?***");
+    expect(maskQueryString("www.example.com/p?token=t")).toBe("www.example.com/p?***");
+    expect(maskQueryString("no question mark")).toBe("no question mark");
+    expect(maskQueryString("https://ok.test/p?a=1&token=t")).toBe("https://ok.test/p?a=1&token=***");
+    const preview = buildArgsPreview({ path: "/cb?token=SECRETVAL", note: "ok?", list: ["x?y", "app://cb?code=SECRETVAL"] })!;
+    expect(preview).toBe("path=/cb?***, note=ok?, list=[x?y, app://cb?***]");
+    expect(preview).not.toContain("SECRETVAL");
+  });
+
+  it("plain sentences with ? are left unchanged", () => {
+    for (const text of ["明天开会?", "要不要发给客户? 金额 500", "Is this OK?", "a?b"]) expect(maskQueryString(text)).toBe(text);
+    expect(buildArgsPreview({ question: "明天开会?" })).toBe("question=明天开会?");
+  });
+
+  it("JSON-encoded object/array strings are parsed and masked with the same rules", () => {
+    expect(buildArgsPreview({ body: '{"password":"x"}' })).toBe("body={password=***}");
+    const preview = buildArgsPreview({
+      body: ' {"to":"a@b.com","auth":{"apiKey":"K1"},"h":["Bearer B2"],"cb":"https://x.test/?sig=S3"} ',
+      list: '[{"token":"T4"},"sk-T5"]',
+      bad: '{"password": broken',
+    })!;
+    expect(preview).toBe('body={to=a@b.com, auth={apiKey=***}, h=[***], cb=https://x.test/?sig=***}, list=[{token=***}, ***], bad={"password": broken');
+    for (const raw of ["K1", "B2", "S3", "T4", "sk-T5"]) expect(preview).not.toContain(raw);
+    expect(buildArgsPreview('{"secret":"top"}')).toBe("{secret=***}");
   });
 });

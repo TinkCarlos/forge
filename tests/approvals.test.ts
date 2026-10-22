@@ -55,7 +55,7 @@ beforeAll(async () => {
   await execute("UPDATE approvals SET tool_call_id = ? WHERE id = ?", [id26("TCLMISSING"), noToolApproval]);
   orgBApproval = await pendingApproval(ORG_B, { nested: { password: SECRET }, note: "other dept" }, "crm.update");
   // Secrets only recognisable by value (innocent key names), incl. a URL query param.
-  valueSecretApproval = await pendingApproval(ORG_A, { headers: [`Bearer ${SECRET}-b`], gh: `ghp_${SECRET}`, jwt: JWT, callback: `https://hooks.test/x?id=1&sig=${SECRET}-sig` }, "http.call");
+  valueSecretApproval = await pendingApproval(ORG_A, { headers: [`Bearer ${SECRET}-b`], gh: `ghp_${SECRET}`, jwt: JWT, callback: `https://hooks.test/x?id=1&sig=${SECRET}-sig`, body: JSON.stringify({ password: `${SECRET}-json` }) }, "http.call");
 });
 
 afterAll(async () => {
@@ -139,7 +139,7 @@ describe("GET /admin/api/approvals", () => {
     const item = res.body.items.find((i) => i.id === valueSecretApproval)!;
     expect(item.tool_name).toBe("http.call");
     const parts = item.args_preview!.split(", ").sort();
-    expect(parts).toEqual(["callback=https://hooks.test/x?id=1&sig=***", "gh=***", "headers=[***]", "jwt=***"]);
+    expect(parts).toEqual(["body={password=***}", "callback=https://hooks.test/x?id=1&sig=***", "gh=***", "headers=[***]", "jwt=***"]);
     expect(res.raw).not.toContain(SECRET);
     expect(res.raw).not.toContain(JWT);
   });
