@@ -5,7 +5,7 @@ export { clampWaitSeconds, invokeStatusCode, waitForRun } from "./invoke.js";
 export { cancelRun, createQueuedRun, executeRun, finalize, runClaimed } from "./loop.js";
 export { createDeltaBuffer, decideAfterModelError, modelCandidates } from "./model-loop.js";
 export { repairMessage, validateOutput } from "./output.js";
-export { tickSchedules } from "./schedules.js";
+export { tickSchedules, triggerSchedule, SCHEDULE_PAUSED_CODE, SCHEDULE_TRIGGER_FAILED_CODE, type ScheduleTriggerResult } from "./schedules.js";
 export { idempotencyRequestHash, resolveIdempotentCreate } from "./idempotency.js";
 export { mapLimit, nextToolAttempt, requiresApproval, toolFailureRetryable, toolIdempotencyKey, withToolRetries } from "./tools.js";
 export { deliverDueWebhooks, webhookRetryDelayMs, webhookShouldRetry } from "./webhook.js";

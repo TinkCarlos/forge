@@ -14,14 +14,26 @@ import {
   requireBodyString,
 } from "../../plugins/http-helpers.js";
 
+/** Additive camelCase fields on top of the raw schedule row (raw snake_case keys stay for compatibility). */
+function presentScheduleExtras(schedule: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...schedule,
+    serviceAccountId: schedule.service_account_id ?? null,
+    failureCount: Number(schedule.failure_count ?? 0),
+    lastErrorCode: schedule.last_error_code ?? null,
+  };
+}
+
 export default async function adminScheduleRoutes(app: FastifyInstance): Promise<void> {
   app.get("/admin/api/schedules", async (request) => {
     const session = await admin(request, "schedule.view");
     const schedules = await repos.listSchedules();
-    const items = schedules.filter((schedule) => {
-      if (session.principal.dataScope === "all") return true;
-      return schedule.org_unit_id === session.principal.orgUnitId;
-    });
+    const items = schedules
+      .filter((schedule) => {
+        if (session.principal.dataScope === "all") return true;
+        return schedule.org_unit_id === session.principal.orgUnitId;
+      })
+      .map(presentScheduleExtras);
     return { items };
   });
 
