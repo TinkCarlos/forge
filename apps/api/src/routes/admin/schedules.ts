@@ -1,4 +1,5 @@
-import { type FastifyInstance } from "fastify";
+import { type FastifyInstance, type FastifyRequest } from "fastify";
+import type { Session } from "@forge/identity";
 import { CronExpressionParser } from "cron-parser";
 import { errors, ForgeError, type Principal } from "@forge/core";
 import { buildScheduleIdentity, createQueuedRun } from "@forge/runtime";
@@ -30,10 +31,34 @@ function scheduleVisible(principal: Principal, schedule: Record<string, unknown>
 }
 
 /** Loads one schedule through the same data scope as the list; invisible and nonexistent both -> 404. */
-async function loadVisibleSchedule(principal: Principal, id: string): Promise<Record<string, unknown>> {
+async function loadVisibleScheduleOr404(principal: Principal, id: string): Promise<Record<string, unknown>> {
   const schedule = await repos.getSchedule(id);
   if (!schedule || !scheduleVisible(principal, schedule)) throw errors.notFound("定时任务不存在");
   return schedule;
+}
+
+type ScheduleByIdContext = { request: FastifyRequest; session: Session; schedule: Record<string, unknown> };
+
+/**
+ * The only way to register a `/admin/api/schedules/:id...` route: checks the permission, then loads the schedule
+ * through the list data scope (loadVisibleScheduleOr404) before the handler runs, so no :id route can skip the scope check.
+ */
+function scheduleByIdRoute(
+  app: FastifyInstance,
+  method: "GET" | "PATCH" | "PUT" | "DELETE" | "POST",
+  suffix: "" | `/${string}`,
+  permission: string,
+  handler: (ctx: ScheduleByIdContext) => Promise<unknown>,
+): void {
+  app.route({
+    method,
+    url: `/admin/api/schedules/:id${suffix}`,
+    handler: async (request) => {
+      const session = await admin(request, permission);
+      const schedule = await loadVisibleScheduleOr404(session.principal, param(request, "id"));
+      return handler({ request, session, schedule });
+    },
+  });
 }
 
 /** Additive camelCase fields on top of the raw schedule row (raw snake_case keys stay for compatibility). */
@@ -91,9 +116,7 @@ export default async function adminScheduleRoutes(app: FastifyInstance): Promise
     return { id };
   });
 
-  app.patch("/admin/api/schedules/:id", async (request) => {
-    const session = await admin(request, "schedule.manage");
-    const schedule = await loadVisibleSchedule(session.principal, param(request, "id"));
+  scheduleByIdRoute(app, "PATCH", "", "schedule.manage", async ({ request, session, schedule }) => {
     const body = bodyOf(request);
     const fields: Record<string, unknown> = {};
     if (body.name !== undefined) fields.name = stringBody(body, "name");
@@ -110,10 +133,7 @@ export default async function adminScheduleRoutes(app: FastifyInstance): Promise
     return { ok: true };
   });
 
-  app.post("/admin/api/schedules/:id/enable", async (request) => {
-    const session = await admin(request, "schedule.manage");
-    const schedule = await repos.getSchedule(param(request, "id"));
-    if (!schedule) throw errors.notFound("定时任务不存在");
+  scheduleByIdRoute(app, "POST", "/enable", "schedule.manage", async ({ schedule }) => {
     if (schedule.service_account_id) {
       const account = await repos.getServiceAccount(String(schedule.service_account_id));
       if (!account || account.status !== "active") throw new ForgeError("SCD-4801", "服务账号已停用，不能启用定时任务", 409);
@@ -123,17 +143,12 @@ export default async function adminScheduleRoutes(app: FastifyInstance): Promise
     return { ok: true };
   });
 
-  app.post("/admin/api/schedules/:id/disable", async (request) => {
-    const session = await admin(request, "schedule.manage");
-    const schedule = await repos.getSchedule(param(request, "id"));
-    if (!schedule) throw errors.notFound("定时任务不存在");
+  scheduleByIdRoute(app, "POST", "/disable", "schedule.manage", async ({ schedule }) => {
     await repos.updateSchedule(String(schedule.id), { status: "disabled", next_run_at: null });
     return { ok: true };
   });
 
-  app.post("/admin/api/schedules/:id/run", async (request) => {
-    const session = await admin(request, "schedule.run");
-    const schedule = await loadVisibleSchedule(session.principal, param(request, "id"));
+  scheduleByIdRoute(app, "POST", "/run", "schedule.run", async ({ session, schedule }) => {
     const agent = await repos.getAgent(String(schedule.agent_id));
     if (!agent?.published_version_id) throw errors.invalid("Agent 尚未发布");
     // Manual "run now" executes as the schedule's identity (bound service account, or the legacy service identity),

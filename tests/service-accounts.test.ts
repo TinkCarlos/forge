@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
 import { config, type Principal } from "@forge/core";
 import { createSession, destroySession, sessionCookieValue, type Session } from "@forge/identity";
-import { execute, repos } from "@forge/store";
+import { execute, query, repos } from "@forge/store";
 import { buildApp } from "../apps/api/src/app.js";
 
 const suffix = `${Date.now().toString(36)}${randomBytes(3).toString("hex")}`;
@@ -293,5 +293,70 @@ describe("manual run respects schedule data scope", () => {
 
     const sameOrg = await app.inject({ method: "POST", url: `/admin/api/schedules/${scheduleId}/run`, headers: operatorHeaders(ORG), payload: {} });
     expect(sameOrg.statusCode).toBe(200);
+  });
+});
+
+describe("every /admin/api/schedules/:id route loads through one data scope (invisible -> 404)", () => {
+  const OTHER_ORG = "01J0000000000000000000OTHR";
+  const sessions: Session[] = [];
+  const headersFor = (role: "builder" | "operator", orgUnitId: string): Record<string, string> => {
+    const session = createSession({ type: "user", id: `it-${role[0]}-${suffix}-${sessions.length}`, name: `IT ${role}`, role, orgUnitId, dataScope: "org" });
+    sessions.push(session);
+    return { cookie: `forge_session=${sessionCookieValue(session)}`, "x-csrf-token": session.csrfToken };
+  };
+  afterAll(() => {
+    for (const session of sessions) destroySession(session.token);
+  });
+
+  const makeSchedule = async (orgUnitId: string, label: string): Promise<string> => {
+    const accountId = await repos.createServiceAccount({ key: `it-sa-${label}-${suffix}`, name: label, orgUnitId, createdBy: ADMIN_ID });
+    createdAccounts.push(accountId);
+    const scheduleId = await repos.createSchedule({
+      key: `it-sch-${label}-${suffix}`, name: `IT ${label}`, agentId, orgUnitId, subjectType: "service", subjectId: accountId, serviceAccountId: accountId,
+      cron: "0 9 * * 1", timezone: "Asia/Shanghai", input: { text: "x" }, status: "disabled", createdBy: ADMIN_ID,
+    });
+    createdSchedules.push(scheduleId);
+    return scheduleId;
+  };
+  const errorBody = (res: LightMyRequestResponse) => {
+    const { requestId: _ignored, ...rest } = (res.json() as { error: Record<string, unknown> }).error;
+    return rest;
+  };
+  const auditCount = async (scheduleId: string) =>
+    (await query<{ n: number }>("SELECT COUNT(*) AS n FROM audit_logs WHERE resource_type = 'schedule' AND resource_id = ?", [scheduleId]))[0]!.n;
+
+  const routes: Array<{ name: string; method: "PATCH" | "POST"; suffix: string; role: "builder" | "operator"; payload: Record<string, unknown> }> = [
+    { name: "PATCH /:id", method: "PATCH", suffix: "", role: "builder", payload: { name: "renamed" } },
+    { name: "POST /:id/enable", method: "POST", suffix: "/enable", role: "builder", payload: {} },
+    { name: "POST /:id/disable", method: "POST", suffix: "/disable", role: "builder", payload: {} },
+    { name: "POST /:id/run", method: "POST", suffix: "/run", role: "operator", payload: {} },
+  ];
+
+  for (const route of routes) {
+    it(`${route.name}: other org -> 404 identical to nonexistent, no change, no audit; same org -> 200`, async () => {
+      const scheduleId = await makeSchedule(ORG, `scope-${route.suffix.replace("/", "") || "patch"}`);
+      const before = await repos.getSchedule(scheduleId);
+      const foreign = headersFor(route.role, OTHER_ORG);
+      const hidden = await app.inject({ method: route.method, url: `/admin/api/schedules/${scheduleId}${route.suffix}`, headers: foreign, payload: route.payload });
+      const missing = await app.inject({ method: route.method, url: `/admin/api/schedules/sch_missing_${suffix}${route.suffix}`, headers: foreign, payload: route.payload });
+      expect(hidden.statusCode).toBe(404);
+      expect(missing.statusCode).toBe(404);
+      expect(errorBody(hidden)).toEqual(errorBody(missing));
+      const after = await repos.getSchedule(scheduleId);
+      expect({ name: after?.name, status: after?.status, next_run_at: after?.next_run_at }).toEqual({ name: before?.name, status: before?.status, next_run_at: before?.next_run_at });
+      expect(await auditCount(scheduleId)).toBe(0);
+      expect((await repos.listRuns({ limit: 200 })).some((r) => r.trigger_ref === scheduleId)).toBe(false);
+
+      const sameOrg = await app.inject({ method: route.method, url: `/admin/api/schedules/${scheduleId}${route.suffix}`, headers: headersFor(route.role, ORG), payload: route.payload });
+      expect(sameOrg.statusCode).toBe(200);
+    });
+  }
+
+  it("platform_admin (dataScope all) manual run on another department's schedule is not scope-restricted -> 200", async () => {
+    const scheduleId = await makeSchedule(OTHER_ORG, "scope-admin-run");
+    const res = await app.inject({ method: "POST", url: `/admin/api/schedules/${scheduleId}/run`, headers: adminHeaders, payload: {} });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ trigger: "schedule" });
+    expect(await auditCount(scheduleId)).toBe(1);
   });
 });
