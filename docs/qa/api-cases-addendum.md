@@ -165,7 +165,7 @@
 | I-MDL-08 | #23/#24 | — | 不存在 id | 404 RUN-7001；成功时审计 `provider.update`/`model.update` | P2 | |
 | I-MDL-09 | #25 | provider 无模型 | test | 400「Provider 还没有模型」；不存在 id → 404 | P2 | |
 | I-MDL-10 | #25 | PRE-MOCK 上游不通 | test | 200 `ok:false`；`error` 不含内网地址、apiKey | P1 | |
-| I-MDL-11 | #21～#25 | org_admin、builder 各一 | 分别建 / 改 provider、建 / 改 model、调 test | 均 **403**「角色缺少权限: model.manage」，不改动（Provider / 模型只有 PA 能写，C 方案）【待 Cursor Jackson 拍板】 | P1 | **已知缺陷 K-10**：现状两角色持有 `model.manage`，均 200 |
+| I-MDL-11 | #21～#25 | org_admin、builder 各一 | 分别建 / 改 provider、建 / 改 model、调 test | 均 **403**「角色缺少权限: model.manage」，不改动（Provider / 模型只有 PA 能写，C 方案）【待 Cursor Jackson 拍板】 | P1 | **已知缺陷 K-10**：现状两角色持有 `model.manage`，均 200。修复 **Q**（待 Cursor Jackson 拍板方案 C） |
 
 ### 6.3 MCP（I-MCP，#26~#29）
 
