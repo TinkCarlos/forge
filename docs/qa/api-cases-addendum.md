@@ -45,7 +45,7 @@
 | I-CSRF-03 | 同上 | 无会话；带合法 body（如 `{}`） | 不带 cookie、不带 CSRF | 401 AUTH-1001，不是 403 | P0 | |
 | I-CSRF-04 | #9 `/auth/logout`、`/open/*`、`/integration/*` | 有凭证 | 不带 CSRF 调写接口 | 不因 CSRF 拒绝（按现设计；记录） | P2 | 设计确认项 |
 | I-CSRF-05 | 任一 admin 写接口 | 会话 A、B | A 的 cookie + B 的 csrfToken | 403 POL-2001「CSRF Token 缺失或无效」 | P0 | |
-| I-CSRF-06 | 任一 admin 写接口（如 #14） | 有效会话 + 正确 CSRF；另测无会话 | 在 CSRF 之前构造请求体问题：① `Content-Type: application/json` + 坏 JSON ② body 超过 2MB ③ 不支持的 Content-Type ④ `Content-Type: application/json` 但空 body | ① 400 CFG-8501 ② 413 ③ 415 ④ 400；均无堆栈；无会话时同样按此返回（body 先于 CSRF 解析，顺序保留） | P1 | **已知缺陷 K-09**：现状四种都 500 SYS-9001（`plugins/errors.ts:20`）。修复 K4 |
+| I-CSRF-06 | 任一 admin 写接口（如 #14） | 有效会话 + 正确 CSRF；另测无会话 | 在 CSRF 之前构造请求体问题：① `Content-Type: application/json` + 坏 JSON ② body 超过 2MB ③ 不支持的 Content-Type ④ `Content-Type: application/json` 但空 body | ① 400 CFG-8501 ② 413 ③ 415 ④ 400；均无堆栈；无会话时同样按此返回（body 先于 CSRF 解析，顺序保留） | P1 | **已知缺陷 K-09**：现状四种都 500 SYS-9001（`plugins/errors.ts:20`）。修复 O |
 
 ## 3. Integration / Connector（I-INT，全部前置 PRE-CON）
 
@@ -70,7 +70,8 @@
 | I-INT-13 | #83 | 映射用户属部门 A | 建 Run 后 PA 查 `GET /admin/api/runs/:id` | Run 的 org = 部门 A；subject = 映射用户 | P1 | |
 | I-INT-14 | #84 GET `/integration/v1/runs/:id` | PRE-CON；映射用户无 `run.view` | 读本范围内 Run | 403 | P3 | 内置角色都有 `run.view`，测不出，记设计；现状无权限检查 |
 | I-INT-15 | #86 POST `/integration/v1/runs/:id/cancel` | PRE-CON | ① 取消范围外 Run ② 映射用户为 BL / AU / US（无 `run.cancel`）取消本范围 Run | ① 404（`assertRunAccess`）② 403 | P1 | ② **已知缺陷**：现状 200 |
-| I-INT-16 | #86 同上 | PRE-CON；已结束的 Run | cancel | **409**，状态不变，不写审计（与 I-RUN-06、I-OPEN-23 统一） | P2 | 现状待实测；修复 K2 |
+| I-INT-16 | #86 同上 | PRE-CON；已结束的 Run | cancel | **409**，状态不变，不写审计（与 I-RUN-06、I-OPEN-23 统一） | P2 | 现状待实测；修复 M |
+| I-INT-17 | #83 POST `/integration/v1/runs` | PRE-CON；映射用户属部门 A；部门 B（非 A 子树）有已发布 Agent | 用该 Agent 的 key 建 Run | **404 RUN-7001**，不建 Run（只能跑映射用户部门子树内已发布的 Agent，与 #82 一致） | P1 | **已知缺陷**：现状不检查 agent 部门可见性 |
 
 ## 4. 审计（I-AUD）
 
@@ -106,7 +107,7 @@
 | I-ERR-12 | MDL-3001 | #19/#25 | PRE-MOCK 5xx | 跑 Run / test | Run `error_code`=MDL-3001 或 test `ok:false` | P2 |
 | I-ERR-13 | MDL-3003 | #19 / #38 | PRE-MOCK：mock 8090 返回 `Content-Type: application/json`，响应体为 `not-json`（非流式但内容是合法 JSON 会成功，不能用） | 跑 Run，读 `GET /admin/api/runs/<runId>` | Run `errorCode`=MDL-3003，文案「模型返回不是合法 JSON」 | P3 |
 | I-ERR-14 | MDL-3004 | 同上 | 超时 | 同上 | `error_code`=MDL-3004 | P2 |
-| I-ERR-15 | SYS-9002 | #19 + #38（顺带 #25） | **由运维在 3196 的 `forge_ops` 库上做（独立临时库，禁用 `forge_ux`）**；K1 / K2 两把 `FORGE_MASTER_KEY`（合法 32 字节 base64）放 `/tmp`、权限 600，测完删除。① 用 K1 启动；`POST /admin/api/providers {"key":"qa-badcred","baseUrl":"http://127.0.0.1:8090/v1","apiKey":"sk-test"}`（openai-compatible，mock 协议不走解密）；`POST /admin/api/providers/<id>/models {"key":"m1"}`；建 agent `spec={"model":{"provider":"qa-badcred","model":"m1"}}`、不配 fallback、发布 ② 停实例，换 K2 连同一库重启 | ① `POST /admin/api/agents/<id>/run {"text":"hi"}` ② 等 worker 跑完 `GET /admin/api/runs/<runId>` ③ 顺带 `POST /admin/api/providers/<id>/test` | ① 200 queued ② `status:"failed"`、`errorCode:"SYS-9002"`、`errorMessage:"Provider 凭据无法解密"`，8090 收不到请求 ③ 200 `{ok:false, error:"Provider 凭据无法解密"}`，**只有文案没有错误码**；HTTP 层不出现 500 SYS-9002 | P3 |
+| I-ERR-15 | SYS-9002 | #19 + #38（顺带 #25） | **由运维在 3196 的 `forge_ops` 库上做（独立临时库，禁用 `forge_ux`）**；KEY1 / KEY2 两把 `FORGE_MASTER_KEY`（合法 32 字节 base64）放 `/tmp`、权限 600，测完删除。① 用 KEY1 启动；`POST /admin/api/providers {"key":"qa-badcred","baseUrl":"http://127.0.0.1:8090/v1","apiKey":"sk-test"}`（openai-compatible，mock 协议不走解密）；`POST /admin/api/providers/<id>/models {"key":"m1"}`；建 agent `spec={"model":{"provider":"qa-badcred","model":"m1"}}`、不配 fallback、发布 ② 停实例，换 KEY2 连同一库重启 | ① `POST /admin/api/agents/<id>/run {"text":"hi"}` ② 等 worker 跑完 `GET /admin/api/runs/<runId>` ③ 顺带 `POST /admin/api/providers/<id>/test` | ① 200 queued ② `status:"failed"`、`errorCode:"SYS-9002"`、`errorMessage:"Provider 凭据无法解密"`，8090 收不到请求 ③ 200 `{ok:false, error:"Provider 凭据无法解密"}`，**只有文案没有错误码**；HTTP 层不出现 500 SYS-9002 | P3 |
 | I-ERR-16 | HTP-4002 | 工具调用 | mock 工具上游异常 | Run 结果 | `error_code`=HTP-4002 | P3 |
 | I-ERR-17 | BUD-5001 | Run | 预算设极小 | Run 结果 | `error_code`=BUD-5001 | P2 |
 | I-ERR-18 | RUN-7004 | #14 + #19 + #38 | mock provider（种子 `mock/mock-1`）。**方法一（必做）**：`POST /admin/api/agents {"key":"qa-maxsteps0","spec":{"model":{"provider":"mock","model":"mock-1"},"limits":{"maxSteps":0}},"publish":true}`。**方法二（可选）**：spec `{"model":{"provider":"mock","model":"mock-1"},"toolsets":[{"builtin":["current_time"]}],"limits":{"maxSteps":1}}`，输入 `{"text":"[use:current_time]"}` | 跑 Run，读 `GET /admin/api/runs/<runId>` | run 接口 200 queued；Run `status:"failed"`、`errorCode:"RUN-7004"`；方法一文案「达到最大步数 0」且一次模型都没调；方法二文案「达到最大步数 1」 | P3 |
@@ -138,16 +139,17 @@
 | I-AGT-02 | #14 | 已有 key | 同 key 再建 | 409 CFG-8503 | P1 | |
 | I-AGT-03 | #14 | — | 并发两个同 key 请求 | 一个 200，一个 409 CFG-8503 | P2 | **已知缺陷候选**：静态推断可能 500 |
 | I-AGT-04 | #14 | — | `spec` 传坏 JSON 字符串 | 400 CFG-8501 | P2 | **已知缺陷**：现状静默用默认 spec |
-| I-AGT-05 | #16 | — | `status` 写入 active、disabled 以外的值（如 `"foo"`、17 字符） | 400 CFG-8501，不入库 | P2 | **已知缺陷**：现状直接入库 / 超长 500。修复 K1 |
+| I-AGT-05 | #16 | — | `status` 写入 active、disabled 以外的值（如 `"foo"`、17 字符） | 400 CFG-8501，不入库 | P2 | **已知缺陷**：现状直接入库 / 超长 500。修复 L |
 | I-AGT-06 | #17 | — | 不传 `version` | 400 CFG-8501 | P1 | |
 | I-AGT-07 | #17 | — | 同 agent 重复 version | 409 CFG-8503 | P2 | **已知缺陷**：现状 500 |
 | I-AGT-08 | #18 | — | 不传 `versionId` | 400 CFG-8501 | P1 | |
 | I-AGT-09 | #18 | 两个 agent | `versionId` 属于另一 agent；OO 发布根部门 agent | 404「版本不存在」；404「Agent 不存在」 | P0 | |
 | I-AGT-10 | #19 | 有草稿版本 | `versionId` = 草稿 | 400 CFG-8501（不得跑草稿） | P2 | **已知缺陷候选**，待架构师确认；现状 200 |
-| I-AGT-11 | #19 POST `/admin/api/agents/:id/run` | agent 停用：`PATCH /admin/api/agents/:id {"status":"disabled"}`；判定条件 **status 不等于 active** | 试运行 | **409 CFG-8503「Agent 已停用，不能运行」**，不建 Run，不写审计 | P1 | **已知缺陷**：现状 200 并建出 Run，代码无此分支（含 fix 分支）。修复 K1 |
-| I-AGT-11b | #75 POST `/open/v1/agents/:key/runs` | 同上（已开放 API 的 agent） | 用合法 key 建 Run | 409 CFG-8503「Agent 已停用，不能运行」，不建 Run，不写审计 | P1 | **已知缺陷**：现状可建。修复 K1 |
-| I-AGT-11c | #83 POST `/integration/v1/runs` | 同上；PRE-CON | 建 Run | 409 CFG-8503「Agent 已停用，不能运行」，不建 Run，不写审计 | P1 | **已知缺陷**：现状可建。修复 K1 |
+| I-AGT-11 | #19 POST `/admin/api/agents/:id/run` | agent 停用：`PATCH /admin/api/agents/:id {"status":"disabled"}`；判定条件 **status 不等于 active** | 试运行 | **409 CFG-8503「Agent 已停用，不能运行」**，不建 Run，不写审计 | P1 | **已知缺陷**：现状 200 并建出 Run，代码无此分支（含 fix 分支）。修复 L |
+| I-AGT-11b | #75 POST `/open/v1/agents/:key/runs` | 同上（已开放 API 的 agent） | 用合法 key 建 Run | 409 CFG-8503「Agent 已停用，不能运行」，不建 Run，不写审计 | P1 | **已知缺陷**：现状可建。修复 L |
+| I-AGT-11c | #83 POST `/integration/v1/runs` | 同上；PRE-CON | 建 Run | 409 CFG-8503「Agent 已停用，不能运行」，不建 Run，不写审计 | P1 | **已知缺陷**：现状可建。修复 L |
 | I-AGT-12 | #19 | — | 无可用版本；`threadId` 属他人；OO 跑根部门 agent | 400「Agent 没有可用版本」；404「会话不存在」；404「Agent 不存在」 | P1 | 审计 `run.create` |
+| I-AGT-13 | #16 #17 #18 | owner 为 NULL 的无主 Agent | ① OA（及 BL）对它 PATCH / 建版本 / 发布 ② PA 做同样操作 ③ 任一角色 GET | ① **403**，不改动、不写审计 ② 200 ③ 可读 | P1 | 架构师口径：无主 Agent 所有人可读、只有 PA 能写。现状待实测（静态看 R-agent 对 owner NULL 放行，可能 200） |
 
 ### 6.2 模型（I-MDL，#20~#25）
 
@@ -207,7 +209,7 @@
 | I-RUN-03 | #37 | — | `status=succeeded`；`status=foo` | 仅 succeeded；空列表 | P2 | |
 | I-RUN-04 | #37 | US（self） | 列 runs | 只含本人发起 | P0 | |
 | I-RUN-05 | #40 | BL/AU/US（带 CSRF） | cancel | 403「角色缺少权限: run.cancel」 | P0 | |
-| I-RUN-06 | #40 | 已结束 Run | cancel | **409**（不可取消），状态不变，不写审计；admin / open / integration 三入口统一（I-OPEN-23、I-INT-16） | P2 | **已知缺陷**：现状 200 且记审计（`admin/runs.ts:58-63`）。修复 K2 |
+| I-RUN-06 | #40 | 已结束 Run | cancel | **409**（不可取消），状态不变，不写审计；admin / open / integration 三入口统一（I-OPEN-23、I-INT-16） | P2 | **已知缺陷**：现状 200 且记审计（`admin/runs.ts:58-63`）。修复 M |
 | I-RUN-07 | #39 | 见 §1 | | | | |
 | I-RUN-08 | #39 | 见 §1 | | | | |
 
@@ -245,7 +247,7 @@
 | I-SCH-14 | #49 | agent 未发布：没有「取消发布」接口，用种子里从未发布过的 agent 在测试库挂一个 schedule，或直接改测试库（需测试负责人同意） | 手动 run | 400「Agent 尚未发布」 | P2 | |
 | I-SCH-15 | #49 | 存量任务绑 PA SA | 手动 run | 409 SCD-4804 | P1 | = F-SCH-10b |
 | I-SCH-16 | #49 | 非 PA、dataScope=all 用户 | run 他部门任务 | 200（代码按 dataScope 放行） | P2 | 文档差异 23，记文档债 |
-| I-SCH-17 | 调度器 tick（接 I-ERR-20 的构造） | 同 I-ERR-20，触发前记下 `GET /admin/api/runs` 中 trigger=schedule 的 Run 数 | 等调度器 tick 后再查 runs 与 schedule | 先解析 cron，解析失败记 **SCD-4803** 并停用任务，**不建 Run**（trigger=schedule、trigger_ref=该任务的 Run 数不增加） | P2 | **已知缺陷**：现状先 `createQueuedRun` 再解析 cron，会多建一条照常执行的 Run，`last_run_id` 不更新。修复 K3 |
+| I-SCH-17 | 调度器 tick（接 I-ERR-20 的构造） | 同 I-ERR-20，触发前记下 `GET /admin/api/runs` 中 trigger=schedule 的 Run 数 | 等调度器 tick 后再查 runs 与 schedule | 先解析 cron，解析失败记 **SCD-4803** 并停用任务，**不建 Run**（trigger=schedule、trigger_ref=该任务的 Run 数不增加） | P2 | **已知缺陷**：现状先 `createQueuedRun` 再解析 cron，会多建一条照常执行的 Run，`last_run_id` 不更新。修复 N |
 
 ### 6.9 开放平台管理（I-APP，#50~#56）
 
@@ -284,6 +286,7 @@
 | I-PLG-01 | #67 | — | resources 中 mcp 缺 url（前面 agent 合法） | 400，且之前资源回滚、无残留 | P1 | **已知缺陷**（S-29）：现状残留且无审计 |
 | I-PLG-02 | #67 | — | 同 (key,version) 再装；model key 重复 | upsert 行为记录；重复 model → 409 | P2 | 后者**已知缺陷**：现状 500 |
 | I-PLG-03 | #68 | PA | uninstall 不存在 id | 404，不写审计 | P2 | **已知缺陷**：现状 200 且写审计 |
+| I-PLG-04 | #68 POST `/admin/api/plugins/:id/uninstall` | 部门 B 装的插件；调用者为部门 A 的 org_admin | 卸载该插件 | **404**，与不存在相同，不写审计（按插件 owner 所在部门子树判定，范围外 404） | P2 | **缺陷候选**：现状不按部门判定。注意：`plugin.uninstall` 现状仅 PA 有，OA 会先得 403——执行前需确认 OA 是否获授该权限【待架构师确认】 |
 | I-SA-01 | #70 | PA | 不传 name | 400 CFG-8501 | P2 | |
 | I-SA-02 | #70 | — | 非法 role | 400 CFG-8501 | P2 | |
 | I-SA-03 | #70 | — | `dataScope:"self"` | 400 CFG-8501 | P2 | |
@@ -293,7 +296,7 @@
 | I-SA-07 | #72 | — | `name:""` | 200，name 不变 | P3 | |
 | I-SA-08 | #72 | — | 停用；改名 | 审计分别为 `service_account.disable` / `service_account.update`，details `{before,changes}` | P2 | |
 | I-SA-09 | #71 #72 | OO | GET/PATCH 根部门 SA；不存在 id | 均 404「服务账号不存在」，响应体相同 | P0 | |
-| I-SA-10 | #45/#46（经 R-sa）、#69/#71 | 父部门 OA；子部门、兄弟部门、上级部门各一个 SA（服务账号接口仅 PA 可调，故经定时任务绑定间接验证 R-sa）。**子部门 SA 怎么造**：`POST /service-accounts` 只能由 PA 调，账号建在调用者自己的部门，根部门 PA 造不出子部门 SA——要么给子部门配一个 PA 来建，要么直接改测试库（需测试负责人同意） | **正**：父部门 OA 创建/PATCH schedule 绑定子部门 SA；**反**：绑定兄弟部门 SA、上级部门 SA | 正：**200**（统一规则：本部门 + 所有子部门）；反：**404**，与 SA 不存在完全相同（状态码、错误码、message），响应不出现账号名 | P1 | 正向**已知缺陷**：R-sa 精确等于，现状 404（修复 D 已改）。= I-SCOPE-10c |
+| I-SA-10 | #45/#46（经 R-sa）、#69/#71 | 父部门 OA；子部门、兄弟部门、上级部门各一个 SA（服务账号接口仅 PA 可调，故经定时任务绑定间接验证 R-sa）。**子部门 SA 怎么造**：建服务账号时部门固定取调用者自己的部门，接口无法把 SA 放到别的部门（后端对过 `4c2555e`）。造法：① 用 PA 正常建好 SA；② 由**运维**在 **3196 的临时库 `forge_ops`** 执行 `UPDATE service_accounts SET org_unit_id=<子部门id> WHERE id=<账号id>`；③ 执行前先 `SHOW CREATE TABLE service_accounts` 核对表名和列名；④ 改之前先导出这张表做备份，SQL 原样贴进执行日志；⑤ 只允许在临时库（`forge_ops`，或 connector 场景的 `forge_connector`）上做，**禁止在 `forge`、`forge_ux` 上做**，测完整库删除。反面用例（兄弟部门 / 上级部门 SA）用同样办法造数据 | **正**：父部门 OA 创建/PATCH schedule 绑定子部门 SA；**反**：绑定兄弟部门 SA、上级部门 SA | 正：**200**（统一规则：本部门 + 所有子部门）；反：**404**，与 SA 不存在完全相同（状态码、错误码、message），响应不出现账号名 | P1 | 正向**已知缺陷**：R-sa 精确等于，现状 404（修复 D 已改）。= I-SCOPE-10c |
 
 ### 6.12 Open 补充（I-OPEN-15~21）
 
@@ -307,7 +310,7 @@
 | I-OPEN-20 | #75 | `rateLimitPerMinute=2` | 1 分钟内调三次 | 第三次 429 OPN-4502 | P1 | |
 | I-OPEN-21 | #76 | — | `wait` = 0 / 121 / abc / 1.7；Run 已结束 vs 未结束 | 夹到 1 / 120 / 30 / 取整；结束 200、未结束 202 | P2 | 审计 `open.run.create` |
 | I-OPEN-22 | #75 POST runs、#76 invoke | 合法 key | ① 不带 key ② key 无 `runs:create` ③ agent 不可见 ④ 成功建 Run 后查审计 | ① 401 ② 403 ③ 404 ④ 审计 `open.run.create`，actor_type 为 app | P0 | |
-| I-OPEN-23 | #79 POST `/open/v1/runs/:id/cancel` | 本应用已结束的 Run | cancel | **409**，状态不变（与 I-RUN-06 一致） | P2 | **已知缺陷**：现状 200（`routes/open.ts:196-200`）。修复 K2 |
+| I-OPEN-23 | #79 POST `/open/v1/runs/:id/cancel` | 本应用已结束的 Run | cancel | **409**，状态不变（与 I-RUN-06 一致） | P2 | **已知缺陷**：现状 200（`routes/open.ts:196-200`）。修复 M |
 
 ## 7. 文档与代码不一致（I-DOC-10~45，一处一条）
 
