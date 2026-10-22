@@ -1,6 +1,6 @@
 import { type FastifyInstance } from "fastify";
 import { CronExpressionParser } from "cron-parser";
-import { errors } from "@forge/core";
+import { errors, ForgeError, type Principal } from "@forge/core";
 import { createQueuedRun } from "@forge/runtime";
 import { parseJsonValue, repos } from "@forge/store";
 import {
@@ -13,6 +13,14 @@ import {
   agentAccessible,
   requireBodyString,
 } from "../../plugins/http-helpers.js";
+
+/** A schedule's service account must exist, be visible to the caller (same org unless dataScope all) and be active. */
+async function requireUsableServiceAccount(principal: Principal, id: string) {
+  const account = await repos.getServiceAccount(id);
+  if (!account || (principal.dataScope !== "all" && account.org_unit_id !== principal.orgUnitId)) throw errors.notFound("服务账号不存在");
+  if (account.status !== "active") throw new ForgeError("SCD-4801", "服务账号已停用", 409);
+  return account;
+}
 
 /** Additive camelCase fields on top of the raw schedule row (raw snake_case keys stay for compatibility). */
 function presentScheduleExtras(schedule: Record<string, unknown>): Record<string, unknown> {
@@ -43,6 +51,8 @@ export default async function adminScheduleRoutes(app: FastifyInstance): Promise
     const agent = await repos.getAgent(requireBodyString(body, "agentId"));
     if (!agent || !(await agentAccessible(session.principal, agent))) throw errors.notFound("Agent 不存在");
     if (!agent.published_version_id) throw errors.invalid("Agent 尚未发布");
+    // FR-TR-06 / permissions.md §3.4: new schedules run as a service account, never as the creator.
+    const account = await requireUsableServiceAccount(session.principal, requireBodyString(body, "serviceAccountId"));
     const cron = requireBodyString(body, "cron");
     const timezone = stringBody(body, "timezone", "Asia/Shanghai");
     let nextRunAt: Date | null = null;
@@ -56,8 +66,9 @@ export default async function adminScheduleRoutes(app: FastifyInstance): Promise
       name: stringBody(body, "name", "Scheduled Agent"),
       agentId: agent.id,
       orgUnitId: session.principal.orgUnitId,
-      subjectType: "user",
-      subjectId: session.principal.id,
+      subjectType: "service",
+      subjectId: account.id,
+      serviceAccountId: account.id,
       cron,
       timezone,
       input: jsonBody(body, "input", { text: "" }),
@@ -65,7 +76,7 @@ export default async function adminScheduleRoutes(app: FastifyInstance): Promise
       nextRunAt: body.enabled === true ? nextRunAt : null,
       createdBy: session.principal.id,
     });
-    await writeAudit(session, "schedule.create", "schedule", id, { agentId: agent.id, cron });
+    await writeAudit(session, "schedule.create", "schedule", id, { agentId: agent.id, serviceAccountId: account.id, cron });
     return { id };
   });
 
@@ -81,6 +92,7 @@ export default async function adminScheduleRoutes(app: FastifyInstance): Promise
     if (body.timezone !== undefined) fields.timezone = stringBody(body, "timezone");
     if (body.input !== undefined) fields.input_json = jsonBody(body, "input", {});
     if (body.status !== undefined) fields.status = stringBody(body, "status");
+    if (body.serviceAccountId !== undefined) fields.service_account_id = (await requireUsableServiceAccount(session.principal, requireBodyString(body, "serviceAccountId"))).id;
     if (body.cron && body.status === "active") {
       fields.next_run_at = CronExpressionParser.parse(String(fields.cron), { currentDate: new Date(), tz: String(fields.timezone ?? schedule.timezone) }).next().toDate();
     }
@@ -93,6 +105,10 @@ export default async function adminScheduleRoutes(app: FastifyInstance): Promise
     const session = await admin(request, "schedule.manage");
     const schedule = await repos.getSchedule(param(request, "id"));
     if (!schedule) throw errors.notFound("定时任务不存在");
+    if (schedule.service_account_id) {
+      const account = await repos.getServiceAccount(String(schedule.service_account_id));
+      if (!account || account.status !== "active") throw new ForgeError("SCD-4801", "服务账号已停用，不能启用定时任务", 409);
+    }
     const next = CronExpressionParser.parse(String(schedule.cron), { currentDate: new Date(), tz: String(schedule.timezone) }).next().toDate();
     await repos.updateSchedule(String(schedule.id), { status: "active", next_run_at: next });
     return { ok: true };

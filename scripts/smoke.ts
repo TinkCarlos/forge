@@ -161,13 +161,19 @@ async function main(): Promise<void> {
   assert(openApiResult.status === "succeeded", "openapi run failed");
   console.log("✓ OpenAPI tool run succeeded");
 
-  // Schedule
+  // Schedule (new schedules must run as a service account: FR-TR-06)
+  const accounts = await call("/admin/api/service-accounts");
+  let smokeAccountId = (accounts.items as Array<Record<string, unknown>>).find((item) => item.key === "smoke-svc")?.id as string | undefined;
+  if (!smokeAccountId) {
+    const createdAccount = await call("/admin/api/service-accounts", { method: "POST", body: { key: "smoke-svc", name: "Smoke Service Account", role: "operator", dataScope: "org" } });
+    smokeAccountId = String(createdAccount.id);
+  }
   const schedules = await call("/admin/api/schedules");
   let schedule = (schedules.items as Array<Record<string, unknown>>).find((item) => item.key === "smoke-schedule");
   if (!schedule) {
     await call("/admin/api/schedules", {
       method: "POST",
-      body: { key: "smoke-schedule", name: "Smoke Schedule", agentId: agent.id, cron: "0 * * * *", timezone: "Asia/Shanghai", input: { text: "[use:mcp_demo-mcp_get_time]" }, enabled: true },
+      body: { key: "smoke-schedule", name: "Smoke Schedule", agentId: agent.id, serviceAccountId: smokeAccountId, cron: "0 * * * *", timezone: "Asia/Shanghai", input: { text: "[use:mcp_demo-mcp_get_time]" }, enabled: true },
     });
     const refreshed = await call("/admin/api/schedules");
     schedule = (refreshed.items as Array<Record<string, unknown>>).find((item) => item.key === "smoke-schedule");
