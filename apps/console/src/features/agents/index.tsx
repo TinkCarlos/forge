@@ -217,13 +217,13 @@ export function Agents() {
             <TabsTrigger value='api'>已开放 API <Count n={counts.api} /></TabsTrigger>
           </TabsList>
         </Tabs>
-        <div className='relative'>
+        <div className='relative max-sm:w-full'>
           <SearchIcon className='pointer-events-none absolute top-2.5 left-2.5 size-4 text-muted-foreground' />
-          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder='搜索名称或 Key' aria-label='搜索 Agent' className='h-9 w-64 ps-8' />
+          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder='搜索名称或 Key' aria-label='搜索 Agent' className='h-9 w-64 ps-8 max-sm:w-full' />
         </div>
       </div>
 
-      <div className='overflow-hidden rounded-lg border bg-card'>
+      <div className='table-cards overflow-hidden rounded-lg border bg-card'>
         <Table>
           <TableHeader className='bg-muted/40'>
             {table.getHeaderGroups().map((hg) => (
@@ -257,7 +257,13 @@ export function Agents() {
               visible.map((row, i) => (
                 <MotionRow key={row.id} {...rowMotion(i)} className='h-13'>
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
+                    <TableCell
+                      key={cell.id}
+                      data-label={typeof cell.column.columnDef.header === 'string' && cell.column.id !== 'name' ? cell.column.columnDef.header : undefined}
+                      data-actions={cell.column.id === 'actions' ? '' : undefined}
+                    >
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </TableCell>
                   ))}
                 </MotionRow>
               ))
