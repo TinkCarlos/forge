@@ -478,6 +478,7 @@ POST /admin/v1/schedules
 - `concurrencyPolicy`：`skip`（默认）、`queue`、`cancel_previous`。
 - 服务账号停用、Agent 停用或无权限 → 自动暂停并返回 `SCD-4801` 原因。
 - `run` 创建 Run 后返回 `{ "runId": "run_...", "trigger": "schedule" }`；并发 skip 时返回 409 `SCD-4802`。
+- 绑定 platform_admin 服务账号 → 400 SCD-4804；存量任务触发时同码自动暂停。手动 run 先按调用者数据范围查任务，查不到 → 404（platform_admin 除外）。
 - Cron/时区由 Temporal 计算；控制台预览不得自行实现调度。
 - 所有操作写审计；修改/启停记录前后值。
 

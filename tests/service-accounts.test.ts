@@ -219,25 +219,25 @@ describe("manual schedule run (POST /admin/api/schedules/:id/run)", () => {
 describe("service accounts may not be platform_admin", () => {
   const errorCode = (res: LightMyRequestResponse) => (res.json() as { error: { code: string } }).error.code;
 
-  it("create or PATCH with role platform_admin -> 400 CFG-8501", async () => {
+  it("create or PATCH with role platform_admin -> 400 SCD-4804", async () => {
     const create = await app.inject({ method: "POST", url: "/admin/api/service-accounts", headers: adminHeaders, payload: { key: `it-sa-pa-${suffix}`, name: "PA", role: "platform_admin", dataScope: "all" } });
     expect(create.statusCode).toBe(400);
-    expect(errorCode(create)).toBe("CFG-8501");
+    expect(errorCode(create)).toBe("SCD-4804");
     const ok = await app.inject({ method: "POST", url: "/admin/api/service-accounts", headers: adminHeaders, payload: { key: `it-sa-pa2-${suffix}`, name: "op", role: "operator" } });
     const id = (ok.json() as { id: string }).id;
     createdAccounts.push(id);
     const patch = await app.inject({ method: "PATCH", url: `/admin/api/service-accounts/${id}`, headers: adminHeaders, payload: { role: "platform_admin" } });
     expect(patch.statusCode).toBe(400);
-    expect(errorCode(patch)).toBe("CFG-8501");
+    expect(errorCode(patch)).toBe("SCD-4804");
     expect((await repos.getServiceAccount(id))!.role).toBe("operator");
   });
 
-  it("binding a schedule (POST/PATCH) to a platform_admin account -> 400; manual run of such a legacy row -> 409 SCD-4804", async () => {
+  it("binding a schedule (POST/PATCH) to a platform_admin account -> 400 SCD-4804; manual run of such a legacy row -> 409 SCD-4804", async () => {
     const paId = await repos.createServiceAccount({ key: `it-sa-pa-legacy-${suffix}`, name: "Legacy PA", orgUnitId: ORG, role: "platform_admin", dataScope: "all", createdBy: ADMIN_ID });
     createdAccounts.push(paId);
     const post = await app.inject({ method: "POST", url: "/admin/api/schedules", headers: adminHeaders, payload: { agentId, cron: "0 9 * * 1", key: `it-sa-pa-sch-${suffix}`, serviceAccountId: paId } });
     expect(post.statusCode).toBe(400);
-    expect(errorCode(post)).toBe("CFG-8501");
+    expect(errorCode(post)).toBe("SCD-4804");
 
     const okAccount = await repos.createServiceAccount({ key: `it-sa-pa-ok-${suffix}`, name: "ok", orgUnitId: ORG, createdBy: ADMIN_ID });
     createdAccounts.push(okAccount);
@@ -248,6 +248,7 @@ describe("service accounts may not be platform_admin", () => {
     createdSchedules.push(scheduleId);
     const patch = await app.inject({ method: "PATCH", url: `/admin/api/schedules/${scheduleId}`, headers: adminHeaders, payload: { serviceAccountId: paId } });
     expect(patch.statusCode).toBe(400);
+    expect(errorCode(patch)).toBe("SCD-4804");
     expect((await repos.getSchedule(scheduleId))!.service_account_id).toBe(okAccount);
 
     // legacy row bound to a platform_admin account (bypassing the API)

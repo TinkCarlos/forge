@@ -19,7 +19,7 @@ async function requireUsableServiceAccount(principal: Principal, id: string) {
   const account = await repos.getServiceAccount(id);
   if (!account || (principal.dataScope !== "all" && account.org_unit_id !== principal.orgUnitId)) throw errors.notFound("服务账号不存在");
   if (account.status !== "active") throw new ForgeError("SCD-4801", "服务账号已停用", 409);
-  if (account.role === "platform_admin") throw errors.invalid("不能绑定 platform_admin 角色的服务账号");
+  if (account.role === "platform_admin") throw new ForgeError("SCD-4804", "不能绑定 platform_admin 角色的服务账号", 400);
   return account;
 }
 
