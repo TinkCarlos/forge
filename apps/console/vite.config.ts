@@ -8,6 +8,8 @@ const api = process.env.FORGE_API_URL ?? "http://127.0.0.1:3100";
 // 新控制台与旧版 public/ 并存：构建产物放 dist/，挂在 /next/ 下，切换前不影响旧页面。
 export default defineConfig({
   base: "/next/",
+  // 旧控制台在 public/，不能被当成 Vite 的静态目录复制进 dist。
+  publicDir: false,
   plugins: [react(), tailwindcss()],
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
   server: {
