@@ -33,8 +33,22 @@ export function keySegments(key: string): string[] {
     .map((segment) => segment.toLowerCase());
 }
 
+/** Segments that, next to a `token`/`tokens` segment, mark a token-count key (`max_tokens`, `total_tokens`, `tokenCount`, `token_limit`). */
+export const TOKEN_COUNT_SEGMENTS: ReadonlySet<string> = new Set([
+  "max", "min", "input", "output", "prompt", "completion", "total", "num", "count", "limit", "used", "remaining", "reasoning", "cached",
+]);
+const TOKEN_SEGMENTS: ReadonlySet<string> = new Set(["token", "tokens"]);
+
+/**
+ * True when any word segment of the key is in {@link SENSITIVE_KEY_SEGMENTS}. Exception: in a token-count key (a `token`/`tokens`
+ * segment together with a {@link TOKEN_COUNT_SEGMENTS} segment) the `token`/`tokens` segment does not count, so `max_tokens` and
+ * `tokenCount` are not sensitive, while `access_token`, `authToken`, `tokens` and `max_api_key` still are. Only the key is exempted:
+ * secret-looking values ({@link isSecretValue}) are masked under any key.
+ */
 export function isSensitiveKey(key: string): boolean {
-  return keySegments(key).some((segment) => SENSITIVE_KEY_SEGMENTS.has(segment));
+  const segments = keySegments(key);
+  const tokenCount = segments.some((segment) => TOKEN_SEGMENTS.has(segment)) && segments.some((segment) => TOKEN_COUNT_SEGMENTS.has(segment));
+  return segments.some((segment) => SENSITIVE_KEY_SEGMENTS.has(segment) && !(tokenCount && TOKEN_SEGMENTS.has(segment)));
 }
 
 /** Values that look like credentials regardless of their key: auth headers, well-known token prefixes (all case-insensitive), JWTs. */
