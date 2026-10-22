@@ -27,10 +27,11 @@ function isOutboundBlocked(error: unknown): boolean {
 }
 function ssoErrorLocation(rawReturnTo: unknown): string {
   const params = new URLSearchParams({ ssoError: OUTBOUND_BLOCKED_CODE });
-  // Keep returnTo only when it survives the S-30 check as given (a rejected value falls back and is dropped).
+  // AE: the console sign-in page reads the post-login target from `redirect`. Keep it only when it survives the
+  // S-30 check as given; a rejected value (falls back) or the default /next/ is dropped. URLSearchParams encodes it.
   if (typeof rawReturnTo === "string" && rawReturnTo) {
     const safe = safeReturnTo(rawReturnTo, config.FORGE_PUBLIC_URL);
-    if (safe !== RETURN_TO_FALLBACK) params.set("returnTo", safe);
+    if (safe !== RETURN_TO_FALLBACK) params.set("redirect", safe);
   }
   return `${SSO_ERROR_PAGE}?${params.toString()}`;
 }

@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { z } from "zod";
+import { allowlistProblems } from "./allowlist-format";
 
 const bool = z
   .string()
@@ -52,11 +53,10 @@ const envSchema = z.object({
   OUTBOUND_ALLOWLIST: z
     .string()
     .default("")
-    .refine((value) => value.split(",").map((e) => e.trim()).filter(Boolean).every((e) => {
-          // AD: exact host:port only — no wildcard, CIDR or bare host; port 1-65535. Invalid → startup error.
-          const m = /^(\[[0-9a-fA-F:.]+\]|[a-zA-Z0-9.-]+):(\d{1,5})$/.exec(e);
-          return m !== null && Number(m[2]) >= 1 && Number(m[2]) <= 65535;
-        }), "OUTBOUND_ALLOWLIST 应为逗号分隔的精确 host:port（不支持通配符、CIDR、只写 host；端口 1-65535）"),
+    // AD/AE: exact host:port only; each invalid entry is reported by position + value + reason (never the whole line).
+    .superRefine((value, ctx) => {
+      for (const message of allowlistProblems(value)) ctx.addIssue({ code: z.ZodIssueCode.custom, message });
+    }),
   MCP_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
   LOG_LEVEL: z.string().default("info"),
   SSO_MODE: z.enum(["disabled", "optional", "required"]).default("optional"),
@@ -98,7 +98,10 @@ export type Config = z.infer<typeof envSchema>;
 export function parseConfig(env: Record<string, string | undefined>): Config {
   const parsed = envSchema.safeParse(env);
   if (!parsed.success) {
-    const messages = parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`);
+    const messages = parsed.error.issues.map((issue) => {
+      const key = issue.path.join(".");
+      return issue.message.startsWith(`${key} `) ? issue.message : `${key}: ${issue.message}`;
+    });
     throw new Error(`Invalid configuration:\n${messages.join("\n")}`);
   }
   const config = parsed.data;

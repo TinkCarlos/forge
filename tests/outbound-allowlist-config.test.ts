@@ -26,6 +26,32 @@ describe("OUTBOUND_ALLOWLIST startup validation (AD, S-46)", () => {
       expect(out.stdout).toContain("CONFIG_OK");
     });
   }
+  // AE: the startup error names only the offending entry (1-based position + its value) and why; it never echoes
+  // the whole OUTBOUND_ALLOWLIST line, so the other (valid, possibly sensitive internal) entries stay out of logs.
+  const reasons: Array<[string, string, string]> = [
+    ["127.0.0.1:8090,10.0.0.0/8,secret-host.internal:9", '第 2 项 "10.0.0.0/8"', "不支持 CIDR"],
+    ["secret-host.internal:9,*.example:443", '第 2 项 "*.example:443"', "不支持通配符"],
+    ["secret-host.internal:9,127.0.0.1", '第 2 项 "127.0.0.1"', "缺少端口"],
+    ["127.0.0.1:65536,secret-host.internal:9", '第 1 项 "127.0.0.1:65536"', "端口必须是 1-65535"],
+    ["secret-host.internal:9,:80", '第 2 项 ":80"', "缺少主机"],
+    ["secret-host.internal:9,127.0.0.1:8090:1", '第 2 项 "127.0.0.1:8090:1"', "格式应为 host:port"],
+  ];
+  for (const [line, which, why] of reasons) {
+    it(`AE: "${line}" -> error names ${which} and why, not the whole line`, () => {
+      const out = loadConfig(line);
+      expect(out.status).not.toBe(0);
+      expect(out.stderr).toContain(`OUTBOUND_ALLOWLIST ${which} 不合法：${why}`);
+      expect(out.stderr).not.toContain(line);
+      expect(out.stderr).not.toContain("secret-host.internal");
+    });
+  }
+  it("AE: several invalid entries are each reported, valid ones are not echoed", () => {
+    const out = loadConfig("10.0.0.0/8,secret-host.internal:9,*:*");
+    expect(out.stderr).toContain('第 1 项 "10.0.0.0/8"');
+    expect(out.stderr).toContain('第 3 项 "*:*"');
+    expect(out.stderr).not.toContain("secret-host.internal");
+  });
+
   for (const bad of ["127.0.0.1", "*.example:443", "10.0.0.0/8", "10.0.0.0/8:80", "host:", ":80", "127.0.0.1:8090:1", "127.0.0.1:0", "127.0.0.1:65536", "127.0.0.1:8090,*:*"]) {
     it(`invalid: "${bad}" -> startup error`, () => {
       const out = loadConfig(bad);

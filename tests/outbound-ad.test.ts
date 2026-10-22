@@ -217,12 +217,15 @@ describe("OIDC browser entry points redirect to /next/sign-in?ssoError=HTP-4003 
     cfg.OIDC_CLIENT_ID = "forge-test";
     cfg.OIDC_CLIENT_SECRET = "secret";
   };
-  const expectSsoRedirect = (res: LightMyRequestResponse, returnTo?: string) => {
+  // AE: the console sign-in page reads the post-login target from `redirect` (not `returnTo`).
+  const expectSsoRedirect = (res: LightMyRequestResponse, redirect?: string) => {
     expect(res.statusCode, res.body).toBe(302);
     const location = new URL(String(res.headers.location), "http://forge.local");
     expect(location.pathname).toBe("/next/sign-in");
     expect(location.searchParams.get("ssoError")).toBe(OUTBOUND_BLOCKED_CODE);
-    expect(location.searchParams.get("returnTo")).toBe(returnTo ?? null);
+    expect(location.searchParams.get("redirect")).toBe(redirect ?? null);
+    expect(location.searchParams.has("returnTo")).toBe(false);
+    expect([...location.searchParams.keys()].sort()).toEqual(redirect ? ["redirect", "ssoError"] : ["ssoError"]);
     expect(String(res.headers.location)).not.toMatch(IP_RE);
     expect(res.body).not.toMatch(IP_RE);
   };
@@ -237,6 +240,20 @@ describe("OIDC browser entry points redirect to /next/sign-in?ssoError=HTP-4003 
     configure("http://intranet.attacker.example/oidc");
     expectSsoRedirect(await app.inject({ method: "GET", url: "/auth/oidc/login?returnTo=%2F%2Fevil.example" }));
     expectSsoRedirect(await app.inject({ method: "GET", url: "/auth/oidc/login" }));
+  });
+
+  it("AE: valid returnTo -> URL-encoded redirect param, exact location", async () => {
+    configure("http://169.254.169.254/oidc");
+    const res = await app.inject({ method: "GET", url: "/auth/oidc/login?returnTo=%2Fnext%2Fagents" });
+    expect(res.headers.location).toBe("/next/sign-in?ssoError=HTP-4003&redirect=%2Fnext%2Fagents");
+  });
+
+  it("AE: //evil.example and the default /next/ -> no redirect param", async () => {
+    configure("http://169.254.169.254/oidc");
+    for (const raw of ["%2F%2Fevil.example", "%2Fnext%2F"]) {
+      const res = await app.inject({ method: "GET", url: `/auth/oidc/login?returnTo=${raw}` });
+      expect(res.headers.location).toBe("/next/sign-in?ssoError=HTP-4003");
+    }
   });
 
   it("token endpoint blocked: callback -> 302 sign-in with ssoError and the saved returnTo", async () => {

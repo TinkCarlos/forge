@@ -3,6 +3,7 @@ import https from "node:https";
 import { lookup as systemLookup } from "node:dns/promises";
 import { BlockList, isIP, type LookupFunction } from "node:net";
 import { Readable } from "node:stream";
+import { allowlistProblems } from "./allowlist-format";
 import { config } from "./config";
 import { ForgeError } from "./index";
 
@@ -138,13 +139,12 @@ function isLocalHostname(host: string): boolean {
 /** Parses OUTBOUND_ALLOWLIST ("host:port,host:port", IPv6 as [addr]:port). Throws on a malformed entry. */
 export function parseOutboundAllowlist(raw: string | undefined | null): string[] {
   const entries: string[] = [];
+  // Exact host:port only (AD). Invalid entries already fail config loading at startup; same per-entry messages here.
+  const problems = allowlistProblems(raw);
+  if (problems.length) throw new Error(problems.join("\n"));
   for (const part of String(raw ?? "").split(",")) {
     const entry = part.trim().toLowerCase();
-    if (!entry) continue;
-    const match = /^(\[[0-9a-f:.]+\]|[a-z0-9.-]+):(\d{1,5})$/.exec(entry);
-    // Exact host:port only: no wildcard, CIDR, bare host or port range (AD). Invalid entries fail config loading at startup.
-    if (!match || Number(match[2]) < 1 || Number(match[2]) > 65535) throw new Error(`OUTBOUND_ALLOWLIST 条目格式应为 host:port：${entry}`);
-    entries.push(entry);
+    if (entry) entries.push(entry);
   }
   return entries;
 }
