@@ -445,7 +445,7 @@ Pi 内置 bash/文件工具在服务端禁用。文档解析与浏览器在独�
 | `HTP-40xx` / `MCP-41xx` | HTTP 工具/MCP | `HTP-4001` 业务错误；`HTP-4002` 5xx 重试 |
 | `BRW-42xx` / `DOC-43xx` | 浏览器/文档 | `DOC-4302` OCR 失败 |
 | `OPN-45xx` / `WHK-46xx` | 开放平台/Webhook | `OPN-4501` 配额耗尽；`WHK-4601` 验签失败 |
-| `CON-47xx` / `SCD-48xx` | Connector/定时任务 | `CON-4701` Principal 验签失败；`SCD-4801` 服务账号停用 |
+| `CON-47xx` / `SCD-48xx` | Connector/定时任务 | `CON-4701` Principal 验签失败；`SCD-4801` 服务账号停用；`SCD-4803` 触发时出现未分类异常 |
 | `BUD-5xxx` / `OUT-6xxx` | 预算/输出 | `BUD-5001` 成本耗尽 |
 | `RUN-7xxx` | 运行 | `RUN-7001` Run 不存在；`RUN-7002` 状态不允许 |
 | `PKG-8xxx` / `CFG-85xx` | 包/配置 | `PKG-8001` manifest 非法；`CFG-8501` 配置缺失 |
