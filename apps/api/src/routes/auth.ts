@@ -47,6 +47,12 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
     const session = readStoredSession(request);
     if (session) destroySession(session.token);
     reply.clearCookie("forge_session", { path: "/" });
+    // Y (#9): only a real session is audited. The session is already gone; an audit write failure must not fail logout.
+    if (session) {
+      await repos
+        .audit({ actorType: "user", actorId: session.userId, action: "auth.logout", resourceType: "user", resourceId: session.userId })
+        .catch((error: unknown) => request.log.warn({ err: error }, "auth.logout audit failed"));
+    }
     return { ok: true };
   });
 

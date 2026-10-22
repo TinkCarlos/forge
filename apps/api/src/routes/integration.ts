@@ -51,6 +51,7 @@ export default async function integrationRoutes(app: FastifyInstance): Promise<v
       triggerType: "connector",
       triggerRef: null,
     });
+    await repos.audit({ actorType: "user", actorId: principal.id, action: "integration.run.create", resourceType: "run", resourceId: runId, details: { agentKey: agent.key } });
     reply.status(202);
     return { runId, status: "queued" };
   });
@@ -75,6 +76,7 @@ export default async function integrationRoutes(app: FastifyInstance): Promise<v
     const run = await repos.getRun(param(request, "id"));
     await assertRunAccess(principal, run);
     await cancelRun(run!.id);
+    await repos.audit({ actorType: "user", actorId: principal.id, action: "integration.run.cancel", resourceType: "run", resourceId: run!.id });
     return { ok: true };
   });
 }

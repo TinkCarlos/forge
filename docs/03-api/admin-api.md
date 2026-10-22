@@ -15,6 +15,7 @@
 - 身份查库失败（当前实现）：会话认证、`/integration/v1` 的 Connector 主体、本地登录在查库出错（连接断开、超时等任何异常）时返回 `503 SYS-9003「身份校验暂时不可用，请稍后重试」`（`retryable: true`），不当成用户不可用：不返回 401/403、不当成密码错误、**不删除会话**，数据库恢复后同一个 Cookie 继续可用。响应里不带数据库地址等内部信息。
 - OIDC 登录回跳（当前实现，S-30）：`GET /auth/oidc/login?returnTo=` 和回调里的 `returnTo` 只接受本站路径：必须以单个 `/` 开头，不能以 `//`、`/\` 开头（百分号解码一次后同样检查，如 `/%2F%2Fevil.example`），不能含控制字符，且 `new URL(returnTo, FORGE_PUBLIC_URL)` 的 origin 必须等于本站；任一条不满足都回落到 `/next/`。
 - 所有变更写审计；响应头返回 `X-Request-Id`。
+- 补齐的审计 action（Y，当前实现）：`auth.logout`（有有效会话时才写，actor 为该用户；写审计失败不影响登出）、`schedule.enable`、`schedule.disable`、`open.run.cancel`（actor 为应用）、`integration.run.create`、`integration.run.cancel`（actor 为映射用户）。只在操作成功后写；409 等失败不写。
 - 管理 API **不向 Agent Connector 入站开放**；集成调用使用专用 `/integration/v1`，见 [sso-and-connector.md](../02-architecture/sso-and-connector.md)。
 
 ```http
