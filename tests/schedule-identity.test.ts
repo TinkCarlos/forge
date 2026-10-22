@@ -61,4 +61,9 @@ describe("buildScheduleIdentity", () => {
     expect(() => buildScheduleIdentity(schedule({ service_account_id: account.id }), null)).toThrow(expect.objectContaining({ code: "SCD-4801" }));
     expect(() => buildScheduleIdentity(schedule({ service_account_id: "svc_other" }), account)).toThrow(expect.objectContaining({ code: "SCD-4801" }));
   });
+
+  it("bound platform_admin account is refused with SCD-4804 (service accounts may never run as platform_admin)", () => {
+    const admin = { ...account, role: "platform_admin", data_scope: "all" };
+    expect(() => buildScheduleIdentity(schedule({ service_account_id: admin.id }), admin)).toThrow(expect.objectContaining({ code: "SCD-4804", httpStatus: 409 }));
+  });
 });

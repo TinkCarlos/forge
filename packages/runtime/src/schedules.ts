@@ -5,6 +5,8 @@ import { createQueuedRun } from "./loop.js";
 
 /** Schedule paused because its identity/Agent is unusable (service account disabled, Agent disabled/unpublished, no permission). */
 export const SCHEDULE_PAUSED_CODE = "SCD-4801";
+/** Bound service account has role platform_admin, which service accounts may not hold. Pauses the schedule. */
+export const SCHEDULE_FORBIDDEN_ROLE_CODE = "SCD-4804";
 /** Any other trigger failure (bad cron, run creation error, ...). */
 export const SCHEDULE_TRIGGER_FAILED_CODE = "SCD-4803";
 
@@ -18,12 +20,16 @@ export type ScheduleTriggerResult =
  * Identity a schedule runs as (pure; no I/O). Becomes the run's subject_type/subject_id, role, org and data scope.
  * - Bound schedule: the service account's own id/name/role/org/data scope (FR-TR-06; never the creator's identity).
  * - Legacy schedule (service_account_id NULL): type service, id = subject_id, role user, data scope org, org = schedule org.
- * Throws if the schedule is bound but no account row is given, so a bound schedule can never fall back to the legacy identity.
+ * Throws SCD-4801 if the schedule is bound but no account row is given, so a bound schedule can never fall back to the legacy identity.
+ * Throws SCD-4804 if the account is platform_admin (service accounts may never run with platform_admin).
  */
 export function buildScheduleIdentity(schedule: Record<string, unknown>, account: ServiceAccountRow | null): Principal {
   if (schedule.service_account_id) {
     if (!account || account.id !== String(schedule.service_account_id)) {
       throw new ForgeError(SCHEDULE_PAUSED_CODE, "定时任务绑定的服务账号不可用", 409);
+    }
+    if (account.role === "platform_admin") {
+      throw new ForgeError(SCHEDULE_FORBIDDEN_ROLE_CODE, "服务账号不能以 platform_admin 身份运行定时任务", 409);
     }
     return {
       type: "service",
@@ -63,7 +69,17 @@ export async function triggerSchedule(schedule: Record<string, unknown>, now = n
         return { kind: "paused", code: SCHEDULE_PAUSED_CODE };
       }
     }
-    const principal = buildScheduleIdentity(schedule, account);
+    let principal: Principal;
+    try {
+      principal = buildScheduleIdentity(schedule, account);
+    } catch (error) {
+      // Identity refused (unusable or platform_admin account): pause like a disabled account.
+      if (error instanceof ForgeError && (error.code === SCHEDULE_PAUSED_CODE || error.code === SCHEDULE_FORBIDDEN_ROLE_CODE)) {
+        await repos.recordScheduleFailure(scheduleId, error.code);
+        return { kind: "paused", code: error.code };
+      }
+      throw error;
+    }
     const nextRunAt = () =>
       CronExpressionParser.parse(String(schedule.cron), { currentDate: now, tz: String(schedule.timezone ?? "Asia/Shanghai") }).next().toDate();
     // concurrency_policy: only 'skip' (the default) is implemented; other values currently behave as before (always enqueue).

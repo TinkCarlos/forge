@@ -31,6 +31,7 @@ export function serviceAccountVisible(principal: Principal, row: ServiceAccountR
 
 function validateRoleAndScope(principal: Principal, role: string, dataScope: string): void {
   if (!Object.keys(ROLE_PERMISSIONS).includes(role)) throw errors.invalid("非法角色");
+  if (role === "platform_admin") throw errors.invalid("服务账号不能是 platform_admin");
   if (principal.role !== "platform_admin" && ["platform_admin", "org_admin"].includes(role)) throw errors.forbidden("不能授予该角色");
   if (!SERVICE_ACCOUNT_DATA_SCOPES.includes(dataScope)) throw errors.invalid("服务账号数据范围只能是 org 或 all");
   if (dataScope === "all" && principal.dataScope !== "all") throw errors.forbidden("不能授予超出自身的数据范围");

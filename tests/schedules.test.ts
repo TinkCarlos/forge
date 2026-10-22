@@ -173,3 +173,19 @@ describe("concurrency_policy = skip", () => {
     await repos.updateRun(heldRunId, { status: "cancelled" });
   });
 });
+
+describe("platform_admin service account (legacy row)", () => {
+  it("trigger pauses the schedule with SCD-4804, failure_count + 1, no run", async () => {
+    const adminAccount = await repos.createServiceAccount({ key: `it-sch-svc-pa-${suffix}`, name: "IT legacy PA", orgUnitId: ORG, role: "platform_admin", dataScope: "all", createdBy: ADMIN_ID });
+    created.accounts.push(adminAccount);
+    const id = await makeSchedule(agentId, { serviceAccountId: adminAccount });
+    const result = await triggerSchedule((await repos.getSchedule(id))!);
+    expect(result).toEqual({ kind: "paused", code: "SCD-4804" });
+    const row = (await repos.getSchedule(id))!;
+    expect(row.status).toBe("disabled");
+    expect(row.next_run_at).toBeNull();
+    expect(row.last_error_code).toBe("SCD-4804");
+    expect(Number(row.failure_count)).toBe(1);
+    expect((await repos.listRuns({ limit: 200 })).some((run) => run.trigger_ref === id)).toBe(false);
+  });
+});

@@ -14,11 +14,12 @@ import {
   requireBodyString,
 } from "../../plugins/http-helpers.js";
 
-/** A schedule's service account must exist, be visible to the caller (same org unless dataScope all) and be active. */
+/** A schedule's service account must exist, be visible to the caller (same org unless dataScope all), be active and not platform_admin. */
 async function requireUsableServiceAccount(principal: Principal, id: string) {
   const account = await repos.getServiceAccount(id);
   if (!account || (principal.dataScope !== "all" && account.org_unit_id !== principal.orgUnitId)) throw errors.notFound("服务账号不存在");
   if (account.status !== "active") throw new ForgeError("SCD-4801", "服务账号已停用", 409);
+  if (account.role === "platform_admin") throw errors.invalid("不能绑定 platform_admin 角色的服务账号");
   return account;
 }
 
