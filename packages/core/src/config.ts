@@ -19,7 +19,9 @@ const envSchema = z.object({
   SESSION_SECRET: z.string().default("forge-dev-session-secret-change-me"),
   API_KEY_PEPPER: z.string().default("forge-dev-api-key-pepper-change-me"),
   FORGE_ADMIN_EMAIL: z.string().email().default("admin@forge.local"),
-  FORGE_ADMIN_PASSWORD: z.string().min(8).default("change-me-now"),
+  FORGE_ADMIN_PASSWORD: z
+    .string({ required_error: "未设置 FORGE_ADMIN_PASSWORD，请在 .env 中配置应急管理员密码（至少 8 位）" })
+    .min(8, "FORGE_ADMIN_PASSWORD 至少 8 位"),
   FORGE_ADMIN_NAME: z.string().default("Platform Admin"),
   ALLOW_LOCAL_LOGIN: z
     .string()

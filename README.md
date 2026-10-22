@@ -23,7 +23,7 @@ pnpm db:seed
 pnpm dev
 ```
 
-打开 http://localhost:3100 ，使用 `.env` 中的 `FORGE_ADMIN_EMAIL` / `FORGE_ADMIN_PASSWORD` 登录（默认 `admin@forge.local` / `change-me-now`，请立即修改）。
+打开 http://localhost:3100 ，使用 `.env` 中的 `FORGE_ADMIN_EMAIL` / `FORGE_ADMIN_PASSWORD` 登录（`.env.example` 里的 `change-me-now` 只是占位，必须先改成你自己的密码，未设置时服务不会启动）。
 
 数据库不存在时先创建：
 
