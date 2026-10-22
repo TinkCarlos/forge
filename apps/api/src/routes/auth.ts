@@ -1,5 +1,5 @@
 import { type FastifyInstance } from "fastify";
-import { config, errors, ForgeError } from "@forge/core";
+import { config, errors, ForgeError, OUTBOUND_BLOCKED_CODE } from "@forge/core";
 import {
   buildOidcAuthorizeUrl,
   createSession,
@@ -7,6 +7,7 @@ import {
   handleOidcCallback,
   loginLocal,
   oidcConfigured,
+  pendingOidcReturnTo,
 } from "@forge/identity";
 import { repos } from "@forge/store";
 import {
@@ -17,7 +18,22 @@ import {
   requireBodyString,
   sessionPayload,
 } from "../plugins/http-helpers.js";
-import { safeReturnTo } from "../plugins/return-to.js";
+import { RETURN_TO_FALLBACK, safeReturnTo } from "../plugins/return-to.js";
+
+/** AD: a full-page SSO navigation blocked by the outbound guard lands on the sign-in page, never on a JSON error. */
+const SSO_ERROR_PAGE = "/next/sign-in";
+function isOutboundBlocked(error: unknown): boolean {
+  return error instanceof ForgeError && error.code === OUTBOUND_BLOCKED_CODE;
+}
+function ssoErrorLocation(rawReturnTo: unknown): string {
+  const params = new URLSearchParams({ ssoError: OUTBOUND_BLOCKED_CODE });
+  // Keep returnTo only when it survives the S-30 check as given (a rejected value falls back and is dropped).
+  if (typeof rawReturnTo === "string" && rawReturnTo) {
+    const safe = safeReturnTo(rawReturnTo, config.FORGE_PUBLIC_URL);
+    if (safe !== RETURN_TO_FALLBACK) params.set("returnTo", safe);
+  }
+  return `${SSO_ERROR_PAGE}?${params.toString()}`;
+}
 
 export default async function authRoutes(app: FastifyInstance): Promise<void> {
   app.get("/auth/config", async () => ({
@@ -61,7 +77,12 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
     const query = request.query as Record<string, unknown>;
     // S-30: only a same-origin local path survives; anything else falls back to /next/.
     const returnTo = safeReturnTo(query.returnTo, config.FORGE_PUBLIC_URL);
-    return reply.redirect(await buildOidcAuthorizeUrl(returnTo));
+    try {
+      return reply.redirect(await buildOidcAuthorizeUrl(returnTo));
+    } catch (error) {
+      if (isOutboundBlocked(error)) return reply.redirect(ssoErrorLocation(query.returnTo));
+      throw error;
+    }
   });
 
   app.get("/auth/oidc/callback", async (request, reply) => {
@@ -69,7 +90,15 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
     const code = typeof query.code === "string" ? query.code : "";
     const state = typeof query.state === "string" ? query.state : "";
     if (!code || !state) throw new ForgeError("SSO-1203", "回调参数缺失", 400);
-    const { principal, returnTo } = await handleOidcCallback(code, state);
+    const pendingReturnTo = pendingOidcReturnTo(state);
+    let result: Awaited<ReturnType<typeof handleOidcCallback>>;
+    try {
+      result = await handleOidcCallback(code, state);
+    } catch (error) {
+      if (isOutboundBlocked(error)) return reply.redirect(ssoErrorLocation(pendingReturnTo));
+      throw error;
+    }
+    const { principal, returnTo } = result;
     const session = createSession(principal);
     setSessionCookie(reply, session);
     await repos.audit({ actorType: "user", actorId: principal.id, action: "auth.login.oidc", resourceType: "user", resourceId: principal.id });

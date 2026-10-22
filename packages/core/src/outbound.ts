@@ -15,7 +15,8 @@ import { ForgeError } from "./index";
  * - the socket is pinned to the answers that were checked (custom `lookup`), so a second DNS answer (rebinding) is never used;
  * - redirects are followed manually, re-validating every hop (or not followed with redirect: "manual");
  * - OUTBOUND_ALLOWLIST (comma separated host:port) opts specific targets out of the address check (e.g. a local mock).
- * Blocked -> 400 HTP-4003「目标地址不允许（内网/回环/元数据）」, never echoing the resolved address.
+ * Blocked -> 400 HTP-4003「目标地址不允许（内网/回环/元数据）」, never echoing the resolved address to the client;
+ * the server log (setOutboundLogger) records host, port, resolved addresses and a reason (AD).
  */
 export const OUTBOUND_BLOCKED_CODE = "HTP-4003";
 export const OUTBOUND_BLOCKED_MESSAGE = "目标地址不允许（内网/回环/元数据）";
@@ -23,6 +24,34 @@ const MAX_REDIRECTS = 5;
 
 export function outboundBlockedError(): ForgeError {
   return new ForgeError(OUTBOUND_BLOCKED_CODE, OUTBOUND_BLOCKED_MESSAGE, 400, undefined, false);
+}
+
+/** Why a target was refused (server log only). "redirect" = a redirect hop was refused; see targetReason. */
+export type OutboundBlockReason =
+  | "scheme" | "invalid_url" | "local_hostname" | "loopback" | "private" | "metadata" | "link_local" | "cgnat"
+  | "unspecified" | "ipv4_mapped" | "ipv4_embedded" | "multicast" | "reserved" | "invalid_address" | "redirect";
+
+export interface OutboundBlockLog {
+  event: "outbound.blocked";
+  code: typeof OUTBOUND_BLOCKED_CODE;
+  reason: OutboundBlockReason;
+  /** Only for reason "redirect": why the redirect target was refused. */
+  targetReason?: OutboundBlockReason;
+  /** 0 = the requested URL, n = the n-th redirect hop. */
+  hop: number;
+  protocol: string;
+  host: string;
+  port: string;
+  /** Resolved / literal addresses that were checked (never sent to the client). */
+  addresses: string[];
+}
+type OutboundLogger = (entry: OutboundBlockLog) => void;
+const defaultLogger: OutboundLogger = (entry) => console.warn(JSON.stringify({ level: "warn", msg: "outbound request blocked", ...entry }));
+let outboundLogger: OutboundLogger = defaultLogger;
+
+/** Where blocked outbound requests are logged (server side only). null restores the default (JSON line on stderr). */
+export function setOutboundLogger(next: OutboundLogger | null): void {
+  outboundLogger = next ?? defaultLogger;
 }
 
 // Separate lists: a BlockList checks IPv4 addresses against IPv6 rules through ::ffff:0:0/96, which would match everything.
@@ -56,6 +85,42 @@ for (const [net, prefix] of [
   ["ff00::", 8], // multicast
 ] as const) blockList6.addSubnet(net, prefix, "ipv6");
 
+// Classification for the log (the block decision itself uses blockList4/6 above).
+const reasonLists: Array<[OutboundBlockReason, BlockList]> = [];
+function reasonList(reason: OutboundBlockReason, nets: Array<[string, number, "ipv4" | "ipv6"]>): void {
+  const list = new BlockList();
+  for (const [net, prefix, type] of nets) {
+    if (prefix === 32 || prefix === 128) list.addAddress(net, type);
+    else list.addSubnet(net, prefix, type);
+  }
+  reasonLists.push([reason, list]);
+}
+reasonList("metadata", [["169.254.169.254", 32, "ipv4"], ["169.254.170.2", 32, "ipv4"], ["fd00:ec2::254", 128, "ipv6"]]);
+reasonList("loopback", [["127.0.0.0", 8, "ipv4"], ["::1", 128, "ipv6"]]);
+reasonList("unspecified", [["0.0.0.0", 8, "ipv4"], ["::", 128, "ipv6"]]);
+reasonList("ipv4_mapped", [["::ffff:0:0", 96, "ipv6"]]);
+reasonList("ipv4_embedded", [["::", 96, "ipv6"], ["64:ff9b::", 96, "ipv6"], ["64:ff9b:1::", 48, "ipv6"], ["2002::", 16, "ipv6"]]);
+reasonList("private", [["10.0.0.0", 8, "ipv4"], ["172.16.0.0", 12, "ipv4"], ["192.168.0.0", 16, "ipv4"], ["fc00::", 7, "ipv6"], ["fec0::", 10, "ipv6"]]);
+reasonList("link_local", [["169.254.0.0", 16, "ipv4"], ["fe80::", 10, "ipv6"]]);
+reasonList("cgnat", [["100.64.0.0", 10, "ipv4"]]);
+reasonList("multicast", [["224.0.0.0", 4, "ipv4"], ["ff00::", 8, "ipv6"]]);
+
+/** Log reason for a blocked address (first matching category; anything else blocked is "reserved"). */
+export function classifyBlockedAddress(address: string): OutboundBlockReason {
+  const bare = address.replace(/^\[|\]$/g, "").split("%")[0]!;
+  const family = isIP(bare);
+  if (!family) return "invalid_address";
+  const type = family === 4 ? "ipv4" : "ipv6";
+  for (const [reason, list] of reasonLists) {
+    // An IPv4 address must not be matched against IPv6-only rules (see the note on blockList4/6).
+    if (list.check(bare, type)) {
+      if (type === "ipv4" && (reason === "ipv4_mapped" || reason === "ipv4_embedded")) continue;
+      return reason;
+    }
+  }
+  return "reserved";
+}
+
 /** True for loopback, private, link-local/metadata, CGNAT, 0/8, IPv4-mapped/compatible IPv6, multicast and other reserved addresses. */
 export function isBlockedAddress(address: string): boolean {
   const bare = address.replace(/^\[|\]$/g, "").split("%")[0]!;
@@ -76,7 +141,9 @@ export function parseOutboundAllowlist(raw: string | undefined | null): string[]
   for (const part of String(raw ?? "").split(",")) {
     const entry = part.trim().toLowerCase();
     if (!entry) continue;
-    if (!/^(\[[0-9a-f:.]+\]|[a-z0-9.-]+):\d{1,5}$/.test(entry)) throw new Error(`OUTBOUND_ALLOWLIST 条目格式应为 host:port：${entry}`);
+    const match = /^(\[[0-9a-f:.]+\]|[a-z0-9.-]+):(\d{1,5})$/.exec(entry);
+    // Exact host:port only: no wildcard, CIDR, bare host or port range (AD). Invalid entries fail config loading at startup.
+    if (!match || Number(match[2]) < 1 || Number(match[2]) > 65535) throw new Error(`OUTBOUND_ALLOWLIST 条目格式应为 host:port：${entry}`);
     entries.push(entry);
   }
   return entries;
@@ -102,18 +169,32 @@ function configuredAllowlist(): string[] {
   return parseOutboundAllowlist((config as { OUTBOUND_ALLOWLIST?: string }).OUTBOUND_ALLOWLIST);
 }
 
-function parseTarget(raw: string | URL): { url: URL; host: string; hostKey: string; allowlisted: (list: string[]) => boolean } {
+type Target = { url: URL; host: string; hostKey: string; port: string; allowlisted: (list: string[]) => boolean };
+
+/** Logs the refusal (host, port, addresses, reason) and returns the client-facing error, which carries no address. */
+function refuse(target: { protocol: string; host: string; port: string }, reason: OutboundBlockReason, addresses: string[], hop: number): ForgeError {
+  const entry: OutboundBlockLog = { event: "outbound.blocked", code: OUTBOUND_BLOCKED_CODE, reason: hop > 0 ? "redirect" : reason, hop, protocol: target.protocol, host: target.host, port: target.port, addresses };
+  if (hop > 0) entry.targetReason = reason;
+  try {
+    outboundLogger(entry);
+  } catch {
+    // logging must never change the decision
+  }
+  return outboundBlockedError();
+}
+
+function parseTarget(raw: string | URL, hop = 0): Target {
   let url: URL;
   try {
     url = new URL(String(raw));
   } catch {
-    throw outboundBlockedError();
+    throw refuse({ protocol: "", host: "", port: "" }, "invalid_url", [], hop);
   }
-  if (url.protocol !== "http:" && url.protocol !== "https:") throw outboundBlockedError();
   const hostKey = url.hostname.toLowerCase(); // keeps [..] for IPv6
   const host = hostKey.replace(/^\[|\]$/g, "");
-  const port = url.port || (url.protocol === "https:" ? "443" : "80");
-  return { url, host, hostKey, allowlisted: (list) => list.includes(`${hostKey}:${port}`) };
+  const port = url.port || (url.protocol === "https:" ? "443" : url.protocol === "http:" ? "80" : "");
+  if (url.protocol !== "http:" && url.protocol !== "https:") throw refuse({ protocol: url.protocol, host, port }, "scheme", [], hop);
+  return { url, host, hostKey, port, allowlisted: (list) => list.includes(`${hostKey}:${port}`) };
 }
 
 /**
@@ -122,28 +203,35 @@ function parseTarget(raw: string | URL): { url: URL; host: string; hostKey: stri
  */
 export function assertOutboundUrlStatic(raw: string | URL, options: OutboundOptions = {}): URL {
   const target = parseTarget(raw);
+  const where = { protocol: target.url.protocol, host: target.host, port: target.port };
   if (target.allowlisted(options.allowlist ?? configuredAllowlist())) return target.url;
   if (isIP(target.host)) {
-    if (isBlockedAddress(target.host)) throw outboundBlockedError();
+    if (isBlockedAddress(target.host)) throw refuse(where, classifyBlockedAddress(target.host), [target.host], 0);
   } else if (isLocalHostname(target.host)) {
-    throw outboundBlockedError();
+    throw refuse(where, "local_hostname", [], 0);
   }
   return target.url;
 }
 
 /** Full check before a request: static rules + DNS, every answer must be public. Returns the answers to pin the socket to. */
 export async function assertOutboundAllowed(raw: string | URL, options: OutboundOptions = {}): Promise<{ url: URL; addresses: OutboundAddress[]; allowlisted: boolean }> {
-  const target = parseTarget(raw);
+  return checkOutbound(raw, options, 0);
+}
+
+async function checkOutbound(raw: string | URL, options: OutboundOptions, hop: number): Promise<{ url: URL; addresses: OutboundAddress[]; allowlisted: boolean }> {
+  const target = parseTarget(raw, hop);
+  const where = { protocol: target.url.protocol, host: target.host, port: target.port };
   if (target.allowlisted(options.allowlist ?? configuredAllowlist())) return { url: target.url, addresses: [], allowlisted: true };
   const family = isIP(target.host);
   if (family) {
-    if (isBlockedAddress(target.host)) throw outboundBlockedError();
+    if (isBlockedAddress(target.host)) throw refuse(where, classifyBlockedAddress(target.host), [target.host], hop);
     return { url: target.url, addresses: [{ address: target.host, family: family === 6 ? 6 : 4 }], allowlisted: false };
   }
-  if (isLocalHostname(target.host)) throw outboundBlockedError();
+  if (isLocalHostname(target.host)) throw refuse(where, "local_hostname", [], hop);
   const addresses = await resolver(target.host);
   if (!addresses.length) throw new ForgeError("HTP-4002", "目标地址无法解析", 502, undefined, true);
-  if (addresses.some((a) => isBlockedAddress(a.address))) throw outboundBlockedError();
+  const bad = addresses.find((a) => isBlockedAddress(a.address));
+  if (bad) throw refuse(where, classifyBlockedAddress(bad.address), addresses.map((a) => a.address), hop);
   return { url: target.url, addresses, allowlisted: false };
 }
 
@@ -223,7 +311,7 @@ export async function safeFetch(input: string | URL, init: SafeFetchInit = {}): 
   headers["accept-encoding"] ??= "identity";
   const maxRedirects = init.maxRedirects ?? MAX_REDIRECTS;
   for (let hop = 0; ; hop += 1) {
-    const target = await assertOutboundAllowed(url, init);
+    const target = await checkOutbound(url, init, hop);
     const requestHeaders = { ...headers };
     if (body !== undefined) requestHeaders["content-length"] = String(Buffer.byteLength(body));
     const response = await requestOnce(url, { method, headers: requestHeaders, body, signal: init.signal }, target.allowlisted ? null : target.addresses);

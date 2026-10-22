@@ -65,13 +65,14 @@ async function deliverOne(row: Record<string, unknown>, fetchImpl: typeof fetch)
     await assertOutboundAllowed(url);
   } catch (error) {
     if (error instanceof ForgeError && error.code === OUTBOUND_BLOCKED_CODE) {
-      await repos.finishWebhookDelivery(id, { status: "failed", errorMessage: `${OUTBOUND_BLOCKED_CODE} ${error.message}` });
+      await repos.finishWebhookDelivery(id, { status: "failed", errorMessage: `${OUTBOUND_BLOCKED_CODE} ${error.message}`, errorCode: OUTBOUND_BLOCKED_CODE });
       return;
     }
   }
   const body = JSON.stringify(parseJsonValue(row.payload_json, {}));
   let responseStatus: number | null = null;
   let errorMessage: string | null = null;
+  let errorCode: string | null = null;
   try {
     const secret = decryptSecret(String(app.webhook_secret_encrypted), config.FORGE_MASTER_KEY);
     const timestamp = Math.floor(Date.now() / 1000);
@@ -95,15 +96,18 @@ async function deliverOne(row: Record<string, unknown>, fetchImpl: typeof fetch)
       return;
     }
     errorMessage = `HTTP ${response.status}`.slice(0, 512);
+    errorCode = webhookShouldRetry(responseStatus) ? "HTP-4002" : "HTP-4001";
   } catch (error) {
-    errorMessage = (error instanceof Error ? error.message : "webhook failed").slice(0, 512);
+    // A redirect hop refused by the guard (manual redirects are not followed today, kept for safety) vs. transport errors.
+    errorCode = error instanceof ForgeError && error.code === OUTBOUND_BLOCKED_CODE ? OUTBOUND_BLOCKED_CODE : "HTP-4002";
+    errorMessage = (error instanceof ForgeError ? `${error.code} ${error.message}` : error instanceof Error ? error.message : "webhook failed").slice(0, 512);
   }
   const delay = webhookShouldRetry(responseStatus) ? webhookRetryDelayMs(attemptNumber) : null;
   if (delay === null) {
-    await repos.finishWebhookDelivery(id, { status: "failed", responseStatus, errorMessage });
+    await repos.finishWebhookDelivery(id, { status: "failed", responseStatus, errorMessage, errorCode });
     return;
   }
-  await repos.scheduleWebhookRetry(id, delay, responseStatus, errorMessage);
+  await repos.scheduleWebhookRetry(id, delay, responseStatus, errorMessage, errorCode);
 }
 
 /** Default transport: safeFetch (pinned to the validated address, redirects not followed). */

@@ -442,7 +442,7 @@ Pi 内置 bash/文件工具在服务端禁用。文档解析与浏览器在独�
 | `AUTH-1xxx` / `SSO-12xx` | 认证/会话/SSO | `AUTH-1001` 令牌缺失或过期；`SSO-1201` 登录被拒 |
 | `POL-2xxx` / `APR-21xx` | 权限/审批 | `POL-2001` 无权使用工具；`APR-2102` 审批超时 |
 | `MDL-3xxx` | 模型 | `MDL-3001` 限流可重试；`MDL-3002` 上下文超长 |
-| `HTP-40xx` / `MCP-41xx` | HTTP 工具/MCP | `HTP-4001` 业务错误；`HTP-4002` 5xx 重试；`HTP-4003` 出站目标不允许（内网/回环/元数据，400） |
+| `HTP-40xx` / `MCP-41xx` | HTTP 工具/MCP | `HTP-4001` 业务错误；`HTP-4002` 5xx 重试；`HTP-4003` 出站目标不允许（内网/回环/元数据；管理接口 400，OIDC 上游 502，浏览器 SSO 入口改为跳转 `/next/sign-in?ssoError=HTP-4003`） |
 | `BRW-42xx` / `DOC-43xx` | 浏览器/文档 | `DOC-4302` OCR 失败 |
 | `OPN-45xx` / `WHK-46xx` | 开放平台/Webhook | `OPN-4501` 配额耗尽；`WHK-4601` 验签失败 |
 | `CON-47xx` / `SCD-48xx` | Connector/定时任务 | `CON-4701` Principal 验签失败；`SCD-4801` 服务账号停用；`SCD-4803` 触发时出现未分类异常；SCD-4804 服务账号角色不允许（platform_admin 不可绑定定时任务） |

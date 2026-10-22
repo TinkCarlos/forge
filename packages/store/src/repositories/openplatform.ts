@@ -127,17 +127,17 @@ export const openPlatformRepo = {
     );
     return result.affectedRows === 1;
   },
-  async finishWebhookDelivery(id: string, input: { status: "delivered" | "failed"; responseStatus?: number | null; errorMessage?: string | null }): Promise<void> {
+  async finishWebhookDelivery(id: string, input: { status: "delivered" | "failed"; responseStatus?: number | null; errorMessage?: string | null; errorCode?: string | null }): Promise<void> {
     await execute(
-      "UPDATE webhook_deliveries SET status = ?, response_status = ?, error_message = ?, delivered_at = IF(? = 'delivered', UTC_TIMESTAMP(3), delivered_at) WHERE id = ?",
-      [input.status, input.responseStatus ?? null, input.errorMessage ?? null, input.status, id],
+      "UPDATE webhook_deliveries SET status = ?, response_status = ?, error_message = ?, error_code = ?, delivered_at = IF(? = 'delivered', UTC_TIMESTAMP(3), delivered_at) WHERE id = ?",
+      [input.status, input.responseStatus ?? null, input.errorMessage ?? null, input.errorCode ?? null, input.status, id],
     );
   },
-  async scheduleWebhookRetry(id: string, delayMs: number, responseStatus: number | null, errorMessage: string | null): Promise<void> {
+  async scheduleWebhookRetry(id: string, delayMs: number, responseStatus: number | null, errorMessage: string | null, errorCode: string | null = null): Promise<void> {
     const seconds = Math.max(1, Math.ceil(delayMs / 1000));
     await execute(
-      `UPDATE webhook_deliveries SET status = 'pending', response_status = ?, error_message = ?, next_attempt_at = DATE_ADD(UTC_TIMESTAMP(3), INTERVAL ${seconds} SECOND) WHERE id = ?`,
-      [responseStatus, errorMessage, id],
+      `UPDATE webhook_deliveries SET status = 'pending', response_status = ?, error_message = ?, error_code = ?, next_attempt_at = DATE_ADD(UTC_TIMESTAMP(3), INTERVAL ${seconds} SECOND) WHERE id = ?`,
+      [responseStatus, errorMessage, errorCode, id],
     );
   },
   async getWebhookDelivery(id: string): Promise<Record<string, unknown> | null> {
@@ -148,7 +148,7 @@ export const openPlatformRepo = {
   },
   async replayWebhookDelivery(id: string): Promise<boolean> {
     const result = await execute(
-      "UPDATE webhook_deliveries SET status = 'pending', attempts = 0, next_attempt_at = UTC_TIMESTAMP(3), error_message = NULL, delivered_at = NULL WHERE id = ?",
+      "UPDATE webhook_deliveries SET status = 'pending', attempts = 0, next_attempt_at = UTC_TIMESTAMP(3), error_message = NULL, error_code = NULL, delivered_at = NULL WHERE id = ?",
       [id],
     );
     return result.affectedRows === 1;

@@ -90,6 +90,7 @@ CREATE TABLE IF NOT EXISTS webhook_deliveries (
   next_attempt_at DATETIME(3) NOT NULL,
   response_status INT NULL,
   error_message VARCHAR(512) NULL,
+  error_code VARCHAR(16) NULL,
   created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   delivered_at DATETIME(3) NULL,
   UNIQUE KEY uk_webhook_delivery_event (app_id, event_id),

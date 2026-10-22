@@ -1,8 +1,10 @@
-import { config } from "@forge/core";
+import { config, setOutboundLogger } from "@forge/core";
 import { startRuntime } from "@forge/runtime";
 import { buildApp } from "./app.js";
 
 const app = await buildApp();
+// AD: blocked outbound requests (host, resolved IPs, reason) go to the API log, never to the client.
+setOutboundLogger((entry) => app.log.warn(entry, "outbound request blocked"));
 
 const port = config.PORT;
 await app.listen({ port, host: config.HOST });

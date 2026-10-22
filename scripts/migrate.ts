@@ -34,6 +34,13 @@ async function hasIndex(conn: Connection, table: string, index: string): Promise
   return (rows as unknown[]).length > 0;
 }
 
+/** AD: webhook_deliveries.error_code (non-destructive: nullable column, existing rows untouched). */
+async function applyWebhookErrorCode(conn: Connection): Promise<void> {
+  if (!(await hasColumn(conn, "webhook_deliveries", "error_code"))) {
+    await conn.query("ALTER TABLE webhook_deliveries ADD COLUMN error_code VARCHAR(16) NULL AFTER error_message");
+  }
+}
+
 async function applyRuntimeLease(conn: Connection): Promise<void> {
   if (!(await hasColumn(conn, "runs", "claimed_by"))) {
     await conn.query("ALTER TABLE runs ADD COLUMN claimed_by VARCHAR(128) NULL");
@@ -179,6 +186,14 @@ try {
     console.log("Migration 004_schedule_identity applied");
   } else {
     console.log("Migration 004_schedule_identity already applied");
+  }
+
+  if (!applied.has("005_webhook_error_code")) {
+    await applyWebhookErrorCode(connection);
+    await connection.query("INSERT INTO schema_migrations (version) VALUES (?)", ["005_webhook_error_code"]);
+    console.log("Migration 005_webhook_error_code applied");
+  } else {
+    console.log("Migration 005_webhook_error_code already applied");
   }
 } finally {
   await connection.end();

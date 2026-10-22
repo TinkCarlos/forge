@@ -79,8 +79,12 @@ GET /admin/v1/session
 - 静态校验只看字面 IP 和 `localhost`、`*.localhost`、`*.local`、`metadata.google.internal` 这类主机名，不做 DNS。完整校验会做 DNS 解析，解析出的**每一个**地址都必须是公网地址。
 - 防 DNS rebinding：解析一次、校验全部结果，连接时用自定义 `lookup` 把 socket 固定到这批已校验的地址上，不会再做第二次解析；TLS 的 SNI 和证书校验仍按原主机名。
 - 跳转：手动跟随，最多 5 跳，每一跳都重新做完整校验（跳到私网、元数据或 `file://` 都会被拒绝）；Webhook 不跟随跳转。跨源跳转会去掉 `Authorization` / `Cookie`。
-- 被拒绝时：管理接口返回 `400 HTP-4003「目标地址不允许（内网/回环/元数据）」`；运行时工具调用返回 `errorCode: HTP-4003` 的工具结果；Webhook 投递记为 `failed`（不重试），`errorMessage` 以 `HTP-4003` 开头。响应和日志里都不回显解析出的地址。
-- 白名单：环境变量 `OUTBOUND_ALLOWLIST`，逗号分隔的 `host:port`（IPv6 写成 `[::1]:9000`），默认空。只放行完全一致的主机和端口（默认端口按 80/443 计），按规范化后的主机名匹配；白名单不放开非 http(s) 协议。旧开关 `TOOL_ALLOW_PRIVATE_NETWORK` 不再绕过出站校验。
+- 被拒绝时（AD 后的口径）：
+  - 管理接口（保存 MCP / Provider / 工具源 / Webhook 地址、MCP refresh、Provider test）返回 `400 HTP-4003「目标地址不允许（内网/回环/元数据）」`；运行时工具调用（MCP、OpenAPI、web_fetch）返回 `errorCode: HTP-4003` 的工具结果；模型调用该步失败，Run 最终以 `HTP-4003` 结束（不可重试）。
+  - Webhook 投递记为 `failed`（不重试），新列 `error_code = HTP-4003`（`GET /admin/api/apps/{id}/webhook-deliveries` 返回 `errorCode`），`errorMessage` 以 `HTP-4003` 开头。其他失败：非 2xx 记 `HTP-4001`（4xx）/ `HTP-4002`（5xx、429、408），网络错误记 `HTP-4002`；重放会清空 `error_code`。
+  - OIDC（discovery、token、JWKS）：浏览器整页跳转的 `GET /auth/oidc/login` 和 `GET /auth/oidc/callback` 一律 `302` 到 `/next/sign-in?ssoError=HTP-4003`，合法的 `returnTo`（按 S-30 校验，callback 用登录时保存的那个）以 `&returnTo=` 保留，不合法的丢弃。identity 层对 JSON 调用方抛 `502 HTP-4003`（上游 IdP 问题）；目前没有管理端「测试 OIDC 配置」这类 JSON 接口。私有部署的 IdP 必须把它的 `host:port` 加进 `OUTBOUND_ALLOWLIST`，否则 SSO 无法登录。
+  - 返回给客户端的内容（错误响应、工具结果、投递记录、跳转地址）都不带解析出的 IP。服务端日志记一条 `outbound.blocked`：`host`、`port`、`protocol`、`addresses`（解析出的或字面的 IP）、`reason`（`scheme`、`invalid_url`、`local_hostname`、`loopback`、`private`、`metadata`、`link_local`、`cgnat`、`unspecified`、`ipv4_mapped`、`ipv4_embedded`、`multicast`、`reserved`；跳转中被拒为 `redirect`，另记 `targetReason` 和 `hop`）。不记 URL 的路径和查询串。
+- 白名单：环境变量 `OUTBOUND_ALLOWLIST`，逗号分隔、每项必须是精确的 `host:port`（IPv6 写成 `[::1]:9000`，端口 1–65535），默认空（全部按规则拦截）。不支持通配符、CIDR、只写 host；有无效项时配置加载失败、进程启动即报错退出。只放行完全一致的主机和端口（默认端口按 80/443 计）：白名单里的地址 302 跳到别的内网地址、或别的主机名解析到内网 IP，照样拦截；白名单不放开非 http(s) 协议。旧开关 `TOOL_ALLOW_PRIVATE_NETWORK` 不再绕过出站校验。
 
 **请求体解析失败**（当前实现，K-09 / I-CSRF-06，所有入口：管理端、登录、开放平台、Connector）：体积超过上限（JSON 2 MiB）→ `413 OPN-4504「请求体过大」`；Content-Type 声明为 JSON 但内容不是合法 JSON → `400 CFG-8501「请求体不是合法的 JSON」`；声明为 JSON 却是空体 → `400 CFG-8501「请求体为空，但 Content-Type 声明为 JSON」`；Content-Type 不受支持（如 `application/xml`、`application/x-www-form-urlencoded`）→ `415 OPN-4505「不支持的 Content-Type」`。不再返回 `500 SYS-9001`。中间件顺序不变：解析在 CSRF 校验之前，所以坏请求体即使没带 CSRF 令牌也先得到上面的 400/413/415；能解析的请求体没带 CSRF 仍是 403。
 

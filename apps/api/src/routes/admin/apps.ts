@@ -36,6 +36,7 @@ export default async function adminAppRoutes(app: FastifyInstance): Promise<void
         attempts: item.attempts,
         responseStatus: item.response_status,
         errorMessage: item.error_message,
+        errorCode: item.error_code ?? null,
         nextAttemptAt: item.next_attempt_at,
         deliveredAt: item.delivered_at,
         createdAt: item.created_at,

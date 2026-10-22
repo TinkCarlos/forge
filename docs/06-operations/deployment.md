@@ -74,7 +74,7 @@ minio:9000/9001
 | `SESSION_SECRET` | 是 | BFF 会话签名 |
 | `LOG_LEVEL` | 否 | `info` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | 否 | OTel Collector |
-| `OUTBOUND_ALLOWLIST` | 否 | 出站请求白名单，逗号分隔的 `host:port`（IPv6 写 `[addr]:port`），默认空。列出的目标跳过内网/回环/元数据地址检查（协议仍只允许 http/https）。生产只放行确实需要的内网服务，例如内网模型网关 `llm.acme.internal:443`。本地开发连 mock（`pnpm mock:services`）需要 `OUTBOUND_ALLOWLIST=127.0.0.1:8090`；`pnpm smoke:isolated` 会给它启动的 API 自动带上这一项（除非已显式设置）。详见 admin-api.md §2.1 |
+| `OUTBOUND_ALLOWLIST` | 否 | 出站请求白名单，逗号分隔的 `host:port`（IPv6 写 `[addr]:port`），默认空。列出的目标跳过内网/回环/元数据地址检查（协议仍只允许 http/https）。每项必须是精确的 `host:port`（不支持通配符、CIDR、只写 host；无效项会让进程启动失败）。生产只放行确实需要的内网服务，例如内网模型网关 `llm.acme.internal:443`；**私有部署的 OIDC IdP 也必须列入，否则 SSO 无法登录**。被拦截的请求在服务端日志里记 `outbound.blocked`（host、解析出的 IP、reason）。本地开发连 mock（`pnpm mock:services`）需要 `OUTBOUND_ALLOWLIST=127.0.0.1:8090`；`pnpm smoke:isolated` 会给它启动的 API 自动带上这一项（除非已显式设置）。详见 admin-api.md §2.1 |
 | `TOOL_ALLOW_PRIVATE_NETWORK` | 否 | 已废弃：不再绕过出站校验，请改用 `OUTBOUND_ALLOWLIST` |
 | `MCP_ALLOWED_COMMANDS` | 否 | stdio MCP 命令白名单 |
 | `DEFAULT_TIMEZONE` | 否 | `Asia/Shanghai` |

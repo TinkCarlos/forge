@@ -6,6 +6,7 @@ import {
   errors,
   ForgeError,
   hashApiKey,
+  OUTBOUND_BLOCKED_CODE,
   safeEqual,
   safeFetch,
   signSession,
@@ -177,12 +178,31 @@ export function oidcConfigured(): boolean {
   return Boolean(config.OIDC_ISSUER && config.OIDC_CLIENT_ID && config.OIDC_CLIENT_SECRET);
 }
 
+/**
+ * OIDC fetch (discovery, token, JWKS): a target refused by the outbound guard is an upstream (IdP) problem -> 502 HTP-4003
+ * for JSON callers. The browser entry points (/auth/oidc/login, /auth/oidc/callback) turn it into a redirect (AD).
+ */
+async function oidcFetch(url: string, init?: Parameters<typeof safeFetch>[1]): Promise<Response> {
+  try {
+    return await safeFetch(url, init);
+  } catch (error) {
+    if (error instanceof ForgeError && error.code === OUTBOUND_BLOCKED_CODE) throw new ForgeError(OUTBOUND_BLOCKED_CODE, error.message, 502, undefined, false);
+    throw error;
+  }
+}
+
+/** The returnTo saved with a pending OIDC state (without consuming it), so a failed callback can keep it. */
+export function pendingOidcReturnTo(state: string): string | null {
+  const saved = oidcStates.get(state);
+  return saved && saved.expiresAt >= Date.now() ? saved.returnTo : null;
+}
+
 async function discovery(): Promise<Discovery> {
   if (!config.OIDC_ISSUER) throw new ForgeError("SSO-1201", "SSO 尚未配置", 503);
   const cached = discoveryCache.get(config.OIDC_ISSUER);
   if (cached) return cached;
   // Outbound guard (S-46): issuer, token endpoint and JWKS all go through safeFetch.
-  const response = await safeFetch(`${config.OIDC_ISSUER.replace(/\/$/, "")}/.well-known/openid-configuration`);
+  const response = await oidcFetch(`${config.OIDC_ISSUER.replace(/\/$/, "")}/.well-known/openid-configuration`);
   if (!response.ok) throw new ForgeError("SSO-1202", "无法获取 OIDC discovery", 502);
   const doc = (await response.json()) as Discovery;
   discoveryCache.set(config.OIDC_ISSUER, doc);
@@ -224,7 +244,7 @@ export async function handleOidcCallback(code: string, state: string): Promise<{
     code_verifier: saved.verifier,
   });
   if (config.OIDC_CLIENT_SECRET) body.set("client_secret", config.OIDC_CLIENT_SECRET);
-  const tokenResponse = await safeFetch(doc.token_endpoint, {
+  const tokenResponse = await oidcFetch(doc.token_endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
@@ -232,7 +252,7 @@ export async function handleOidcCallback(code: string, state: string): Promise<{
   if (!tokenResponse.ok) throw new ForgeError("SSO-1204", "OIDC 令牌交换失败", 401);
   const tokens = (await tokenResponse.json()) as { id_token?: string; access_token?: string };
   if (!tokens.id_token) throw new ForgeError("SSO-1205", "OIDC 未返回 id_token", 401);
-  const jwksResponse = await safeFetch(doc.jwks_uri);
+  const jwksResponse = await oidcFetch(doc.jwks_uri);
   if (!jwksResponse.ok) throw new ForgeError("SSO-1202", "无法获取 OIDC JWKS", 502);
   const jwks = createLocalJWKSet((await jwksResponse.json()) as JSONWebKeySet);
   const { payload } = await jwtVerify(tokens.id_token, jwks, {

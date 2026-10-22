@@ -52,7 +52,11 @@ const envSchema = z.object({
   OUTBOUND_ALLOWLIST: z
     .string()
     .default("")
-    .refine((value) => value.split(",").map((e) => e.trim()).filter(Boolean).every((e) => /^(\[[0-9a-fA-F:.]+\]|[a-zA-Z0-9.-]+):\d{1,5}$/.test(e)), "OUTBOUND_ALLOWLIST 应为逗号分隔的 host:port"),
+    .refine((value) => value.split(",").map((e) => e.trim()).filter(Boolean).every((e) => {
+          // AD: exact host:port only — no wildcard, CIDR or bare host; port 1-65535. Invalid → startup error.
+          const m = /^(\[[0-9a-fA-F:.]+\]|[a-zA-Z0-9.-]+):(\d{1,5})$/.exec(e);
+          return m !== null && Number(m[2]) >= 1 && Number(m[2]) <= 65535;
+        }), "OUTBOUND_ALLOWLIST 应为逗号分隔的精确 host:port（不支持通配符、CIDR、只写 host；端口 1-65535）"),
   MCP_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
   LOG_LEVEL: z.string().default("info"),
   SSO_MODE: z.enum(["disabled", "optional", "required"]).default("optional"),
