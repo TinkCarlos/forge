@@ -2,6 +2,7 @@
   "name": "forge",
   "version": "0.1.0",
   "private": true,
+  "author": "TinkCarlos",
   "type": "module",
   "description": "Forge - pluggable enterprise agent backend framework",
   "engines": {

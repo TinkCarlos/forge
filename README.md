@@ -124,3 +124,7 @@ docs/                     需求、架构、接口、数据、开发、运维
 | [MySQL 设计](docs/04-data/mysql-design.md) | 数据模型 |
 | [部署](docs/06-operations/deployment.md) / [发布](docs/06-operations/release-process.md) | 运维与发布 |
 | [实现状态](docs/05-development/implementation-status.md) | 已实现/未实现清单与验证记录 |
+
+## 作者
+
+TinkCarlos（[GitHub](https://github.com/TinkCarlos)）
