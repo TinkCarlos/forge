@@ -59,6 +59,7 @@
 | I-INT-08 | #84 | 见 §1 | | | | |
 | I-INT-09 | #85 | 见 §1 | | | | |
 | **I-INT-10** | #82、#83（及 #84~#86） | 映射用户有 `idp_subject` | **a.** 用户 `status=disabled`；**b.** 用户已删除（软删/置删除态，`idp_subject` 仍在）；**c.** 用户所属部门已停用。三种情况各调 `GET /integration/v1/agents` 与 `POST /integration/v1/runs` | 三种情况均 **403 CON-4706**，不建 Run | **P0** | **已知缺陷**：`principalForConnector` 不过滤 status，现状 200 / 202。与 **S-45**（会话快照）同类，互相引用 |
+| I-INT-10b | #82、#83 | PRE-CON；映射用户正常 | 让主体查库失败（MySQL 断开，同 OPS-024），调 `GET /integration/v1/agents` | 查库失败属基础设施故障：**503**，**不能是 403 CON-4706**；只有确认查到用户且不可用时才 CON-4706 | P0 | 与 S-45b 同口径 |
 | I-INT-11 | #83 | 映射用户为 AU（无 `agent.run`） | 建 Run | 403 POL-2001「角色缺少权限: agent.run」 | P1 | **已知缺陷** K-06：现状 202（同 S-35） |
 | I-INT-12 | #82 | 映射用户属部门 A | 列 agents | 只含 A 部门子树可见且已发布的 Agent | P1 | **已知缺陷**：现状全局、不看 api_enabled（Q6） |
 | I-INT-13 | #83 | 映射用户属部门 A | 建 Run 后 PA 查 `GET /admin/api/runs/:id` | Run 的 org = 部门 A；subject = 映射用户 | P1 | |
@@ -110,7 +111,7 @@
 
 ## 6. 只有泛化用例的路由 → 接口级断言（A1.2 及其余 A2 缺口）
 
-### 6.0 认证补充（I-AUTH-02~04、07~08，#7 #9 #10 #11）
+### 6.0 认证补充（I-AUTH-02~04、07~09，#7 #9 #10 #11）
 
 | 编号 | 路由 | 前置 | 步骤 | 预期 | 优先级 | 备注 |
 |---|---|---|---|---|---|---|
@@ -119,6 +120,7 @@
 | I-AUTH-04 | #9 | — | 无会话 POST logout；有会话不带 CSRF POST logout | 均 200 `{ok:true}`（不校验 CSRF，设计确认） | P2 | 审计见 I-AUD-03 |
 | I-AUTH-07 | #10 | OIDC 已配 | `returnTo=abc`（不以 `/` 开头） | 回落为 `/` | P2 | `//evil` 见 S-30 |
 | I-AUTH-08 | #11 | PRE-OIDC | 成功 OIDC 登录 | 审计 `auth.login.oidc` | P2 | 无 mock IdP 则 N/A |
+| I-AUTH-09 | #7 | 一个用户，其所属部门已停用 | 用正确密码本地登录 | **401 AUTH-1001**，与密码错误时表现完全相同（状态码、错误码、文案） | P0 | 修复 F；与 S-45 同口径 |
 
 ### 6.1 Agent（I-AGT，#14~#19）
 
