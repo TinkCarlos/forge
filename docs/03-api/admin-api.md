@@ -174,6 +174,7 @@ Agent 状态与运行（当前实现，I-AGT-11 / 11b / 11c）：
 
 - `PATCH /admin/api/agents/{id}` 的 `status` 只接受 `active` 和 `disabled`，其他值（包括大小写不同、空串、非字符串）返回 `400 CFG-8501`，不修改。
 - Agent 的 `status` 不是 `active` 时，`POST /admin/api/agents/{id}/run`、开放平台 `POST /open/v1/agents/{key}/runs` 和 `/invoke`、`POST /integration/v1/runs` 都返回 `409 CFG-8503「Agent 已停用，不能运行」`，不建 Run、不写审计。判定在可见性之后：看不到的 Agent 仍是 404。
+- 无主 Agent（`owner_org_unit_id` 为空，I-AGT-13）：`PATCH /admin/api/agents/{id}`、`POST /admin/api/agents/{id}/versions`、`POST /admin/api/agents/{id}/publish` 只有 platform_admin 能执行，其他角色返回 `403 POL-2001`，不写库、不写审计；读取、运行、建定时任务不受影响。
 
 ## 4. 能力包与安装
 

@@ -104,6 +104,14 @@ export async function agentAccessible(principal: Principal, agent: AgentRow | nu
   return orgIds === null || orgIds.includes(agent.owner_org_unit_id);
 }
 
+/**
+ * Write paths only (I-AGT-13): call after agentAccessible. An Agent without an owner department is readable / runnable
+ * by everyone in scope, but only platform_admin may change it (PATCH, new version, publish); others 403 POL-2001.
+ */
+export function assertAgentWritable(principal: Principal, agent: AgentRow): void {
+  if (!agent.owner_org_unit_id && principal.role !== "platform_admin") throw errors.forbidden("无主 Agent 仅平台管理员可修改");
+}
+
 /** Run DTO shared by admin, open and integration APIs. `input` is masked (maskArgsDeep); the stored row is unchanged. */
 export function presentRun(run: RunRow) {
   return {

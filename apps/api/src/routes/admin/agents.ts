@@ -11,6 +11,7 @@ import {
   admin,
   writeAudit,
   agentAccessible,
+  assertAgentWritable,
   presentAgent,
   requireBodyString,
   sessionPayload,
@@ -78,6 +79,7 @@ export default async function adminAgentRoutes(app: FastifyInstance): Promise<vo
     const session = await admin(request, "agent.manage");
     const agent = await repos.getAgent(param(request, "id"));
     if (!agent || !(await agentAccessible(session.principal, agent))) throw errors.notFound("Agent 不存在");
+    assertAgentWritable(session.principal, agent);
     const body = bodyOf(request);
     const fields: Record<string, unknown> = {};
     if (body.name !== undefined) fields.name = stringBody(body, "name");
@@ -98,6 +100,7 @@ export default async function adminAgentRoutes(app: FastifyInstance): Promise<vo
     const session = await admin(request, "agent.publish");
     const agent = await repos.getAgent(param(request, "id"));
     if (!agent || !(await agentAccessible(session.principal, agent))) throw errors.notFound("Agent 不存在");
+    assertAgentWritable(session.principal, agent);
     const body = bodyOf(request);
     const versionId = await repos.createAgentVersion({
       agentId: agent.id,
@@ -117,6 +120,7 @@ export default async function adminAgentRoutes(app: FastifyInstance): Promise<vo
     const session = await admin(request, "agent.publish");
     const agent = await repos.getAgent(param(request, "id"));
     if (!agent || !(await agentAccessible(session.principal, agent))) throw errors.notFound("Agent 不存在");
+    assertAgentWritable(session.principal, agent);
     const body = bodyOf(request);
     const versionId = requireBodyString(body, "versionId");
     const version = await repos.getAgentVersion(versionId);
