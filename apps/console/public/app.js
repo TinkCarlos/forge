@@ -462,7 +462,7 @@ async function renderSchedules() {
   state.agents = agents.items ?? [];
   $("#content").innerHTML = `
     <div class="card">
-      <div class="card-head"><div><h3>定时任务</h3><p class="muted">Cron + 时区；以服务身份运行（普通用户权限，数据范围为创建者所在部门）</p></div><button class="btn primary" onclick="app.openScheduleCreate()">新建定时任务</button></div>
+      <div class="card-head"><div><h3>定时任务</h3><p class="muted">Cron + 时区</p></div><button class="btn primary" onclick="app.openScheduleCreate()">新建定时任务</button></div>
       ${state.schedules.length ? `<div class="table-wrap"><table><thead><tr><th>名称</th><th>Agent</th><th>Cron</th><th>时区</th><th>下次运行</th><th>状态</th><th>操作</th></tr></thead><tbody>
         ${state.schedules.map((schedule) => `<tr><td><strong>${esc(schedule.name)}</strong><div class="muted mono">${esc(schedule.key)}</div></td><td>${esc(schedule.agent_name)}</td><td class="mono">${esc(schedule.cron)}</td><td>${esc(schedule.timezone)}</td><td>${fmt(schedule.next_run_at)}</td><td>${statusPill(schedule.status)}</td><td><div class="actions">${schedule.status === "active" ? `<button class="btn ghost small" onclick="app.scheduleAction('${esc(schedule.id)}','disable')">停用</button>` : `<button class="btn ghost small" onclick="app.scheduleAction('${esc(schedule.id)}','enable')">启用</button>`}<button class="btn ghost small" onclick="app.openScheduleEdit('${esc(schedule.id)}')">编辑</button><button class="btn ghost small" onclick="app.scheduleAction('${esc(schedule.id)}','run')">立即运行</button></div></td></tr>`).join("")}
       </tbody></table></div>` : empty("还没有定时任务", "创建一个 Cron 任务，框架会按计划提交 Run。")}
@@ -993,7 +993,7 @@ const app = {
       if (action === "disable") {
         const schedule = state.schedules.find((item) => item.id === id);
         const nextRun = schedule?.next_run_at ? `，下次计划的 ${fmt(schedule.next_run_at)} 会取消` : "";
-        const message = `停用后不会再按 ${schedule?.cron ?? "Cron"}（${schedule?.timezone ?? "默认时区"}）自动运行${nextRun}。`;
+        const message = `停用后不会再按 ${schedule?.cron ?? "Cron"}（${schedule?.timezone ?? "默认时区"}）自动运行${nextRun}。之后可以随时重新启用。`;
         if (!(await confirmAction(`停用定时任务「${schedule?.name ?? id}」`, message, "确认停用"))) return;
       }
       await api(`/admin/api/schedules/${id}/${action}`, { method: "POST", body: {} });
