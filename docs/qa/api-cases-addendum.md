@@ -297,7 +297,8 @@
 | I-SA-06 | #72 | — | `status:"foo"` | 400 CFG-8501 | P2 | |
 | I-SA-07 | #72 | — | `name:""` | 200，name 不变 | P3 | |
 | I-SA-08 | #72 | — | 停用；改名 | 审计分别为 `service_account.disable` / `service_account.update`，details `{before,changes}` | P2 | |
-| I-SA-09 | #71 #72 | OO | GET/PATCH 根部门 SA；不存在 id | 均 404「服务账号不存在」，响应体相同 | P0 | |
+| I-SA-09 | #71 #72 | OO | GET/PATCH 根部门 SA；不存在 id | 均 **403 POL-2001**（OO 无 `service_account.manage`，先查权限再查范围），两种情况响应体相同，不暴露资源是否存在 | P0 | 架构师 18:55 裁定由 404 改 403（P0 第 1 批实测 403） |
+| I-SA-09a | #71 #72 | 有 `service_account.manage` 但范围受限的身份 | GET/PATCH 范围外部门的 SA；不存在 id | 均 404「服务账号不存在」，响应体相同 | P0 | 架构师 18:55 补充。**当前权限映射里只有 PA 有该权限，而且 PA 不受范围限制，所以暂时没有能执行这条的身份**，标「blocked：等权限映射变化」 |
 | I-SA-10 | #45/#46（经 R-sa）、#69/#71 | 父部门 OA；子部门、兄弟部门、上级部门各一个 SA（服务账号接口仅 PA 可调，故经定时任务绑定间接验证 R-sa）。**子部门 SA 怎么造**：建服务账号时部门固定取调用者自己的部门，接口无法把 SA 放到别的部门（后端对过 `4c2555e`）。造法：① 用 PA 正常建好 SA；② 由**运维**在 **3196 的临时库 `forge_ops`** 执行 `UPDATE service_accounts SET org_unit_id=<子部门id> WHERE id=<账号id>`；③ 执行前先 `SHOW CREATE TABLE service_accounts` 核对表名和列名；④ 改之前先导出这张表做备份，SQL 原样贴进执行日志；⑤ 只允许在临时库（`forge_ops`，或 connector 场景的 `forge_connector`）上做，**禁止在 `forge`、`forge_ux` 上做**，测完整库删除。反面用例（兄弟部门 / 上级部门 SA）用同样办法造数据 | **正**：父部门 OA 创建/PATCH schedule 绑定子部门 SA；**反**：绑定兄弟部门 SA、上级部门 SA | 正：**200**（统一规则：本部门 + 所有子部门）；反：**404**，与 SA 不存在完全相同（状态码、错误码、message），响应不出现账号名 | P1 | 正向**已知缺陷**：R-sa 精确等于，现状 404（修复 D 已改）。= I-SCOPE-10c |
 
 ### 6.12 Open 补充（I-OPEN-15~21）
