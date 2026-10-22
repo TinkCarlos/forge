@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { shortTime } from "@/lib/format";
 import { useResource } from "@/lib/use-resource";
 import { AlertDialog } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { EmptyState, ErrorState, ShortId, SkeletonRows } from "@/components/ui/data-state";
+import { EmptyState, ErrorState, Pager, ShortId, SkeletonRows } from "@/components/ui/data-state";
 import { RowMenu } from "@/components/ui/row-menu";
 import { StatusPill } from "@/components/ui/status-pill";
 import { useToast } from "@/components/ui/toast";
@@ -12,11 +12,22 @@ import { useToast } from "@/components/ui/toast";
 type Approval = { id: string; run_id: string; agent_name: string; risk_level: string; expires_at: string; created_at: string };
 type Decision = { approval: Approval; decision: "approved" | "rejected" } | null;
 
-const loadApprovals = () => api<{ items: Approval[] }>("/admin/api/approvals").then((r) => r.items ?? []);
+const PAGE = 20;
+type Page = { items: Approval[]; total: number };
+// 后端分页上线前，接口不认 page/pageSize 时回落为整表返回，这里再按 20 条切片
+const loadApprovals = (page: number) =>
+  api<{ items?: Approval[]; total?: number }>(`/admin/api/approvals?page=${page}&pageSize=${PAGE}`).then((r): Page => {
+    const items = r.items ?? [];
+    if (typeof r.total === "number") return { items, total: r.total };
+    return { items: items.slice((page - 1) * PAGE, page * PAGE), total: items.length };
+  });
 
 export function ApprovalsPage({ onChanged }: { onChanged: () => void }) {
   const toast = useToast();
-  const { data, error, loading, reload } = useResource(loadApprovals);
+  const [page, setPage] = useState(1);
+  const load = useCallback(() => loadApprovals(page), [page]);
+  const { data: pageData, error, loading, reload } = useResource(load);
+  const data = pageData?.items;
   const [pending, setPending] = useState<Decision>(null);
   const [comment, setComment] = useState("");
 
@@ -47,7 +58,7 @@ export function ApprovalsPage({ onChanged }: { onChanged: () => void }) {
               const created = shortTime(a.created_at);
               const expires = shortTime(a.expires_at);
               return (
-                <tr key={a.id} className="h-11 border-t border-border hover:bg-muted/50">
+                <tr key={a.id} className="h-13 border-t border-border hover:bg-muted/50">
                   <td className="px-4 py-2">
                     <div className="font-medium">{a.agent_name}</div>
                     <div className="flex items-center gap-1 text-xs text-muted-foreground">Run <ShortId id={a.run_id} /></div>
@@ -57,7 +68,7 @@ export function ApprovalsPage({ onChanged }: { onChanged: () => void }) {
                   <td className="px-4" title={expires.title}>{expires.text}</td>
                   <td className="px-4">
                     <div className="flex items-center justify-end gap-1">
-                      <Button size="sm" onClick={() => open(a, "approved")}>批准</Button>
+                      <Button size="sm" variant="outline" onClick={() => open(a, "approved")}>批准</Button>
                       <RowMenu
                         label={`审批 ${a.id.slice(0, 8)} 更多操作`}
                         items={[
@@ -73,6 +84,7 @@ export function ApprovalsPage({ onChanged }: { onChanged: () => void }) {
           </tbody>
         </table>
       )}
+      <Pager page={page} total={pageData?.total ?? 0} size={PAGE} onPage={setPage} />
 
       <AlertDialog
         open={!!pending}
@@ -98,7 +110,7 @@ export function ApprovalsPage({ onChanged }: { onChanged: () => void }) {
         <p>{pending?.decision === "approved" ? "批准后 Run 会立即继续执行这次工具调用，批准后不能撤回。" : "驳回后 Run 不会执行这次工具调用，驳回后不能撤回。"}</p>
         <label className="mt-4 block text-sm text-foreground">
           备注（可选）
-          <textarea value={comment} onChange={(e) => setComment(e.target.value)} rows={3} className="mt-1.5 w-full resize-none rounded-control border border-border bg-card px-3 py-2 outline-none focus:ring-4 focus:ring-ring" />
+          <textarea value={comment} onChange={(e) => setComment(e.target.value)} rows={3} className="mt-2 w-full resize-none rounded-control border border-border bg-card px-3 py-2 outline-none focus:ring-4 focus:ring-ring" />
         </label>
       </AlertDialog>
     </div>

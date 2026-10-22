@@ -46,30 +46,34 @@ function useRoute() {
 /** 每 30 秒检查 /readyz；数据库字段为 false 也算不可用。 */
 function useApiHealth() {
   const [ok, setOk] = useState(true);
+  const [checking, setChecking] = useState(false);
+  const check = useCallback(async () => {
+    setChecking(true);
+    try {
+      const res = await fetch("/readyz", { cache: "no-store" });
+      const body = await res.json().catch(() => null);
+      setOk(res.ok && body?.database !== false);
+    } catch {
+      setOk(false);
+    } finally {
+      setChecking(false);
+    }
+  }, []);
   useEffect(() => {
-    const check = async () => {
-      try {
-        const res = await fetch("/readyz", { cache: "no-store" });
-        const body = await res.json().catch(() => null);
-        setOk(res.ok && body?.database !== false);
-      } catch {
-        setOk(false);
-      }
-    };
     void check();
     const timer = setInterval(check, 30_000);
     return () => clearInterval(timer);
-  }, []);
-  return ok;
+  }, [check]);
+  return { ok, checking, check };
 }
 
 function Shell({ session, onLogout }: { session: Session; onLogout: () => void }) {
   const route = useRoute();
-  const healthy = useApiHealth();
+  const health = useApiHealth();
   const [pendingCount, setPendingCount] = useState<number | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const loadCount = useCallback(() => {
-    api<{ items: unknown[] }>("/admin/api/approvals").then((r) => setPendingCount(r.items?.length ?? 0)).catch(() => {});
+    api<{ items?: unknown[]; total?: number }>("/admin/api/approvals?pageSize=1").then((r) => setPendingCount(r.total ?? r.items?.length ?? 0)).catch(() => {});
   }, []);
   useEffect(loadCount, [loadCount, refreshKey]);
 
@@ -79,37 +83,40 @@ function Shell({ session, onLogout }: { session: Session; onLogout: () => void }
   return (
     <div className="grid h-full grid-cols-[236px_1fr]">
       <aside className="flex min-h-0 flex-col gap-2 bg-sidebar px-3 py-4 text-sidebar-foreground">
-        <div className="flex items-center gap-2 px-2 pb-2 text-lg font-semibold text-white">
+        <div className="flex items-center gap-2 px-2 pb-2 text-lg font-semibold text-sidebar-foreground-strong">
           <span className="grid h-7 w-7 place-items-center rounded-control bg-primary text-sm">F</span>Forge
         </div>
-        <nav className="flex flex-1 flex-col gap-0.5 overflow-auto" aria-label="主导航">
+        <nav className="flex flex-1 flex-col gap-1 overflow-auto" aria-label="主导航">
           {NAV.map((group) => (
-            <div key={group.label} className="flex flex-col gap-0.5">
-              <div className="mx-2 mt-3 mb-1 text-xs text-slate-400">{group.label}</div>
+            <div key={group.label} className="flex flex-col gap-1">
+              <div className="mx-2 mt-3 mb-1 text-xs text-sidebar-muted">{group.label}</div>
               {group.items.map(({ id, label, icon: Icon, ready }) => (
                 <a
                   key={id}
                   href={ready ? `#${id}` : `/#${id}`}
                   aria-current={id === current.id ? "page" : undefined}
-                  className={cn("flex h-9 items-center gap-2 rounded-control px-2 text-sm font-medium hover:bg-sidebar-hover hover:text-white", id === current.id && "bg-sidebar-hover text-white")}
+                  className={cn("flex h-9 items-center gap-2 rounded-control px-2 text-sm font-medium hover:bg-sidebar-hover hover:text-sidebar-foreground-strong", id === current.id && "bg-sidebar-hover text-sidebar-foreground-strong")}
                 >
                   <Icon className="h-4 w-4" />
                   <span className="flex-1">{label}</span>
-                  {id === "approvals" && !!pendingCount && <span className="rounded-full bg-primary px-1.5 text-xs text-white" aria-label={`${pendingCount} 条待审批`}>{pendingCount}</span>}
-                  {!ready && <ExternalLink className="h-3.5 w-3.5 opacity-50" aria-label="在旧版控制台打开" />}
+                  {id === "approvals" && !!pendingCount && <span className="rounded-full bg-primary px-2 text-xs text-primary-foreground" aria-label={`${pendingCount} 条待审批`}>{pendingCount}</span>}
+                  {!ready && <ExternalLink className="h-4 w-4 opacity-50" aria-label="在旧版控制台打开" />}
                 </a>
               ))}
             </div>
           ))}
         </nav>
-        <div className="flex items-center gap-2 border-t border-white/10 px-2 pt-3 text-sm">
+        <div className="flex items-center gap-2 border-t border-sidebar-border px-2 pt-3 text-sm">
           <span className="min-w-0 flex-1 truncate" title={user.email}>{user.name ?? user.email ?? "已登录"}</span>
-          <button aria-label="退出登录" title="退出登录" onClick={onLogout} className="rounded p-1 text-slate-300 hover:bg-sidebar-hover hover:text-white"><LogOut className="h-4 w-4" /></button>
+          <button aria-label="退出登录" title="退出登录" onClick={onLogout} className="rounded-control p-1 text-sidebar-foreground hover:bg-sidebar-hover hover:text-sidebar-foreground-strong"><LogOut className="h-4 w-4" /></button>
         </div>
       </aside>
       <main className="flex min-w-0 flex-col overflow-auto">
-        {!healthy && (
-          <div role="alert" className="bg-destructive-soft px-8 py-2 text-sm text-destructive">API 或数据库暂时不可用，页面数据可能不是最新的。每 30 秒自动重试一次。</div>
+        {!health.ok && (
+          <div role="alert" className="sticky top-0 z-20 flex items-center gap-3 bg-destructive-soft px-8 py-2 text-sm text-destructive">
+            <span className="flex-1">API 或数据库暂时不可用，页面数据可能不是最新的。每 30 秒自动重试一次。</span>
+            <Button variant="outline" size="sm" loading={health.checking} onClick={() => void health.check()}>立即重试</Button>
+          </div>
         )}
         <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-card px-8">
           <nav aria-label="面包屑" className="text-sm text-muted-foreground">{current.group} / <span className="text-foreground">{current.label}</span></nav>

@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 
-type Tone = "success" | "info" | "warning" | "destructive" | "neutral";
+export type Tone = "success" | "info" | "warning" | "destructive" | "neutral";
 
 // DESIGN.md §7
 const TONE: Record<string, Tone> = {
@@ -13,7 +13,7 @@ const TONE: Record<string, Tone> = {
 
 const LABEL: Record<string, string> = {
   succeeded: "成功", active: "启用", enabled: "启用", approved: "已批准", published: "已发布",
-  queued: "排队中", running: "运行中", waiting_approval: "待审批", pending: "待审批", disabled: "已停用", draft: "草稿",
+  queued: "排队中", running: "运行中", waiting_approval: "待审批", awaiting_approval: "待审批", pending: "待审批", disabled: "已停用", draft: "草稿",
   failed: "失败", rejected: "已驳回", expired: "已过期", budget_exhausted: "预算耗尽", cancelled: "已取消",
   low: "低风险", medium: "中风险", high: "高风险", critical: "严重",
 };
@@ -26,11 +26,12 @@ const STYLE: Record<Tone, string> = {
   neutral: "bg-muted text-muted-foreground",
 };
 
-export function StatusPill({ status, label }: { status: string; label?: string }) {
-  const tone = TONE[status] ?? "neutral";
+/** tone 显式给出时优先，用于不在状态映射里的标签（如「未开放」）。 */
+export function StatusPill({ status, label, tone: toneOverride }: { status: string; label?: string; tone?: Tone }) {
+  const tone = toneOverride ?? TONE[status] ?? "neutral";
   return (
-    <span className={cn("inline-flex h-6 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium", STYLE[tone])}>
-      {status === "running" && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />}
+    <span className={cn("inline-flex h-6 items-center gap-2 rounded-full px-3 text-xs font-medium", STYLE[tone])}>
+      {status === "running" && <span className="h-2 w-2 animate-pulse rounded-full bg-current" />}
       {label ?? LABEL[status] ?? status}
     </span>
   );

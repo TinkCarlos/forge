@@ -13,17 +13,22 @@
   --primary: #3e5bd9;
   --primary-hover: #3249b8;
   --primary-foreground: #ffffff;
-  --destructive: #d64545;
+  --destructive: #c4321f;
+  --destructive-foreground: #ffffff;
   --destructive-soft: #fdecec;
-  --success: #12855f;
+  --success: #0e7c5a;
   --success-soft: #e6f7f1;
-  --warning: #b07400;
+  --warning: #b54708;
   --warning-soft: #fff5df;
   --info: #3249b8;
   --info-soft: #eceffc;
   --sidebar: #0b1220;
   --sidebar-hover: #151e2e;
   --sidebar-foreground: #cbd5e1;
+  --sidebar-foreground-strong: #ffffff;
+  --sidebar-muted: #94a3b8;
+  --sidebar-border: rgba(255, 255, 255, 0.1);
+  --overlay: rgba(11, 18, 32, 0.48);
   --ring: rgba(62, 91, 217, 0.24);
 }
 
@@ -49,6 +54,7 @@
   --color-primary-foreground: var(--primary-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-soft: var(--destructive-soft);
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-success: var(--success);
   --color-success-soft: var(--success-soft);
   --color-warning: var(--warning);
@@ -58,6 +64,10 @@
   --color-sidebar: var(--sidebar);
   --color-sidebar-hover: var(--sidebar-hover);
   --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-foreground-strong: var(--sidebar-foreground-strong);
+  --color-sidebar-muted: var(--sidebar-muted);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-overlay: var(--overlay);
   --color-ring: var(--ring);
   --radius-control: 6px;
   --radius-card: 10px;

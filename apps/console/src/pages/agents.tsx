@@ -97,8 +97,8 @@ export function AgentsPage() {
           ))}
         </div>
         <label className="relative ml-auto">
-          <Search className="pointer-events-none absolute top-2.5 left-2.5 h-4 w-4 text-muted-foreground" />
-          <input value={query} onChange={(e) => { setQuery(e.target.value); setPage(1); }} placeholder="搜索名称或 Key" aria-label="搜索 Agent" className="h-9 w-60 rounded-control border border-border bg-card pr-3 pl-8 text-sm outline-none focus:ring-4 focus:ring-ring" />
+          <Search className="pointer-events-none absolute top-2.5 left-3 h-4 w-4 text-muted-foreground" />
+          <input value={query} onChange={(e) => { setQuery(e.target.value); setPage(1); }} placeholder="搜索名称或 Key" aria-label="搜索 Agent" className="h-9 w-60 rounded-control border border-border bg-card pr-3 pl-9 text-sm outline-none focus:ring-4 focus:ring-ring" />
         </label>
       </div>
 
@@ -111,25 +111,25 @@ export function AgentsPage() {
           <thead>
             <tr className="h-10 text-left text-xs text-muted-foreground">
               <th className="px-4 font-medium">名称</th>
+              <th className="px-4 font-medium">状态</th>
               <th className="px-4 font-medium">线上版本</th>
               <th className="px-4 font-medium">开放 API</th>
-              <th className="px-4 font-medium">状态</th>
               <th className="w-[220px] px-4 text-right font-medium">操作</th>
             </tr>
           </thead>
           <tbody>
             {loading && !data ? <SkeletonRows cols={5} /> : visible.map((agent) => (
-              <tr key={agent.id} className="h-11 border-t border-border hover:bg-muted/50">
+              <tr key={agent.id} className="h-13 border-t border-border hover:bg-muted/50">
                 <td className="px-4 py-2">
                   <div className="font-medium">{agent.name}</div>
                   <div className="font-mono text-xs text-muted-foreground">{agent.key}</div>
                 </td>
+                <td className="px-4"><StatusPill status={agent.status} /></td>
                 <td className="px-4">
                   {versionLabel(agent.publishedVersion)}
                   {agent.draftVersion && <span className="ml-2 text-xs text-warning">草稿 {versionLabel(agent.draftVersion.version)}</span>}
                 </td>
-                <td className="px-4">{agent.apiEnabled ? <StatusPill status="enabled" label="已开放" /> : <StatusPill status="cancelled" label="未开放" />}</td>
-                <td className="px-4"><StatusPill status={agent.status} /></td>
+                <td className="px-4">{agent.apiEnabled ? <StatusPill status="enabled" label="已开放" /> : <StatusPill status="api_off" tone="neutral" label="未开放" />}</td>
                 <td className="px-4">
                   <div className="flex items-center justify-end gap-1">
                     {agent.draftVersion ? (
