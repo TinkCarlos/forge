@@ -79,7 +79,7 @@ pnpm smoke:sso     # Mock OIDC + Agent Principal 验签
 - **开放平台**：应用、API Key（哈希存储）、Scope、每分钟/每日配额、Run/SSE/结果/取消、Webhook 签名。
 - **身份**：本地管理员；OIDC 授权码 + PKCE + JWKS；Agent Connector Principal 验签与主体映射；SSO 角色映射。
 - **权限**：角色功能权限、用户数据范围（all/org/self/app）、Repository 层过滤、审计日志。
-- **控制台**：Agent/模型/MCP/Skill/工具源/能力包/运行/审批/定时任务/应用/用户/SSO 页面，支持新增与修改。
+- **控制台**：Agent/模型/MCP/Skill/工具源/能力包/运行/审批/定时任务/应用/用户/SSO 页面，支持新增与修改。新版控制台（`/next/`）基于 [shadcn-admin](https://github.com/satnaing/shadcn-admin)（MIT）改造，目前已迁移 Agents 和审批中心。
 - **能力包**：声明式 JSON 安装 Agent/Skill/MCP/Provider，记录安装与卸载。
 
 ## 尚未实现（目标架构 P1/P2）
@@ -97,6 +97,7 @@ pnpm smoke:sso     # Mock OIDC + Agent Principal 验签
 apps/api                  Fastify：管理/开放/集成/SSE/控制台静态
 apps/worker               可独立运行的后台 worker（默认 API 内嵌 worker）
 apps/console/public       无构建依赖的管理控制台
+apps/console/src          新版控制台（挂在 /next/），基于 shadcn-admin 改造
 packages/core             类型、配置、权限、加密、错误
 packages/store            MySQL schema、迁移、Repository
 packages/identity         本地登录、OIDC、Connector Principal、会话
