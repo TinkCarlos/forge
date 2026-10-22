@@ -4,7 +4,8 @@
 > **冻结基线（推完后）**：`4c2555e`（含 `543b664` 控制台 + `GET /schedules/:id`）  
 > **环境**：`http://127.0.0.1:3198`，库 `forge_ux`；开发库 `forge` 与 3100 不碰  
 > **账号**：`~/forge-ux-3198-login.txt`（platform_admin）；角色矩阵账号在执行前由测试种子到 `forge_ux`，路径 `~/forge-qa-users.json`（chmod 600）  
-> **编写**：测试工程师 · worktree `/Users/libo/projects/forge-qa-cases` · 分支 `qa/full-test-cases`
+> **编写**：测试工程师 · worktree `/Users/libo/projects/forge-qa-cases` · 分支 `qa/full-test-cases`  
+> **接口底稿**：`docs/qa/api-inventory.md`（后端提供，已入库副本）
 
 ## 0. 约定
 
@@ -72,8 +73,8 @@
 | F-APR-02 | 功能 | P0 | 假参数两条 | 看 `args_preview` | `api_key`/`Authorization`/`token`/`accessToken` 为 `***`；普通文本不打码；空串显示「无参数」 |
 | F-APR-03 | 功能 | P0 | 任一行 | Run ID | 显示**后 8 位**；悬停 title=完整 ID；复制按钮写入完整 ID |
 | F-APR-04 | 功能 | P0 | 普通审批 | 批准→取消 / Esc | 焦点回「批准」，总数不变 |
-| F-APR-05 | 功能 | P0 | 普通审批 | 批准→确认 | 行消失，total−1，焦点到 h1；审计有 decide |
-| F-APR-06 | 功能 | P1 | 待审 | 拒绝→确认 | 同上，decision=reject |
+| F-APR-05 | 功能 | P0 | 普通审批 | 批准→确认 | 行消失，total−1，焦点到 h1；请求体 `decision=approved`；审计有 decide |
+| F-APR-06 | 功能 | P1 | 待审 | 拒绝→确认 | 同上；请求体 `decision=rejected` |
 | F-APR-07 | 功能 | P1 | total>pageSize | 翻到第 2 页再回第 1 页 | 数据与 `page=` 一致，无串页 |
 | F-APR-08 | 边界 | P1 | — | pageSize 表现（UI 若可改）或接口夹紧 | UI 不出现 >100 的请求；见 I-APR-* |
 | F-APR-09 | 功能 | P1 | 工具名含 `_` | 看单元格 | `whitespace-nowrap`，不在下划线处折行 |
@@ -280,18 +281,76 @@
 
 ## 7. 待确认问题（阻塞用例预期的产品点）
 
-| # | 问题 | 需要谁 |
-|---|---|---|
-| Q1 | apps/skills/mcp/providers 是否全局共享？OO 能否改根部门资源？ | 架构师 |
-| Q2 | `GET /users`、`dashboard` stats 是否按部门过滤？ | 架构师 |
-| Q3 | 本地登录是否要做爆破限流？强度？ | 安全 + 架构师 |
-| Q4 | `role.view` / `org.view` / `plugin.uninstall` / `service_account.manage` 未进多数角色的 ROLE_PERMISSIONS，是故意仅 PA 吗？ | 后端 + 架构师 |
-| Q5 | 旧控制台哪些页本轮必须手工点完 vs 可标「仅冒烟」？ | Agent专家 / Cursor Jackson |
+| # | 问题 | 需要谁 | 清单依据 |
+|---|---|---|---|
+| Q1 | apps / skills / mcp / providers / audit / dashboard / users 标「全局」：是设计还是缺陷？OO 改根部门 app/key 算不算越权？ | 架构师 | inventory §0.5、§4.C.20、可疑点 3 |
+| Q2 | org_admin 可否把用户 `dataScope` 设成 `all`？可否 PATCH 其他部门用户（含降级 PA）？ | 架构师 | 可疑点 1、2 |
+| Q3 | 本地登录是否必须限流/锁定？ | 安全 + 架构师 | inventory #7「无限流」 |
+| Q4 | `service_account.manage` / `sso.manage` / `role.view` / `org.view` / `package.view` / `plugin.uninstall` 仅 PA：是否故意？ | 后端 + 架构师 | inventory §3 |
+| Q5 | 旧控制台哪些 Tab 本轮必须全量点 vs 冒烟即可？ | Agent专家 / Cursor Jackson | — |
+| Q6 | `/integration/v1` 无权限、不写审计、可列全部已发布 Agent：是否接受？ | 架构师 + 安全 | 可疑点 4 |
+| Q7 | Run 详情 `toolCalls[].args` 不打码：是否只允许 PA，还是应对所有角色套 args_preview？ | 架构师 | 可疑点 + §4.D.25 |
+| Q8 | 文档 `/admin/v1`+Bearer vs 代码 `/admin/api`+Cookie：本轮验收以代码为准，还是要改文档/改实现？ | 架构师 | §4.A |
 
 ---
 
-## 8. 变更记录
+## 8. 接口清单驱动的补强用例（合入 `api-inventory.md`）
+
+底稿：`docs/qa/api-inventory.md`（从 `/tmp/forge-logs/api-inventory.md` 拷入，静态读 `935f8f5`/`4c2555e` 代码）。执行时以冻结 `main` 为准。
+
+### 8.1 审批决定取值（纠正初稿）
+
+| ID | 类型 | P | 步骤 | 预期 |
+|---|---|---|---|---|
+| I-APR-20 | 接口 | P0 | `POST .../decide` body `{"decision":"approve"}` | 400 CFG-8501（代码只认 `approved`/`rejected`） |
+| I-APR-21 | 接口 | P0 | `decision=approved` 成功后再决定一次 | 409 CFG-8503，非幂等；非 APR-2103 |
+| I-APR-22 | 功能 | P0 | 新控制台点「确认批准」 | 实际发出 `approved`（抓网络） |
+
+### 8.2 可疑点 → 用例（未定级前暂标 P0/P1，架构师确认后可降）
+
+| ID | 对应可疑点 | P | 步骤 | 预期（产品确认前按「应拒绝」） |
+|---|---|---|---|---|
+| S-20 | #1 dataScope 提升 | P0 | OA：`POST /users` 带 `dataScope:"all"`；再 `PATCH` 把 org 用户改成 all | 应 400/403；若 200 → 缺陷 |
+| S-21 | #2 跨部门改用户 | P0 | OA：`PATCH` 其他部门用户 / 把 PA 改成 `role:user` | 应 403/404；若 200 → 缺陷 |
+| S-22 | #3 跨部门 apps/keys | P0 | OO：读/改根部门 app、签发 key、replay webhook | 应 403/404；若 200 → 缺陷 |
+| S-23 | #4 integration | P0 | 合法 Connector JWT（映射普通用户）调 `GET /integration/v1/agents`、`POST .../runs` | 记录实际可见范围与是否写审计；默认预期：应按映射用户数据范围限制且写审计——不符则缺陷 |
+| S-24 | #5 app token 调 admin | P1 | `Authorization: Bearer fsk_…` 调 `GET /admin/api/runs` | 401 AUTH-1001（不认 Bearer） |
+| S-25 | #6 参数 500 | P1 | `runs?limit=abc`、`audit?limit=-1`、坏 JSON、3MiB body、非法 cron 且 active | 期望 400；若 500 SYS-9001 → 缺陷（可降 P2 若仅内部） |
+| S-26 | #7 报错泄露 | P1 | MCP create 失败、provider test 失败 | 响应 `warning`/`error` 不应含内网地址/SQL；日志可有完整错误但无口令 |
+| S-27 | #8 审计缺口 | P1 | enable/disable schedule、open/integration cancel、integration 建 run | 成功后 audit 应有记录——无则缺陷或改文档 |
+| S-28 | #9 会话不失效 | P0 | PA 停用某用户后，该用户旧会话调 API | 应 401；若仍 200 → 缺陷 |
+| S-29 | #10 plugin 部分写入 | P1 | install 缺顶层 key（先建子资源） | 应事务回滚或补偿；残留无审计 → 缺陷 |
+| S-30 | #11 OIDC returnTo | P0 | `/auth/oidc/login?returnTo=//evil.example` | 应拒绝；若 302 到外域 → 开放重定向缺陷 |
+| S-31 | Run 详情不打码 | P0 | builder/auditor/user 调 `GET /runs/:id` 含敏感 tool args | 应打码或 403；原文暴露 → 缺陷 |
+| S-32 | 登录时序 | P2 | 邮箱不存在 vs 密码错误的耗时 | 记录差值；过大则记建议 |
+
+### 8.3 文档 vs 代码（验收口径）
+
+| ID | 类型 | P | 步骤 | 预期 |
+|---|---|---|---|---|
+| I-DOC-01 | 接口 | P2 | 抽查 10 条 admin 路径 | 实际为 `/admin/api`；文档差异记「文档债」，不挡功能 pass |
+| I-DOC-02 | 接口 | P1 | 错误体字段 | 有 `retryable`，无 `remedy` |
+| I-DOC-03 | 接口 | P1 | 创建类 POST | HTTP 200（非 201），除非 open runs=202 |
+| I-DOC-04 | 接口 | P2 | 文档有、代码无的码（APR-2103 等 11 个） | 不出现在响应；报告列「仅文档」 |
+| I-DOC-05 | 接口 | P1 | 仅 PA 的 6 个权限 key | OA/BL 调对应接口 → 403；与 ROLE_PERMISSIONS 表一致即 pass |
+
+### 8.4 数据范围细则
+
+| ID | 类型 | P | 步骤 | 预期 |
+|---|---|---|---|---|
+| I-SCOPE-10 | 接口 | P1 | 子部门用户看父部门 schedule | R-sched 为精确等于：应不可见（与 runs 子树规则不同） |
+| I-SCOPE-11 | 接口 | P1 | `self` 用户看 Agent 列表 | 与 `org` 相同（按部门子树），不是「仅自己创建」 |
+| I-SCOPE-12 | 接口 | P1 | owner=NULL 的 Agent：列表空部门用户 vs 详情 | 列表/详情一致性；不一致记缺陷 |
+
+### 8.5 执行表
+
+冻结后生成 `docs/qa/api-execution-sheet.md`：86 行 ×（未登录 / 拒绝角色 / 允许角色 / 非法参），勾选来源 inventory 编号 #1–#86。
+
+---
+
+## 9. 变更记录
 
 | 日期 | 说明 |
 |---|---|
-| 2026-10-22 | 初稿，测试工程师；等待各方审查补洞 |
+| 2026-10-22 | 初稿 |
+| 2026-10-22 | 合入后端 `api-inventory.md`：补 §7 Q6–Q8、§8 补强用例；审批 decision 更正为 `approved`/`rejected` |
