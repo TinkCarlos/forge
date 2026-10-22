@@ -26,9 +26,9 @@
 | T4 | args_preview 已知打码盲区（fragment、无协议地址、夹文字秘密、全角分隔） | **S-43**（安全专家新增） | P1 |
 | T4 | 已知限制：工具返回 `result_json` 本轮不打码 | S-31, UI-032（result 部分不记 fail） | P1 已知限制 |
 | T4 | 已知限制：定时任务 GET 返回 `input_json` 明文 | F-SCH-01（本轮不记 fail，下一轮做） | P2 |
-| T4 | 重复决策 409 CFG-8503；过期不可批 | I-APR-21, I-APR-36～38, UI-031, UI-034a/b, UI-081a/b | P1 |
+| T4 | 重复决策 409 CFG-8503；过期不可批 | I-APR-21, I-APR-36～38, UI-031, UI-034, UI-081a/b | P1 |
 | T5 | integration：JWT 无效 401 / 开关关 503；有效但无权限应 403；写审计 | S-23, Q6, S-34～S-36, I-INT-11～13 | P1（严重） |
-| T5 | Connector JWT 映射用户 **a. 已停用 / b. 已删除 / c. 所属部门已停用** 仍可访问（`principalForConnector` 未过滤 status）→ 三种均应 403 CON-4706；现状 200/202 | **I-INT-10**（覆盖 a/b/c；与 S-45 互引）, I-INT-01～13 | P0 候选 |
+| T5 | Connector JWT 映射用户 **a. 已停用 / b. 已删除 / c. 所属部门已停用** 仍可访问（`principalForConnector` 未过滤 status）→ 三种均应 403 CON-4706；现状 200/202 | **I-INT-10a～c**（与 S-45 互引）, I-INT-10d（查库失败 503）, I-INT-01～16 | P0 候选 |
 | T5 | API Key 只存哈希；吊销立即生效；Bearer 调 admin → 401 | S-24, I-OPEN-01～02, S-09 | P0 |
 | T5 | 出站 SSRF：MCP discover/call、Provider test、web_fetch、webhook 统一出站校验（拦回环/私网/链路本地/云元数据；DNS 解析后再校验防 rebinding；8090 仅显式白名单放行，默认空） | **S-39, S-40, S-42, S-46～S-49**, I-MCP-02 | P0 |
 | T5 | open cursor 不可篡改越权 | **S-37**（新增，若实现 cursor） | P2 |
