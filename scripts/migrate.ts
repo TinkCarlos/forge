@@ -105,6 +105,38 @@ async function applyReliability(conn: Connection): Promise<void> {
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci`);
 }
 
+async function applyScheduleIdentity(conn: Connection): Promise<void> {
+  // Additive only: service accounts for schedule identity + schedule policy columns (matches schema.sql).
+  await conn.query(`CREATE TABLE IF NOT EXISTS service_accounts (
+    id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
+    \`key\` VARCHAR(64) NOT NULL,
+    name VARCHAR(128) NOT NULL,
+    description VARCHAR(1024) NOT NULL DEFAULT '',
+    org_unit_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin NULL,
+    role VARCHAR(32) NOT NULL DEFAULT 'user',
+    data_scope VARCHAR(32) NOT NULL DEFAULT 'org',
+    status VARCHAR(16) NOT NULL DEFAULT 'active',
+    created_by CHAR(26) CHARACTER SET ascii COLLATE ascii_bin NULL,
+    created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    UNIQUE KEY uk_service_accounts_key (\`key\`),
+    KEY idx_service_accounts_status (status)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci`);
+  const columns: Array<[string, string]> = [
+    ["service_account_id", "CHAR(26) CHARACTER SET ascii COLLATE ascii_bin NULL AFTER subject_id"],
+    ["version_policy", "VARCHAR(24) NOT NULL DEFAULT 'published' AFTER input_json"],
+    ["pinned_version_id", "CHAR(26) CHARACTER SET ascii COLLATE ascii_bin NULL AFTER version_policy"],
+    ["concurrency_policy", "VARCHAR(24) NOT NULL DEFAULT 'skip' AFTER pinned_version_id"],
+    ["failure_count", "INT UNSIGNED NOT NULL DEFAULT 0 AFTER concurrency_policy"],
+    ["last_error_code", "VARCHAR(16) NULL AFTER failure_count"],
+  ];
+  for (const [name, definition] of columns) {
+    if (!(await hasColumn(conn, "schedules", name))) {
+      await conn.query(`ALTER TABLE schedules ADD COLUMN ${name} ${definition}`);
+    }
+  }
+}
+
 try {
   await connection.query(
     "CREATE TABLE IF NOT EXISTS schema_migrations (version VARCHAR(128) NOT NULL PRIMARY KEY, applied_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
