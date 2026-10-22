@@ -36,4 +36,4 @@
 | OPS-024 | 会话/可用性 | 异常 | 含 F（loadActivePrincipal 每请求查库），已登录 | 停 MySQL 30s，期间带 cookie 访问管理接口；恢复后用同一 cookie 再访问 | 断开期间返回 503（不是 401），会话不被删除；恢复后无需重新登录 | P0 |
 | OPS-025 | 性能 | 性能 | F 前后两个构建，同一数据 | autocannon 对只读接口（如 GET /admin/api/agents）压 30s，c=20 | 记录 p50/p95；F 后 p95 涨幅 >20% 记一般；EXPLAIN 用户+部门链查询走索引 | P2 |
 | OPS-026 | 测试隔离 | 安全 | 见 full-test-cases.md §11（正文以该处为准，子用例范围以 §11 为准） | — | 测试只认 `_test` 结尾的 TEST_DATABASE_URL；种子/迁移需 `--confirm-db=<库名>`（修复 Z） | P0 |
-| OPS-027 | 测试隔离 | 复核 | 见 full-test-cases.md §11（正文以该处为准）；登录来源已查清（12:44–12:50 admin 登录为测试进程内直连 forge，未经 3100，12:50:52 后已停）；前提：Cursor Jackson 同意后由运维清理 forge（截至 13:05 未清理） | — | forge 中 it- 行为 0、无指向内网/file: 的 active Provider 与工具源、无孤儿行、审计行数不减、备份在 /tmp/forge-logs/ | P0 |
+| OPS-027 | 测试隔离 | 复核 | 见 full-test-cases.md §11（正文以该处为准）；登录来源已查清（12:44–12:50 admin 登录为测试进程内直连 forge，未经 3100，12:50:52 后已停）；已于 13:19 经 Cursor Jackson 同意按 id 清理（备份 /tmp/forge-logs/forge-full-pre-cleanup-20261022-1319.sql，SQL 与行数见 cleanup-exec.sql / cleanup-exec-result.txt，audit_logs 保留 306 行），本条复核清理结果 | — | forge 中 it- 行为 0、无指向内网/file: 的 active Provider 与工具源、无孤儿行、审计行数不减、备份在 /tmp/forge-logs/ | P0 |
