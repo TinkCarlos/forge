@@ -77,3 +77,5 @@ POST /open/v1/runs/:id/cancel
 GET /open/v1/runs/:id/events
 GET /open/v1/runs/:id/result
 GET /readyz
+GET /next
+GET /next/*

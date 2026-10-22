@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -89,7 +89,7 @@ afterAll(async () => {
 });
 
 describe("route set", () => {
-  it("matches the 79-route baseline (excluding auto HEAD and the /assets/* static wildcard)", () => {
+  it("matches the 81-route baseline (79 pre-split + GET /next, /next/*; excluding auto HEAD and /assets/*)", () => {
     const baseline = readFileSync(path.resolve(import.meta.dirname, "fixtures/routes-baseline.txt"), "utf8")
       .split("\n")
       .map((line) => line.trim())
@@ -102,9 +102,27 @@ describe("route set", () => {
           .map((r) => `${r.method} ${r.url}`),
       ),
     ].sort();
-    expect(baseline).toHaveLength(79);
+    expect(baseline).toHaveLength(81);
     expect(actual).toEqual(baseline);
     expect(app.hasRoute({ method: "GET", url: "/assets/*" })).toBe(true);
+  });
+});
+
+describe("new console at /next/", () => {
+  const distBuilt = existsSync(path.resolve(import.meta.dirname, "../apps/console/dist/index.html"));
+  it.skipIf(!distBuilt)("GET /next/ -> 200 html", async () => {
+    const res = await app.inject({ method: "GET", url: "/next/" });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-type"]).toMatch(/text\/html/);
+  });
+  it.skipIf(!distBuilt)("GET /next/agents/abc (SPA route) -> index.html fallback", async () => {
+    const res = await app.inject({ method: "GET", url: "/next/agents/abc" });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-type"]).toMatch(/text\/html/);
+  });
+  it("legacy GET / still served", async () => {
+    const res = await app.inject({ method: "GET", url: "/" });
+    expect(res.statusCode).toBe(200);
   });
 });
 
