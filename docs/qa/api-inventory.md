@@ -118,7 +118,7 @@
 | # | 方法 路径 | 权限 | 数据范围 | 主要参数与校验 | 状态码 / 错误码 | 审计 | 代码 |
 |---|---|---|---|---|---|---|---|
 | 26 | GET `/admin/api/mcp` | mcp.view | 全局 | — | 200（含 url、tools；不含 headers） | — | admin/capabilities.ts |
-| 27 | POST `/admin/api/mcp` | mcp.manage | 全局 | `key` 必填（≤64）、`url` 必填（≤2048，**无协议/私网校验**，`discoverMcpTools` 不调用 `assertSafeUrl`）；`name`、`headers`、`transport`（默认 http，≤16）；创建后同步发现工具，失败写 `last_error` 并在 `warning` 返回 `String(error)` | 200 `{id, warning}`；400 CFG-8501；409 CFG-8503 | `mcp.create`（{key}） | admin/capabilities.ts、capabilities discoverMcpTools |
+| 27 | POST `/admin/api/mcp` | mcp.manage | 全局 | `key` 必填（≤64）、`url` 必填（≤2048，出站经 `outbound.ts` 的 `safeFetch` 校验（`5c53ddb`；旧版 `543b664` 的 `assertSafeUrl` 只做字符串校验，已废弃））；`name`、`headers`、`transport`（默认 http，≤16）；创建后同步发现工具，失败写 `last_error` 并在 `warning` 返回 `String(error)` | 200 `{id, warning}`；400 CFG-8501；409 CFG-8503 | `mcp.create`（{key}） | admin/capabilities.ts、capabilities discoverMcpTools |
 | 28 | PATCH `/admin/api/mcp/:id` | mcp.manage | 全局 | `name`、`url`、`headers`、`status` | 200；404 RUN-7001「MCP 不存在」 | `mcp.update`（details = 改动字段，**含 `headers_json` 原值，未打码**） | admin/capabilities.ts |
 | 29 | POST `/admin/api/mcp/:id/refresh` | mcp.manage | 全局 | 无 body；向 url 发 MCP initialize/tools/list | 200 `{tools}`；404 RUN-7001；MCP 返回非 2xx / error / 格式无法解析 → 502 HTP-4001；连接失败、超时（fetch 抛 TypeError/AbortError）→ 500 SYS-9001（静态推断） | `mcp.refresh`（{tools: 数量}） | admin/capabilities.ts |
 | 30 | GET `/admin/api/skills` | skill.view | 全局 | — | 200 `{items}`（未删除） | — | admin/capabilities.ts |
