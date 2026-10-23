@@ -5,6 +5,7 @@
 |---|---|---|---|---|---|---|
 | OPS-001 | 启动 | 异常 | 临时 .env 删掉 DATABASE_URL | pnpm start | 进程非 0 退出，报错点名缺的变量，不打印其它变量值 | P0 |
 | OPS-002 | 启动 | 异常 | 依次删 FORGE_MASTER_KEY / SESSION_SECRET / API_KEY_PEPPER | 同上 | 同上，每个变量各一次 | P0 |
+| OPS-002b | 启动 | 异常 | 不设 NODE_ENV，依次删 FORGE_MASTER_KEY / SESSION_SECRET / API_KEY_PEPPER（K-22 回归） | 拒绝启动 rc=1，报错只写变量名、不打印值；仅显式 NODE_ENV=development 或 test 才允许兜底并打 warn | 每个变量各一次；另跑 NODE_ENV=production 对照 | P0 |
 | OPS-003 | 启动 | 边界 | 上述密钥设为过短值（如 3 位）、空串 | 同上 | 拒绝启动或明确告警；报错不回显密钥值 | P1 |
 | OPS-004 | 启动 | 异常 | DATABASE_URL 指向不存在的库 / 错误口令 / 关掉的端口 | 同上 | 明确报错；日志里不出现连接串中的口令 | P0 |
 | OPS-005 | 启动 | 异常 | 端口已被占 | 同上 | EADDRINUSE 明确报错并退出，不僵死 | P1 |
