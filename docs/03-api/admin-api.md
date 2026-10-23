@@ -7,7 +7,7 @@
 ## 1. 认证与会话
 
 - Base URL：`https://{forge-host}/admin/v1`
-- 控制台使用 **BFF 会话**：浏览器通过统一 SSO（OIDC 授权码 + PKCE）登录，只持有 HttpOnly 会话 Cookie（`Secure`、`SameSite=Lax`），不接触 OIDC Access Token。
+- 控制台使用 **BFF 会话**：浏览器通过统一 SSO（OIDC 授权码 + PKCE）登录，只持有 HttpOnly 会话 Cookie（始终 HttpOnly、`SameSite=Lax`；`Secure` 仅在 `NODE_ENV` 恰为 `development`/`test` 时关闭以便本地 http，其余情况（含未设置）一律开启），不接触 OIDC Access Token。
 - 变更请求必须带 CSRF Token：`X-CSRF-Token`（从 `GET /session` 获取）。
 - 自动化/CLI 使用短期 Bearer Token（`Authorization: Bearer ...`），由 `/auth/token` 或在部署配置中签发；不使用用户密码。
 - 未认证：`401 AUTH-1001`；已认证但无权限：`403 POL-2001`。

@@ -9,6 +9,7 @@ import {
   type Principal,
 } from "@forge/core";
 import { assertPermission, maskArgsDeep, visibleAgentOrgIds } from "@forge/governance";
+import { sessionCookieOptions } from "./session-cookie.js";
 import { oidcConfigured, readSignedSessionCookie, readStoredSessionCookie, sessionCookieValue, type Session, type StoredSession } from "@forge/identity";
 import {
   parseJsonValue,
@@ -78,13 +79,7 @@ export async function admin(request: FastifyRequest, permission?: string): Promi
 }
 
 export function setSessionCookie(reply: FastifyReply, session: Session): void {
-  reply.setCookie("forge_session", sessionCookieValue(session), {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: config.NODE_ENV === "production",
-    path: "/",
-    maxAge: 8 * 60 * 60,
-  });
+  reply.setCookie("forge_session", sessionCookieValue(session), sessionCookieOptions(config));
 }
 
 export async function writeAudit(

@@ -1,9 +1,11 @@
 import mysql from "mysql2/promise";
 import { config } from "@forge/core";
-import { requireScriptDatabase } from "./db-guard.js";
+import { checkResetAllowed, requireScriptDatabase } from "./db-guard.js";
 
-if (config.NODE_ENV === "production" || process.env.FORGE_ALLOW_RESET !== "true") {
-  console.error("Refusing to reset: set FORGE_ALLOW_RESET=true and never run in production.");
+// K-22: reset only runs with an explicit NODE_ENV=development|test (unset is treated like production) and FORGE_ALLOW_RESET=true.
+const allowed = checkResetAllowed(config, process.env);
+if (!allowed.ok) {
+  console.error(`Refusing to reset: ${allowed.reason}`);
   process.exit(1);
 }
 

@@ -7,6 +7,7 @@ import { config } from "@forge/core";
 import type { ConnectorConfig } from "@forge/identity";
 import { installErrorHandler } from "./plugins/errors.js";
 import { installCsrfHook } from "./plugins/csrf.js";
+import { installSanitizedNotFoundHandler, requestLogSerializers } from "./plugins/log-sanitize.js";
 import healthRoutes from "./routes/health.js";
 import authRoutes from "./routes/auth.js";
 import adminRoutes from "./routes/admin/index.js";
@@ -30,14 +31,24 @@ export interface BuildAppOptions {
   config?: AppConfigOverrides;
 }
 
+/**
+ * K-26: request URLs are always logged with sensitive query values redacted, also for caller-provided logger options
+ * (tests, embedding). `false`/`true` pass through unchanged; an explicit caller `serializers.req` still wins.
+ */
+function withRequestLogSerializers(logger: FastifyServerOptions["logger"]): FastifyServerOptions["logger"] {
+  if (!logger || typeof logger !== "object") return logger;
+  return { ...logger, serializers: { ...requestLogSerializers, ...logger.serializers } };
+}
+
 /** Builds the Fastify app without listening or starting the runtime, so tests can use app.inject(). */
 export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
   const app = Fastify({
-    logger:
+    logger: withRequestLogSerializers(
       options.logger ?? {
         level: config.LOG_LEVEL,
         transport: config.NODE_ENV === "development" ? { target: "pino-pretty", options: { translateTime: "SYS:standard" } } : undefined,
       },
+    ),
     bodyLimit: 2 * 1024 * 1024,
     requestIdHeader: "x-request-id",
   });
@@ -53,6 +64,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
 
   installErrorHandler(app);
   installCsrfHook(app);
+  installSanitizedNotFoundHandler(app);
 
   await app.register(healthRoutes);
   await app.register(authRoutes);

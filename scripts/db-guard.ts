@@ -1,4 +1,5 @@
 // OPS-026: database guards. Pure functions (no I/O) plus a small helper the scripts call before writing.
+import { isDevLike } from "../packages/core/src/env-mode.js";
 
 export type GuardResult = { ok: true; url: string; database: string } | { ok: false; reason: string };
 
@@ -54,6 +55,19 @@ export function requireScriptDatabase(url: string, action: string): void {
     console.error(`Refusing to ${action}: ${result.reason}`);
     process.exit(1);
   }
+}
+
+/**
+ * K-22: scripts/reset.ts drops and recreates a database. Allowed only with an explicit NODE_ENV=development|test
+ * (unset / production / anything else is refused) and FORGE_ALLOW_RESET=true. The database-name guard
+ * (checkScriptDatabase) still applies on top of this.
+ */
+export function checkResetAllowed(config: { NODE_ENV?: string | undefined }, env: Record<string, string | undefined>): { ok: true } | { ok: false; reason: string } {
+  if (!isDevLike(config)) {
+    return { ok: false, reason: "NODE_ENV must be explicitly development or test (unset is treated like production); never run in production." };
+  }
+  if (env.FORGE_ALLOW_RESET !== "true") return { ok: false, reason: "set FORGE_ALLOW_RESET=true." };
+  return { ok: true };
 }
 
 /**

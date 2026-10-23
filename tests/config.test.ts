@@ -13,7 +13,7 @@ const prod = { ...base, NODE_ENV: "production", SSO_MODE: "required" };
 
 describe("parseConfig: production secret defaults", () => {
   it("development keeps working with the dev defaults", () => {
-    const config = parseConfig({ ...base, NODE_ENV: "development" });
+    const config = parseConfig({ ...base, NODE_ENV: "development" }, { warn: () => undefined });
     expect(config.SESSION_SECRET).toBe(DEV_SECRET_DEFAULTS.SESSION_SECRET);
     expect(config.FORGE_MASTER_KEY).toBe(DEV_SECRET_DEFAULTS.FORGE_MASTER_KEY);
     expect(config.API_KEY_PEPPER).toBe(DEV_SECRET_DEFAULTS.API_KEY_PEPPER);

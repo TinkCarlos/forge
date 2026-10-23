@@ -7,7 +7,7 @@ export default defineConfig({
   resolve: base.resolve,
   test: {
     environment: "node",
-    include: ["tests/config-required.test.ts", "tests/tick-backoff.test.ts", "tests/env-mode-callsites.test.ts"],
+    include: ["tests/config-required.test.ts", "tests/tick-backoff.test.ts", "tests/env-mode-callsites.test.ts", "tests/log-sanitize.test.ts", "tests/not-found-console.test.ts"],
     pool: "forks",
   },
 });

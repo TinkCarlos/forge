@@ -94,7 +94,7 @@ Forge 的 BFF（`apps/api`）负责 OIDC，浏览器不接触 Token：
    - 若平台以 Agent Principal 作为 `access_token`，同时按配置包中的 `trust`（issuer/audience/keyId/公钥）验签，并与 `id_token.sub` 对齐；
    - 校验 `environment` 与当前部署一致；
    - JIT 创建/更新用户（`users.idp_issuer`、`idp_subject`），映射角色；
-   - 建立 Forge 会话，写入 HttpOnly Cookie（`Secure`、`SameSite=Lax`），CSRF Token 返回给前端。
+   - 建立 Forge 会话，写入 HttpOnly Cookie（始终 HttpOnly、`SameSite=Lax`；`Secure` 仅在 `NODE_ENV` 恰为 `development`/`test` 时关闭以便本地 http，其余情况（含未设置）一律开启），CSRF Token 返回给前端。
 4. 登录审计：actor、IdP subject、角色、结果、IP、UA；失败不泄露具体原因给浏览器。
 
 > 现状说明：提供的资料包含 SSO 配置契约与 Connector Principal 校验，但未包含完整的 OIDC 授权码接口说明。接入时以 Agent 管理员下发的 issuer/clientId/audience 与联调结果为准。Forge 同时实现「标准 OIDC」与「Agent Principal access_token」两条校验路径，由配置选择，绝不降级为不验签。

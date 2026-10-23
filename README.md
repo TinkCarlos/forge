@@ -18,6 +18,7 @@
 pnpm install
 cp .env.example .env
 # 修改 .env：DATABASE_URL（必填，所有环境都没有默认值；把 USER / CHANGE_ME 换成你自己的账号和口令）、管理员密码、FORGE_MASTER_KEY
+# 本地开发保持 NODE_ENV=development（必须显式设置；未设置按生产处理，缺密钥 / SSO 未 required 会拒绝启动）
 pnpm db:migrate --confirm-db=forge_dev
 pnpm db:seed --confirm-db=forge_dev
 pnpm dev
@@ -65,7 +66,7 @@ pnpm smoke:edit    # 编辑流程：Agent 新版本、MCP/Skill/模型/应用/�
 pnpm smoke:sso     # Mock OIDC + Agent Principal 验签
 ```
 
-测试库守卫（OPS-026）：`pnpm test` 只认 `TEST_DATABASE_URL`，不会继承 `.env` 里的 `DATABASE_URL`；没设置或库名不以 `_test` 结尾时直接报错退出（`_ux` 等其他库名同样拒绝，没有绕过开关）。例如 `TEST_DATABASE_URL=mysql://USER:CHANGE_ME@127.0.0.1:3306/forge_test pnpm test`（库可以先用 `pnpm smoke:isolated` 建好）。`pnpm db:migrate`、`pnpm db:seed`（以及 `scripts/reset.ts`）写入不以 `_test` 或 `_ux` 结尾的库（包括开发库，例如 `forge_dev`）前，必须带上与目标库名完全一致的参数，例如 `pnpm db:migrate --confirm-db=forge_dev`、`pnpm db:seed --confirm-db=forge_dev`；`--yes` 之类的通用开关和环境变量都不算确认。`pnpm db:reset` 对 `forge_dev` 会在第一步就被拒绝（参数传不到 reset），需要时分三步手动执行：`FORGE_ALLOW_RESET=true pnpm exec tsx scripts/reset.ts --confirm-db=forge_dev`、`pnpm db:migrate --confirm-db=forge_dev`、`pnpm db:seed --confirm-db=forge_dev`。`pnpm smoke:isolated` 用的是 `forge_test`，不受影响。
+测试库守卫（OPS-026）：`pnpm test` 只认 `TEST_DATABASE_URL`，不会继承 `.env` 里的 `DATABASE_URL`；没设置或库名不以 `_test` 结尾时直接报错退出（`_ux` 等其他库名同样拒绝，没有绕过开关）。例如 `TEST_DATABASE_URL=mysql://USER:CHANGE_ME@127.0.0.1:3306/forge_test pnpm test`（库可以先用 `pnpm smoke:isolated` 建好）。`pnpm db:migrate`、`pnpm db:seed`（以及 `scripts/reset.ts`）写入不以 `_test` 或 `_ux` 结尾的库（包括开发库，例如 `forge_dev`）前，必须带上与目标库名完全一致的参数，例如 `pnpm db:migrate --confirm-db=forge_dev`、`pnpm db:seed --confirm-db=forge_dev`；`--yes` 之类的通用开关和环境变量都不算确认。`pnpm db:reset` 对 `forge_dev` 会在第一步就被拒绝（参数传不到 reset），需要时分三步手动执行（reset 还要求 `NODE_ENV` 显式为 `development` 或 `test`）：`FORGE_ALLOW_RESET=true pnpm exec tsx scripts/reset.ts --confirm-db=forge_dev`、`pnpm db:migrate --confirm-db=forge_dev`、`pnpm db:seed --confirm-db=forge_dev`。`pnpm smoke:isolated` 用的是 `forge_test`，不受影响。
 
 
 `pnpm smoke` 需要 API 在 `http://127.0.0.1:3100` 运行；MCP/OpenAPI 用例需要先运行 `pnpm mock:services`。

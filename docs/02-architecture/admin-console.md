@@ -34,7 +34,7 @@
 
 ### 2.1 认证与 BFF
 
-- 浏览器经 `/auth/login` 走 OIDC 授权码，API 建立 HttpOnly 会话 Cookie（`Secure`、`SameSite=Lax`）。
+- 浏览器经 `/auth/login` 走 OIDC 授权码，API 建立 HttpOnly 会话 Cookie（始终 HttpOnly、`SameSite=Lax`；`Secure` 仅在 `NODE_ENV` 恰为 `development`/`test` 时关闭以便本地 http，其余情况（含未设置）一律开启）。
 - 控制台不把 Token 放 localStorage；所有请求同源。
 - 变更请求带 CSRF Token（`/admin/v1/session` 下发），服务端双提交校验。
 - 应急管理员登录使用独立入口，强制审计并提示尽快恢复 SSO。

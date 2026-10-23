@@ -59,10 +59,10 @@ minio:9000/9001
 
 | 变量 | 必填 | 示例/说明 |
 | --- | --- | --- |
-| `NODE_ENV` | 是 | `production` |
+| `NODE_ENV` | 是 | 生产写 `production`。**本地开发必须显式写 `NODE_ENV=development`**（跑测试为 `test`）：只有这两个值才允许使用内置开发密钥（启动时打 warn）、非 secure 的会话 cookie、`SSO_MODE` 不为 `required`、`scripts/reset.ts`；未设置或其他任何值一律按生产处理，缺 `FORGE_MASTER_KEY` / `SESSION_SECRET` / `API_KEY_PEPPER` 直接拒绝启动（rc=1，报错只列变量名） |
 | `FORGE_PUBLIC_URL` | 是 | `https://forge.acme.internal` |
 | `PORT` | 否 | 默认 3000 |
-| `DATABASE_URL` | 是 | `mysql://forge_app:***@mysql:3306/forge` |
+| `DATABASE_URL` | 是 | `mysql://forge_app:***@mysql:3306/forge`。所有环境都必须显式设置，代码里没有默认值；缺失时启动失败（rc=1，报错只写变量名，不打印连接串）。`pnpm smoke:isolated` 同样要求显式设置，且只会写以 `_test` 结尾的库 |
 | `REDIS_URL` | 是 | `redis://redis:6379/0` |
 | `TEMPORAL_ADDRESS` | 是 | `temporal:7233` |
 | `TEMPORAL_NAMESPACE` | 是 | `forge` |
@@ -163,7 +163,7 @@ minio:9000/9001
 - `/readyz`：MySQL/Redis/Temporal/对象存储；失败返回 503 与组件名（不泄露地址）。
 - `/metrics`：Prometheus；Run、队列、模型、工具、审批、Webhook、DB/Redis。
 - Trace：`run`、`model.call`、`tool.call`、`connector.call`、`webhook.deliver`。
-- 日志：pino JSON；固定字段；敏感字段脱敏；错误只在边界记录。
+- 日志：pino JSON；固定字段；错误只在边界记录。请求日志的 `req.url` 记录路径和 query，其中键名为 `token`、`access_token`、`refresh_token`、`id_token`、`api_key`、`apikey`、`key`、`secret`、`client_secret`、`password`、`code`、`state` 的值（键名不区分大小写，按百分号解码后匹配，重复键全部处理）替换为 `[REDACTED]`；fragment 不记录，超过 2048 字符截断。未匹配路由的 404 日志和响应里的 URL 也按同样规则处理。请求头、请求体和其他 query 键不在这条规则内，不得在日志里输出凭据。
 - 建议告警:
   - API 5xx > 1% / 5min；`readyz` 失败；
   - Temporal 队列积压 > 阈值；
