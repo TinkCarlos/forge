@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { DEV_SECRET_DEFAULTS, parseConfig } from "@forge/core";
 
 // parseConfig takes an explicit env object, so these tests never read or mutate process.env.
-const base = { FORGE_ADMIN_PASSWORD: "test-only-password-123" };
+// K-21: DATABASE_URL is required; a placeholder on port 1 (parseConfig is pure and never connects).
+const base = { FORGE_ADMIN_PASSWORD: "test-only-password-123", DATABASE_URL: "mysql://forge:x@127.0.0.1:1/forge_test" };
 const strong = {
   FORGE_MASTER_KEY: "dGVzdC1vbmx5LW1hc3Rlci1rZXktMzItYnl0ZXMtISE=",
   SESSION_SECRET: "test-only-session-secret-unique",

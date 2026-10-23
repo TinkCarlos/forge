@@ -55,3 +55,26 @@ export function requireScriptDatabase(url: string, action: string): void {
     process.exit(1);
   }
 }
+
+/**
+ * K-21: scripts/smoke-isolated.ts resets, migrates and seeds its target. DATABASE_URL must be set explicitly (no
+ * built-in default) and the derived smoke database must pass the same *_test-only rule as the test guard
+ * (checkTestDatabase). Returns the smoke URL; messages never contain a connection string.
+ */
+export function checkSmokeDatabase(env: Record<string, string | undefined>): GuardResult {
+  const raw = env.DATABASE_URL?.trim();
+  if (!raw) return { ok: false, reason: "DATABASE_URL is required (no default); it supplies host and credentials for the smoke database." };
+  let base: URL;
+  try {
+    base = new URL(raw);
+  } catch {
+    return { ok: false, reason: "DATABASE_URL 不是合法的连接串" };
+  }
+  const dbName = (env.FORGE_SMOKE_DB ?? "forge_test").trim();
+  if (databaseName(raw) === dbName) return { ok: false, reason: "smoke database must differ from the DATABASE_URL database." };
+  const smoke = new URL(base.toString());
+  smoke.pathname = `/${encodeURIComponent(dbName)}`;
+  const result = checkTestDatabase({ TEST_DATABASE_URL: smoke.toString() });
+  if (!result.ok) return { ok: false, reason: `FORGE_SMOKE_DB: ${result.reason}` };
+  return result;
+}

@@ -17,9 +17,9 @@
 ```bash
 pnpm install
 cp .env.example .env
-# 修改 .env 中的 DATABASE_URL、管理员密码、FORGE_MASTER_KEY
-pnpm db:migrate
-pnpm db:seed
+# 修改 .env：DATABASE_URL（必填，所有环境都没有默认值；把 USER / CHANGE_ME 换成你自己的账号和口令）、管理员密码、FORGE_MASTER_KEY
+pnpm db:migrate --confirm-db=forge_dev
+pnpm db:seed --confirm-db=forge_dev
 pnpm dev
 ```
 
@@ -28,9 +28,10 @@ pnpm dev
 数据库不存在时先创建：
 
 ```sql
-CREATE DATABASE forge CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
-CREATE USER 'forge'@'localhost' IDENTIFIED BY 'forge_dev_password';
-GRANT ALL PRIVILEGES ON forge.* TO 'forge'@'localhost';
+-- 账号和口令换成你自己的（不要用文档或仓库里出现过的口令），并与 .env 的 DATABASE_URL 保持一致
+CREATE DATABASE forge_dev CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+CREATE USER 'USER'@'localhost' IDENTIFIED BY 'CHANGE_ME';
+GRANT ALL PRIVILEGES ON forge_dev.* TO 'USER'@'localhost';
 ```
 
 ### 3. 立即体验
@@ -64,7 +65,7 @@ pnpm smoke:edit    # 编辑流程：Agent 新版本、MCP/Skill/模型/应用/�
 pnpm smoke:sso     # Mock OIDC + Agent Principal 验签
 ```
 
-测试库守卫（OPS-026）：`pnpm test` 只认 `TEST_DATABASE_URL`，不会继承 `.env` 里的 `DATABASE_URL`；没设置或库名不以 `_test` 结尾时直接报错退出（`_ux` 等其他库名同样拒绝，没有绕过开关）。例如 `TEST_DATABASE_URL=mysql://forge:***@127.0.0.1:3306/forge_test pnpm test`（库可以先用 `pnpm smoke:isolated` 建好）。`pnpm db:migrate`、`pnpm db:seed`（以及 `scripts/reset.ts`）写入不以 `_test` 或 `_ux` 结尾的库（包括开发库 `forge`）前，必须带上与目标库名完全一致的参数，例如 `pnpm db:migrate --confirm-db=forge`、`pnpm db:seed --confirm-db=forge`；`--yes` 之类的通用开关和环境变量都不算确认。`pnpm db:reset` 对 `forge` 会在第一步就被拒绝（参数传不到 reset），需要时分三步手动执行：`FORGE_ALLOW_RESET=true pnpm exec tsx scripts/reset.ts --confirm-db=forge`、`pnpm db:migrate --confirm-db=forge`、`pnpm db:seed --confirm-db=forge`。`pnpm smoke:isolated` 用的是 `forge_test`，不受影响。
+测试库守卫（OPS-026）：`pnpm test` 只认 `TEST_DATABASE_URL`，不会继承 `.env` 里的 `DATABASE_URL`；没设置或库名不以 `_test` 结尾时直接报错退出（`_ux` 等其他库名同样拒绝，没有绕过开关）。例如 `TEST_DATABASE_URL=mysql://USER:CHANGE_ME@127.0.0.1:3306/forge_test pnpm test`（库可以先用 `pnpm smoke:isolated` 建好）。`pnpm db:migrate`、`pnpm db:seed`（以及 `scripts/reset.ts`）写入不以 `_test` 或 `_ux` 结尾的库（包括开发库，例如 `forge_dev`）前，必须带上与目标库名完全一致的参数，例如 `pnpm db:migrate --confirm-db=forge_dev`、`pnpm db:seed --confirm-db=forge_dev`；`--yes` 之类的通用开关和环境变量都不算确认。`pnpm db:reset` 对 `forge_dev` 会在第一步就被拒绝（参数传不到 reset），需要时分三步手动执行：`FORGE_ALLOW_RESET=true pnpm exec tsx scripts/reset.ts --confirm-db=forge_dev`、`pnpm db:migrate --confirm-db=forge_dev`、`pnpm db:seed --confirm-db=forge_dev`。`pnpm smoke:isolated` 用的是 `forge_test`，不受影响。
 
 
 `pnpm smoke` 需要 API 在 `http://127.0.0.1:3100` 运行；MCP/OpenAPI 用例需要先运行 `pnpm mock:services`。

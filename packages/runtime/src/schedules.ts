@@ -140,6 +140,11 @@ export async function triggerSchedule(schedule: Record<string, unknown>, now = n
   }
 }
 
+/**
+ * One scheduler tick. Rejects when the database is unreachable (dueSchedules, or recordScheduleFailure in
+ * triggerSchedule's catch). Callers must run it through guardTick (worker.ts), which catches, logs and backs off
+ * (K-20 / OPS-010); it is never invoked as a bare `void tickSchedules()`.
+ */
 export async function tickSchedules(now = new Date()): Promise<void> {
   const due = await repos.dueSchedules();
   for (const schedule of due) {

@@ -4,19 +4,16 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import { createServer } from "node:net";
+import { checkSmokeDatabase } from "./db-guard.js";
 
-const baseUrl = new URL(process.env.DATABASE_URL ?? "mysql://forge:forge_dev_password@127.0.0.1:3306/forge");
-const dbName = process.env.FORGE_SMOKE_DB ?? "forge_test";
-if (!/_(smoke|test)$/.test(dbName)) {
-  console.error(`Refusing: FORGE_SMOKE_DB must end with _smoke or _test (got ${dbName}).`);
+// K-21: DATABASE_URL is required (no built-in default) and the smoke database must end with _test (checkTestDatabase).
+const smokeDb = checkSmokeDatabase(process.env);
+if (!smokeDb.ok) {
+  console.error(`Refusing: ${smokeDb.reason}`);
   process.exit(1);
 }
-if (baseUrl.pathname.replace(/^\//, "") === dbName) {
-  console.error("Refusing: smoke database must differ from DATABASE_URL.");
-  process.exit(1);
-}
-const smokeUrl = new URL(baseUrl.toString());
-smokeUrl.pathname = `/${dbName}`;
+const dbName = smokeDb.database;
+const smokeUrl = new URL(smokeDb.url);
 const port = process.env.FORGE_SMOKE_PORT ?? "3199";
 // The smoke MCP/OpenAPI mock listens on 127.0.0.1:8090; the outbound guard (S-46) only lets it through when allowlisted.
 const env = { ...process.env, DATABASE_URL: smokeUrl.toString(), PORT: port, NODE_ENV: "development", OUTBOUND_ALLOWLIST: process.env.OUTBOUND_ALLOWLIST || "127.0.0.1:8090" };
