@@ -24,7 +24,8 @@ import './styles/index.css'
 const queryClient: QueryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      retry: (count, error) => !(error instanceof ApiError && error.status < 500) && count < 2,
+      // status 0 是断网（K-35），和 5xx 一样值得重试；4xx 不重试
+      retry: (count, error) => !(error instanceof ApiError && error.status > 0 && error.status < 500) && count < 2,
       refetchOnWindowFocus: import.meta.env.PROD,
       staleTime: 10 * 1000,
     },

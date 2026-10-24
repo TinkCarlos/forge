@@ -30,7 +30,7 @@ export function Header({ className, fixed, children, ...props }: HeaderProps) {
     <header
       className={cn(
         'z-50 h-16',
-        fixed && 'header-fixed peer/header sticky top-0 w-[inherit]',
+        fixed && 'header-fixed peer/header sticky top-[var(--api-banner-h,0px)] w-[inherit]',
         offset > 10 && fixed ? 'shadow' : 'shadow-none',
         className
       )}

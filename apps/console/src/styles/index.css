@@ -63,6 +63,12 @@
   pointer-events: auto;
 }
 
+/* FE-N11：API 不可用横幅出现时，固定的桌面侧栏从横幅下方开始，不被盖住也不盖住横幅。 */
+[data-slot='sidebar-container'] {
+  top: var(--api-banner-h, 0px);
+  height: calc(100svh - var(--api-banner-h, 0px));
+}
+
 @utility container {
   margin-inline: auto;
   padding-inline: 2rem;
