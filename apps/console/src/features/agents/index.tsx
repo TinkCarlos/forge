@@ -13,6 +13,7 @@ import { ExternalLink, MoreHorizontal, Plus, Rocket, SearchIcon } from 'lucide-r
 import { toast } from 'sonner'
 import { onReject } from '@/lib/settle'
 import { api } from '@/lib/api'
+import { idSeg } from '@/lib/entity-id'
 import { useCan } from '@/hooks/use-can'
 import { versionLabel } from '@/lib/format'
 import { handleDialogServerError, handleServerError } from '@/lib/handle-server-error'
@@ -84,7 +85,7 @@ export function Agents() {
 
   const setApi = useMutation({
     mutationFn: ({ agent, enabled }: { agent: Agent; enabled: boolean }) =>
-      api(`/admin/api/agents/${agent.id}`, { method: 'PATCH', body: { apiEnabled: enabled } }),
+      api(`/admin/api/agents/${idSeg(agent.id)}`, { method: 'PATCH', body: { apiEnabled: enabled } }),
     onSuccess: (_, { agent, enabled }) => {
       toast.success(enabled ? `已开放「${agent.name}」的 API` : `已关闭「${agent.name}」的 API`)
       setPending(null)
@@ -95,7 +96,7 @@ export function Agents() {
 
   const publish = useMutation({
     mutationFn: ({ agent, draft }: { agent: Agent; draft: { id: string } }) =>
-      api(`/admin/api/agents/${agent.id}/publish`, { method: 'POST', body: { versionId: draft.id } }),
+      api(`/admin/api/agents/${idSeg(agent.id)}/publish`, { method: 'POST', body: { versionId: draft.id } }),
     onSuccess: (_, { agent }) => {
       if (pending?.kind === 'publish') toast.success(`已发布「${agent.name}」${versionLabel(pending.draft.version)}`)
       setPending(null)
@@ -107,7 +108,7 @@ export function Agents() {
   // 发布前实时确认草稿还在（列表可能已过期）
   async function askPublish(agent: Agent) {
     try {
-      const detail = await api<{ versions?: { id: string; version: number; status: string }[] }>(`/admin/api/agents/${agent.id}`)
+      const detail = await api<{ versions?: { id: string; version: number; status: string }[] }>(`/admin/api/agents/${idSeg(agent.id)}`)
       const draft = detail.versions?.find((v) => v.status === 'draft')
       if (!draft) {
         toast.warning('没有待发布的草稿，可能已被其他人发布，列表已刷新')

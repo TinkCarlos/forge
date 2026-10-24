@@ -66,6 +66,17 @@ const tabMeta = {
   sso: ["SSO / Connector", "统一登录与 Agent 平台接入状态"],
 };
 
+// P2：拼进 API 路径的 id 先按仓库 id 格式校验——26 位，纯 ULID（seed，如 01J00000000000000000000006）或
+// 3 位小写前缀 + "_" + 22 位 ULID 字符（core ulidWithPrefix，如 agt_…）；不合法直接抛错、不发请求，合法的照旧 encodeURIComponent。
+function isEntityId(value) {
+  return typeof value === "string" && /^(?:[0-9A-HJKMNP-TV-Z]{26}|[a-z]{3}_[0-9A-HJKMNP-TV-Z]{22})$/.test(value);
+}
+
+function idSeg(value) {
+  if (!isEntityId(value)) throw new Error("ID 格式无效，已取消请求");
+  return encodeURIComponent(value);
+}
+
 function esc(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -262,7 +273,7 @@ function onHashChange() {
 async function switchTab(route) {
   let { tab, id } = parseRoute(route);
   if (!tabMeta[tab]) tab = "dashboard";
-  if (tab !== "agents") id = "";
+  if (tab !== "agents" || !isEntityId(id)) id = "";
   state.tab = tab;
   state.route = id ? `${tab}/${encodeURIComponent(id)}` : tab;
   location.hash = state.route;
@@ -718,7 +729,7 @@ const app = {
   async openAgentNewVersion(id) {
     const name = agentNameById(id);
     try {
-      const detail = await api(`/admin/api/agents/${id}`);
+      const detail = await api(`/admin/api/agents/${idSeg(id)}`);
       const latest = detail.versions?.[0];
       if (!latest) throw new Error("Agent 没有版本");
       openModal(`新建版本 · ${name}`, `
@@ -727,7 +738,7 @@ const app = {
           <div class="full">${textarea("Instructions", "instructions", latest.instructions ?? "")}</div>
           <div class="full">${textarea("Spec JSON", "spec", JSON.stringify(latest.spec_json ?? {}, null, 2), 10)}</div>
         </div>`, async (data) => {
-        await api(`/admin/api/agents/${id}/versions`, { method: "POST", body: { version: data.get("version"), instructions: data.get("instructions"), spec: parseJsonField(data, "spec", {}), publish: true } });
+        await api(`/admin/api/agents/${idSeg(id)}/versions`, { method: "POST", body: { version: data.get("version"), instructions: data.get("instructions"), spec: parseJsonField(data, "spec", {}), publish: true } });
         toast("新版本已创建并发布");
         await renderAgents();
       }, "创建并发布");
@@ -745,8 +756,8 @@ const app = {
         <div class="full">${field("HTTP URL", "url", server.url)}</div>
         <div class="full">${textarea("Headers JSON", "headers", JSON.stringify(server.headers_json ?? {}, null, 2), 4)}</div>
       </div>`, async (data) => {
-      await api(`/admin/api/mcp/${id}`, { method: "PATCH", body: { name: data.get("name"), url: data.get("url"), headers: parseJsonField(data, "headers", {}) } });
-      await api(`/admin/api/mcp/${id}/refresh`, { method: "POST", body: {} }).catch(() => null);
+      await api(`/admin/api/mcp/${idSeg(id)}`, { method: "PATCH", body: { name: data.get("name"), url: data.get("url"), headers: parseJsonField(data, "headers", {}) } });
+      await api(`/admin/api/mcp/${idSeg(id)}/refresh`, { method: "POST", body: {} }).catch(() => null);
       toast("MCP 已更新");
       await renderMcp();
     });
@@ -754,7 +765,7 @@ const app = {
 
   async openSkillEdit(id) {
     try {
-      const skill = await api(`/admin/api/skills/${id}`);
+      const skill = await api(`/admin/api/skills/${idSeg(id)}`);
       const latest = skill.versions?.[0];
       openModal(`编辑 Skill · ${skill.name}`, `
         <div class="form-grid">
@@ -763,8 +774,8 @@ const app = {
           <div class="full">${field("描述", "description", skill.description)}</div>
           <div class="full">${textarea("SKILL.md 内容", "content", latest?.content_md ?? "", 12)}</div>
         </div>`, async (data) => {
-        await api(`/admin/api/skills/${id}`, { method: "PATCH", body: { name: data.get("name"), description: data.get("description") } });
-        await api(`/admin/api/skills/${id}/versions`, { method: "POST", body: { version: data.get("version"), content: data.get("content"), publish: true } });
+        await api(`/admin/api/skills/${idSeg(id)}`, { method: "PATCH", body: { name: data.get("name"), description: data.get("description") } });
+        await api(`/admin/api/skills/${idSeg(id)}/versions`, { method: "POST", body: { version: data.get("version"), content: data.get("content"), publish: true } });
         toast("Skill 已更新并发布新版本");
         await renderSkills();
       }, "保存并发布");
@@ -783,7 +794,7 @@ const app = {
         <div class="full">${field("新 API Key（留空不改）", "apiKey", "", "password")}</div>
         <div class="full">${textarea("Headers JSON", "headers", "{}", 4)}</div>
       </div>`, async (data) => {
-      await api(`/admin/api/providers/${id}`, { method: "PATCH", body: { name: data.get("name"), baseUrl: data.get("baseUrl"), apiKey: data.get("apiKey") || undefined, headers: parseJsonField(data, "headers", {}) } });
+      await api(`/admin/api/providers/${idSeg(id)}`, { method: "PATCH", body: { name: data.get("name"), baseUrl: data.get("baseUrl"), apiKey: data.get("apiKey") || undefined, headers: parseJsonField(data, "headers", {}) } });
       toast("Provider 已更新");
       await renderModels();
     });
@@ -799,7 +810,7 @@ const app = {
           ${field("上下文窗口", "contextWindow", model.contextWindow, "number")}
           ${field("最大输出", "maxOutputTokens", model.maxOutputTokens, "number")}
         </div>`, async (data) => {
-        await api(`/admin/api/models/${id}`, { method: "PATCH", body: { displayName: data.get("displayName"), contextWindow: Number(data.get("contextWindow")), maxOutputTokens: Number(data.get("maxOutputTokens")) } });
+        await api(`/admin/api/models/${idSeg(id)}`, { method: "PATCH", body: { displayName: data.get("displayName"), contextWindow: Number(data.get("contextWindow")), maxOutputTokens: Number(data.get("maxOutputTokens")) } });
         toast("模型已更新");
         await renderModels();
       });
@@ -818,7 +829,7 @@ const app = {
         <div class="full">${field("Webhook URL", "webhookUrl", app.webhookUrl ?? "")}</div>
         <div class="full">${field("新 Webhook Secret（留空不改）", "webhookSecret", "", "password")}</div>
       </div>`, async (data) => {
-      await api(`/admin/api/apps/${id}`, { method: "PATCH", body: { name: data.get("name"), status: data.get("status"), scopes: String(data.get("scopes") ?? "").split(",").map((item) => item.trim()).filter(Boolean), webhookUrl: data.get("webhookUrl"), webhookSecret: data.get("webhookSecret") || undefined } });
+      await api(`/admin/api/apps/${idSeg(id)}`, { method: "PATCH", body: { name: data.get("name"), status: data.get("status"), scopes: String(data.get("scopes") ?? "").split(",").map((item) => item.trim()).filter(Boolean), webhookUrl: data.get("webhookUrl"), webhookSecret: data.get("webhookSecret") || undefined } });
       toast("应用已更新");
       await renderApps();
     });
@@ -834,7 +845,7 @@ const app = {
         ${field("时区", "timezone", schedule.timezone)}
         <div class="full">${textarea("输入 JSON", "input", JSON.stringify(schedule.input_json ?? {}, null, 2), 5)}</div>
       </div>`, async (data) => {
-      await api(`/admin/api/schedules/${id}`, { method: "PATCH", body: { name: data.get("name"), cron: data.get("cron"), timezone: data.get("timezone"), input: parseJsonField(data, "input", {}) } });
+      await api(`/admin/api/schedules/${idSeg(id)}`, { method: "PATCH", body: { name: data.get("name"), cron: data.get("cron"), timezone: data.get("timezone"), input: parseJsonField(data, "input", {}) } });
       toast("定时任务已更新");
       await renderSchedules();
     });
@@ -843,7 +854,7 @@ const app = {
   openAgentRun(id) {
     const name = agentNameById(id);
     openModal(`试运行 ${name}`, `${textarea("输入", "text", "你好，介绍一下 Forge。", 5)}`, async (data) => {
-      const result = await api(`/admin/api/agents/${id}/run`, { method: "POST", body: { input: { text: data.get("text") } } });
+      const result = await api(`/admin/api/agents/${idSeg(id)}/run`, { method: "POST", body: { input: { text: data.get("text") } } });
       toast(`Run 已创建：${result.runId}`);
       state.tab = "runs";
       await switchTab("runs");
@@ -853,7 +864,7 @@ const app = {
 
   async publishAgent(id) {
     try {
-      const detail = await api(`/admin/api/agents/${id}`);
+      const detail = await api(`/admin/api/agents/${idSeg(id)}`);
       const draft = (detail.versions ?? []).find((version) => version.status === "draft");
       if (!draft) {
         toast("没有待发布的草稿，请先创建新版本", "error");
@@ -862,7 +873,7 @@ const app = {
       const next = vLabel(draft.version);
       const current = detail.publishedVersion ? `当前线上版本是 ${vLabel(detail.publishedVersion)}` : "这个 Agent 目前还没有线上版本";
       if (!(await confirmAction(`发布「${detail.name}」${next}`, `发布后开放 API 和定时任务会立即改用 ${next}，${current}。`, "确认发布", false))) return;
-      await api(`/admin/api/agents/${id}/publish`, { method: "POST", body: { versionId: draft.id } });
+      await api(`/admin/api/agents/${idSeg(id)}/publish`, { method: "POST", body: { versionId: draft.id } });
       toast(`已发布 ${next}`);
       await renderAgents();
     } catch (error) {
@@ -874,7 +885,7 @@ const app = {
     try {
       const agent = state.agents.find((item) => item.id === id);
       if (!enabled && !(await confirmAction(`关闭「${agent?.name ?? id}」的开放 API`, "关闭后外部应用无法再发起新调用；已在运行的任务会继续完成，结果仍可查询。之后可以随时重新开放。", "确认关闭"))) return;
-      await api(`/admin/api/agents/${id}`, { method: "PATCH", body: { apiEnabled: enabled } });
+      await api(`/admin/api/agents/${idSeg(id)}`, { method: "PATCH", body: { apiEnabled: enabled } });
       toast(enabled ? "已开放 API" : "已关闭 API");
       await renderAgents();
     } catch (error) {
@@ -884,7 +895,7 @@ const app = {
 
   async openAgentDetail(id) {
     try {
-      const agent = await api(`/admin/api/agents/${id}`);
+      const agent = await api(`/admin/api/agents/${idSeg(id)}`);
       openModal(`Agent ${agent.name}`, `<div class="code-block">${json(agent)}</div>`, async () => {}, "关闭");
     } catch (error) {
       toast(errorText(error), "error");
@@ -925,7 +936,7 @@ const app = {
         ${field("上下文窗口", "contextWindow", "32768", "number")}
         ${field("最大输出", "maxOutputTokens", "4096", "number")}
       </div>`, async (data) => {
-      await api(`/admin/api/providers/${providerId}/models`, {
+      await api(`/admin/api/providers/${idSeg(providerId)}/models`, {
         method: "POST",
         body: {
           key: data.get("key"),
@@ -941,7 +952,7 @@ const app = {
 
   async testProvider(id) {
     try {
-      const result = await api(`/admin/api/providers/${id}/test`, { method: "POST", body: {} });
+      const result = await api(`/admin/api/providers/${idSeg(id)}/test`, { method: "POST", body: {} });
       toast(result.ok ? `连接成功：${result.content}` : `失败：${result.error}`, result.ok ? "ok" : "error");
     } catch (error) {
       toast(errorText(error), "error");
@@ -964,7 +975,7 @@ const app = {
 
   async refreshMcp(id) {
     try {
-      const result = await api(`/admin/api/mcp/${id}/refresh`, { method: "POST", body: {} });
+      const result = await api(`/admin/api/mcp/${idSeg(id)}/refresh`, { method: "POST", body: {} });
       toast(`已刷新 ${result.tools?.length ?? 0} 个工具`);
       await renderMcp();
     } catch (error) {
@@ -1016,7 +1027,7 @@ const app = {
     try {
       const plugin = state.plugins.find((item) => item.id === id);
       if (!(await confirmAction(`卸载能力包「${plugin?.name ?? plugin?.key ?? id}」`, "卸载只标记包状态，不会删除已经创建的 Agent、Skill、MCP 等资源。", "确认卸载"))) return;
-      await api(`/admin/api/plugins/${id}/uninstall`, { method: "POST", body: {} });
+      await api(`/admin/api/plugins/${idSeg(id)}/uninstall`, { method: "POST", body: {} });
       toast("已标记卸载");
       await renderPackages();
     } catch (error) {
@@ -1027,7 +1038,7 @@ const app = {
   async openRun(id) {
     closeStream();
     try {
-      const run = await api(`/admin/api/runs/${id}`);
+      const run = await api(`/admin/api/runs/${idSeg(id)}`);
       const messages = (run.messages ?? []).map((message) => `<div style="padding:10px 0;border-bottom:1px solid var(--border)"><div class="muted"><strong>${esc(message.role)}</strong> · #${message.seq}</div><div style="white-space:pre-wrap">${esc(message.content?.text ?? JSON.stringify(message.content))}</div></div>`).join("");
       const tools = (run.toolCalls ?? []).map((call) => `<div style="padding:10px 0;border-bottom:1px solid var(--border)"><div><strong>${esc(call.tool_key)}</strong> ${statusPill(call.status)}</div><div class="muted mono">${esc(JSON.stringify(call.args))}</div><div style="white-space:pre-wrap">${esc(call.result_text ?? "")}</div></div>`).join("");
       openModal(`Run ${run.id}`, `
@@ -1044,7 +1055,7 @@ const app = {
 
   async cancelRun(id) {
     try {
-      await api(`/admin/api/runs/${id}/cancel`, { method: "POST", body: {} });
+      await api(`/admin/api/runs/${idSeg(id)}/cancel`, { method: "POST", body: {} });
       toast("取消请求已提交");
       $("#modal").close();
       await renderRuns();
@@ -1055,7 +1066,7 @@ const app = {
 
   async decideApproval(id, decision) {
     openModal(decision === "approved" ? "批准工具调用" : "驳回工具调用", `${textarea("备注", "comment", "")}`, async (data) => {
-      await api(`/admin/api/approvals/${id}/decide`, { method: "POST", body: { decision, comment: data.get("comment") } });
+      await api(`/admin/api/approvals/${idSeg(id)}/decide`, { method: "POST", body: { decision, comment: data.get("comment") } });
       toast(decision === "approved" ? "已批准，Run 将继续" : "已驳回");
       await renderApprovals();
     }, decision === "approved" ? "批准" : "确认驳回", decision !== "approved");
@@ -1100,6 +1111,9 @@ const app = {
         ${field("时区", "timezone", "Asia/Shanghai")}
         <div class="full">${textarea("输入文本", "text", "执行今天的任务。", 4)}</div>
       </div>`, async (data) => {
+      // P2：下拉没有可选值时 FormData 里是 null / 空串，先拦住给中文提示，不把 null 发给后端（否则是 400「agentId 必须是字符串」）。
+      if (!data.get("agentId")) throw new Error("请选择 Agent；没有可选的 Agent 时请先创建并发布一个");
+      if (!data.get("serviceAccountId")) throw new Error("请选择运行身份（服务账号）；没有可用的服务账号时请先新建");
       await api("/admin/api/schedules", { method: "POST", body: { key: data.get("key"), name: data.get("name"), agentId: data.get("agentId"), serviceAccountId: data.get("serviceAccountId"), cron: data.get("cron"), timezone: data.get("timezone"), input: { text: data.get("text") }, enabled: true } });
       toast("定时任务已创建");
       await renderSchedules();
@@ -1109,7 +1123,7 @@ const app = {
   async scheduleAction(id, action) {
     try {
       if (action === "run") {
-        const result = await api(`/admin/api/schedules/${id}/run`, { method: "POST", body: {} });
+        const result = await api(`/admin/api/schedules/${idSeg(id)}/run`, { method: "POST", body: {} });
         toast(`Run 已创建：${result.runId}`);
         await switchTab("runs");
         return;
@@ -1120,7 +1134,7 @@ const app = {
         const message = `停用后不会再按 ${schedule?.cron ?? "Cron"}（${schedule?.timezone ?? "默认时区"}）自动运行${nextRun}。之后可以随时重新启用。`;
         if (!(await confirmAction(`停用定时任务「${schedule?.name ?? id}」`, message, "确认停用"))) return;
       }
-      await api(`/admin/api/schedules/${id}/${action}`, { method: "POST", body: {} });
+      await api(action === "enable" ? `/admin/api/schedules/${idSeg(id)}/enable` : `/admin/api/schedules/${idSeg(id)}/disable`, { method: "POST", body: {} });
       toast(action === "enable" ? "已启用" : "已停用");
       await renderSchedules();
     } catch (error) {
@@ -1145,7 +1159,7 @@ const app = {
 
   async createAppKey(appId) {
     try {
-      const result = await api(`/admin/api/apps/${appId}/keys`, { method: "POST", body: { name: "default" } });
+      const result = await api(`/admin/api/apps/${idSeg(appId)}/keys`, { method: "POST", body: { name: "default" } });
       openModal("API Key（只显示一次）", `<p class="muted">请立即复制保存，关闭后无法再次查看。</p><div class="code-block">${esc(result.key)}</div>`, async () => {}, "已保存");
     } catch (error) {
       toast(errorText(error), "error");
@@ -1154,7 +1168,7 @@ const app = {
 
   async listAppKeys(appId) {
     try {
-      const result = await api(`/admin/api/apps/${appId}/keys`);
+      const result = await api(`/admin/api/apps/${idSeg(appId)}/keys`);
       openModal("API Keys", `<div class="table-wrap"><table><thead><tr><th>名称</th><th>Prefix</th><th>状态</th><th>最后使用</th></tr></thead><tbody>${(result.items ?? []).map((key) => `<tr><td>${esc(key.name)}</td><td class="mono">${esc(key.prefix)}</td><td>${statusPill(key.status)}</td><td>${fmt(key.last_used_at)}</td></tr>`).join("")}</tbody></table></div>`, async () => {}, "关闭");
     } catch (error) {
       toast(errorText(error), "error");
@@ -1165,7 +1179,7 @@ const app = {
     try {
       const role = $(`#role-${CSS.escape(id)}`).value;
       const dataScope = $(`#scope-${CSS.escape(id)}`).value;
-      await api(`/admin/api/users/${id}`, { method: "PATCH", body: { role, dataScope } });
+      await api(`/admin/api/users/${idSeg(id)}`, { method: "PATCH", body: { role, dataScope } });
       toast("用户权限已更新");
       await renderUsers();
     } catch (error) {
@@ -1200,7 +1214,7 @@ function listenRun(runId) {
   const log = $("#event-log");
   if (!log) return;
   const types = ["run.queued", "run.started", "run.resumed", "message.delta", "message.completed", "context.compressed", "model.retried", "output.rejected", "tool.started", "tool.retried", "tool.completed", "tool.failed", "approval.required", "approval.resolved", "run.completed", "run.failed", "run.cancelled", "run.budget_exhausted"];
-  const source = new EventSource(`/admin/api/runs/${runId}/events`);
+  const source = new EventSource(`/admin/api/runs/${idSeg(runId)}/events`);
   state.eventSource = source;
   const append = (type, event) => {
     const row = document.createElement("div");

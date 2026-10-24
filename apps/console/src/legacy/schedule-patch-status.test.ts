@@ -21,7 +21,7 @@ function topFn(name: string): string {
 }
 
 type Call = { path: string; method: string; body: Record<string, unknown> }
-const schedule = { id: 'sch_1', name: '日报', cron: '0 9 * * *', timezone: 'Asia/Shanghai', input_json: { text: 'hi' }, status: 'active', next_run_at: null }
+const schedule = { id: 'sch_01M5PK6G1GPZ3APBN3QNXR', name: '日报', cron: '0 9 * * *', timezone: 'Asia/Shanghai', input_json: { text: 'hi' }, status: 'active', next_run_at: null }
 
 function harness() {
   const calls: Call[] = []
@@ -37,7 +37,7 @@ function harness() {
     switchTab: async () => {}, fmt: (v: unknown) => String(v), confirmAction: async () => true,
   }
   const names = Object.keys(deps)
-  const body = `${topFn('parseJsonField')}\nreturn { ${method('openScheduleEdit')}, ${method('scheduleAction')} };`
+  const body = `${topFn('parseJsonField')}\n${topFn('isEntityId')}\n${topFn('idSeg')}\nreturn { ${method('openScheduleEdit')}, ${method('scheduleAction')} };`
   const app = new Function(...names, body)(...names.map((n) => deps[n as keyof typeof deps])) as {
     openScheduleEdit(id: string): void
     scheduleAction(id: string, action: string): Promise<void>
@@ -54,19 +54,19 @@ function form(values: Record<string, string>): FormData {
 describe('旧控制台 schedule 编辑不带 status', () => {
   it('编辑提交的 PATCH body 只含 name/cron/timezone/input，不含 status', async () => {
     const h = harness()
-    h.app.openScheduleEdit('sch_1')
+    h.app.openScheduleEdit('sch_01M5PK6G1GPZ3APBN3QNXR')
     await h.submit()(form({ name: '日报2', cron: '0 10 * * *', timezone: 'Asia/Shanghai', input: '{"text":"x"}' }))
     const patch = h.calls.filter((c) => c.method === 'PATCH')
     expect(patch).toHaveLength(1)
-    expect(patch[0].path).toBe('/admin/api/schedules/sch_1')
+    expect(patch[0].path).toBe('/admin/api/schedules/sch_01M5PK6G1GPZ3APBN3QNXR')
     expect(patch[0].body).not.toHaveProperty('status')
     expect(Object.keys(patch[0].body).sort()).toEqual(['cron', 'input', 'name', 'timezone'])
   })
 
   it.each(['enable', 'disable'])('%s 走 POST /admin/api/schedules/:id/{enable,disable}，不发 PATCH', async (action) => {
     const h = harness()
-    await h.app.scheduleAction('sch_1', action)
-    expect(h.calls).toEqual([{ path: `/admin/api/schedules/sch_1/${action}`, method: 'POST', body: {} }])
+    await h.app.scheduleAction('sch_01M5PK6G1GPZ3APBN3QNXR', action)
+    expect(h.calls).toEqual([{ path: `/admin/api/schedules/sch_01M5PK6G1GPZ3APBN3QNXR/${action}`, method: 'POST', body: {} }])
   })
 })
 

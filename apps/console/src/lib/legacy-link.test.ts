@@ -28,12 +28,15 @@ describe('K-32 未迁移页在新标签页打开旧版', () => {
 })
 
 describe('K-33 新版 Agent 行跳旧版详情', () => {
-  it('legacyAgentHref 生成 /#agents/<encoded id>', async () => {
+  it('legacyAgentHref 生成 /#agents/<id>，id 不合法时只到列表', async () => {
     const mod = (await import('./legacy-link')) as Record<string, unknown>
     expect(mod.legacyAgentHref).toBeTypeOf('function')
     const href = mod.legacyAgentHref as (id: string) => string
-    expect(href('ag_1')).toBe('/#agents/ag_1')
-    expect(href('ag 中/1')).toBe(`/#agents/${encodeURIComponent('ag 中/1')}`)
+    expect(href('agt_01M5PK6G1GPZ3APBN3QNXR')).toBe('/#agents/agt_01M5PK6G1GPZ3APBN3QNXR')
+    expect(href('01J00000000000000000000006')).toBe('/#agents/01J00000000000000000000006')
+    // 不合法的 id 只链到列表（旧版也会拒绝）
+    expect(href('ag 中/1')).toBe('/#agents')
+    expect(href('../users')).toBe('/#agents')
   })
 
   it('Agents 列表的「在旧版中查看详情」用该 Agent 的 id，不再是 /#agents', () => {

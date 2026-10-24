@@ -1,3 +1,5 @@
+import { isEntityId } from './entity-id'
+
 /** K-32：跳旧版控制台的入口一律在新标签页打开，当前的新控制台不被替换。 */
 export const LEGACY_LINK_ATTRS = { target: '_blank', rel: 'noopener noreferrer' } as const
 
@@ -9,7 +11,7 @@ export function openLegacy(url: string) {
   window.open(url, '_blank', 'noopener,noreferrer')
 }
 
-/** K-33：旧版 Agent 详情的深链，旧版 switchTab 解析 `#agents/<id>` 后打开详情弹窗。 */
+/** K-33：旧版 Agent 详情的深链，旧版 switchTab 解析 `#agents/<id>` 后打开详情弹窗；id 不合法时只链到列表。 */
 export function legacyAgentHref(id: string) {
-  return `/#agents/${encodeURIComponent(id)}`
+  return isEntityId(id) ? `/#agents/${encodeURIComponent(id)}` : '/#agents'
 }

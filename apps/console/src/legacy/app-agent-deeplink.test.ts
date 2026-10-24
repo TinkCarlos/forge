@@ -3,8 +3,11 @@ import { describe, expect, it } from 'vitest'
 
 /**
  * K-33：新控制台「在旧版中查看详情」跳 `/#agents/<id>`，旧版要打开 Agents 页并弹出该 Agent 的详情。
- * hash 里的 id 经过 encodeURIComponent；其他页不认 id；hashchange 对旧版自己写入的 hash 不重复渲染。
+ * hash 里的 id 经过 encodeURIComponent，并按仓库 id 格式（26 位纯 ULID，或 3 位小写前缀 + "_" + 22 位 ULID 字符）校验，
+ * 不合法时停在 Agents 列表、不发详情请求；其他页不认 id；hashchange 对旧版自己写入的 hash 不重复渲染。
  */
+const A1 = 'agt_01M5PK6G1GPZ3APBN3QNXR'
+const A2 = '01J00000000000000000000006'
 const APP = readFileSync(new URL('../../public/app.js', import.meta.url), 'utf8')
 
 function fnSource(name: string): string | undefined {
@@ -29,7 +32,7 @@ function harness(hash = '') {
     errorCard: () => 'error',
     app: { openAgentDetail: async (id: string) => { events.push(`detail:${id}`) } },
   }
-  const fns = ['parseRoute', 'switchTab', 'onHashChange'].map(fnSource).filter(Boolean).join('\n')
+  const fns = ['isEntityId', 'parseRoute', 'switchTab', 'onHashChange'].map(fnSource).filter(Boolean).join('\n')
   const names = Object.keys(deps)
   const api = new Function(...names, `${fns}\nreturn { switchTab, onHashChange: typeof onHashChange === 'function' ? onHashChange : undefined }`)(
     ...names.map((n) => deps[n as keyof typeof deps])
@@ -40,17 +43,33 @@ function harness(hash = '') {
 describe('K-33 旧版 #agents/<id> 深链', () => {
   it('switchTab("agents/<id>") 渲染 Agents 页后打开该 Agent 详情，hash 保留 id', async () => {
     const h = harness()
-    await h.switchTab('agents/ag_1')
+    await h.switchTab(`agents/${A1}`)
     expect(h.state.tab).toBe('agents')
-    expect(h.events).toEqual(['render:agents', 'detail:ag_1'])
-    expect(h.location.hash).toBe('agents/ag_1')
+    expect(h.events).toEqual(['render:agents', `detail:${A1}`])
+    expect(h.location.hash).toBe(`agents/${A1}`)
   })
 
-  it('id 按 encodeURIComponent 编解码', async () => {
+  it('纯 ULID（seed）同样可以打开详情', async () => {
     const h = harness()
-    await h.switchTab(`agents/${encodeURIComponent('ag 中/1')}`)
-    expect(h.events).toEqual(['render:agents', 'detail:ag 中/1'])
-    expect(h.location.hash).toBe(`agents/${encodeURIComponent('ag 中/1')}`)
+    await h.switchTab(`agents/${A2}`)
+    expect(h.events).toEqual(['render:agents', `detail:${A2}`])
+  })
+
+  it.each([
+    ['含 / 的 id', `agents/${encodeURIComponent('ag 中/1')}`],
+    ['../', 'agents/../users'],
+    ['..%2F..%2F', 'agents/..%2F..%2Fusers'],
+    ['?', 'agents/x?y=1'],
+    ['#', 'agents/x#y'],
+    ['HTML', `agents/${encodeURIComponent('<img src=x onerror=alert(1)>')}`],
+    ['超长', `agents/${'A'.repeat(5000)}`],
+    ['不是本仓库格式', 'agents/ag_1'],
+  ])('非法 id（%s）：停在 Agents 列表，不发详情请求，hash 只剩 agents', async (_l, route) => {
+    const h = harness()
+    await h.switchTab(route)
+    expect(h.state.tab).toBe('agents')
+    expect(h.events).toEqual(['render:agents'])
+    expect(h.location.hash).toBe('agents')
   })
 
   it('不带 id 时只渲染列表；其他页带 id 时忽略 id；未知页回总览', async () => {
@@ -58,7 +77,7 @@ describe('K-33 旧版 #agents/<id> 深链', () => {
     expect(a.events).toEqual(['render:agents']); expect(a.location.hash).toBe('agents')
     const b = harness(); await b.switchTab('runs/xyz')
     expect(b.events).toEqual(['render:runs']); expect(b.location.hash).toBe('runs')
-    const c = harness(); await c.switchTab('nope/ag_1')
+    const c = harness(); await c.switchTab(`nope/${A1}`)
     expect(c.events).toEqual(['render:dashboard']); expect(c.location.hash).toBe('dashboard')
   })
 
@@ -69,16 +88,16 @@ describe('K-33 旧版 #agents/<id> 深链', () => {
   })
 
   it('hashchange 处理 #agents/<id>；对旧版自己刚写入的 hash 不再渲染一次', async () => {
-    const h = harness('#agents/ag_2')
+    const h = harness(`#agents/${A2}`)
     expect(h.onHashChange).toBeTypeOf('function')
     await h.onHashChange!()
-    expect(h.events).toEqual(['render:agents', 'detail:ag_2'])
-    h.location.hash = '#agents/ag_2'
+    expect(h.events).toEqual(['render:agents', `detail:${A2}`])
+    h.location.hash = `#agents/${A2}`
     await h.onHashChange!()
-    expect(h.events).toEqual(['render:agents', 'detail:ag_2'])
+    expect(h.events).toEqual(['render:agents', `detail:${A2}`])
     h.location.hash = '#agents'
     await h.onHashChange!()
-    expect(h.events).toEqual(['render:agents', 'detail:ag_2', 'render:agents'])
+    expect(h.events).toEqual(['render:agents', `detail:${A2}`, 'render:agents'])
   })
 
   it('hashchange 监听和进入应用都走带 id 的路由', () => {

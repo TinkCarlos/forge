@@ -5,6 +5,7 @@ import { Check, ExternalLink, MoreHorizontal, X, Copy } from 'lucide-react'
 import { toast } from 'sonner'
 import { onReject } from '@/lib/settle'
 import { api, ApiError } from '@/lib/api'
+import { idSeg } from '@/lib/entity-id'
 import { useCan } from '@/hooks/use-can'
 import { shortTime } from '@/lib/format'
 import { clampPage, pageCount, showPager } from '@/lib/pagination'
@@ -91,7 +92,7 @@ export function Approvals() {
 
   const decide = useMutation({
     mutationFn: (d: NonNullable<Decision>) =>
-      api(`/admin/api/approvals/${d.approval.id}/decide`, { method: 'POST', body: { decision: d.decision, comment } }),
+      api(`/admin/api/approvals/${idSeg(d.approval.id)}/decide`, { method: 'POST', body: { decision: d.decision, comment } }),
     onSuccess: (_, d) => {
       toast.success(d.decision === 'approved' ? '已批准，Run 会继续执行' : '已驳回，Run 不会执行这次调用')
       setPending(null)
