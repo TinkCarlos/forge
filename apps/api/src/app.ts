@@ -5,7 +5,7 @@ import fastifyStatic from "@fastify/static";
 import multipart from "@fastify/multipart";
 import { config } from "@forge/core";
 import type { ConnectorConfig } from "@forge/identity";
-import { installErrorHandler } from "./plugins/errors.js";
+import { frameworkErrorHandler, installErrorHandler } from "./plugins/errors.js";
 import { installCsrfHook } from "./plugins/csrf.js";
 import { installSecurityHeaders } from "./plugins/security-headers.js";
 import { installSanitizedNotFoundHandler, requestLogSerializers } from "./plugins/log-sanitize.js";
@@ -55,6 +55,8 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     requestIdHeader: "x-request-id",
     // Route input schemas (plugins/input-schema.ts): no type coercion, so 42 is not accepted as a string.
     ajv: { customOptions: AJV_CUSTOM_OPTIONS },
+    // P2-01: a malformed URL gets the unified 400 body without echoing the path (Fastify's default repeats it).
+    frameworkErrors: frameworkErrorHandler,
   });
 
   app.decorate("forgeConfig", options.config ? { ...config, ...options.config } : config);

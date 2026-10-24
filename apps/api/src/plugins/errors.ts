@@ -1,4 +1,4 @@
-import { type FastifyInstance } from "fastify";
+import { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { ForgeError } from "@forge/core";
 import { reqId } from "./http-helpers.js";
 
@@ -39,6 +39,20 @@ export function installErrorHandler(app: FastifyInstance): void {
       error: { code: "SYS-9001", message: "内部错误", requestId: reqId(request), retryable: false },
     });
   });
+}
+
+/**
+ * Fastify `frameworkErrors` (P2-01 / K26-BADURL): errors raised before routing, chiefly FST_ERR_BAD_URL for a path that
+ * cannot be percent-decoded. Fastify's default body echoes the raw path; this answers with the unified error body and
+ * nothing of the URL, path or query. Anything else raised there is a server error (no details).
+ */
+export function frameworkErrorHandler(error: { code?: string }, request: FastifyRequest, reply: FastifyReply): void {
+  if (error.code === "FST_ERR_BAD_URL") {
+    reply.status(400).send({ error: { code: "CFG-8501", message: "请求地址无法解析", requestId: reqId(request), details: null, retryable: false } });
+    return;
+  }
+  request.log.error({ code: error.code }, "framework error");
+  reply.status(500).send({ error: { code: "SYS-9001", message: "内部错误", requestId: reqId(request), retryable: false } });
 }
 
 /** Maps Fastify content-type parser / body errors to 413 OPN-4504, 415 OPN-4505 or 400 CFG-8501. */
