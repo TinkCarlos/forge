@@ -190,6 +190,7 @@ describe("audit details are masked before they are written", () => {
     expect(ok.statusCode).toBe(200);
     const details = (await latestAudit("role_mapping.upsert", null)) as Record<string, unknown>;
     assertNoPlaintext(details);
-    expect(details).toEqual({ agentRoleCode: roleCode, agentRoleName: "IT mask", localRole: "user" });
+    // P3-10: the request keys (ip / userAgent / requestId) are the only additions.
+    expect(details).toEqual({ agentRoleCode: roleCode, agentRoleName: "IT mask", localRole: "user", ip: "127.0.0.1", userAgent: expect.any(String), requestId: expect.any(String) });
   });
 });

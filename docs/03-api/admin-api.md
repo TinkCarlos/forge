@@ -16,6 +16,7 @@
 - OIDC 登录回跳（当前实现，S-30）：`GET /auth/oidc/login?returnTo=` 和回调里的 `returnTo` 只接受本站路径：必须以单个 `/` 开头，不能以 `//`、`/\` 开头（百分号解码一次后同样检查，如 `/%2F%2Fevil.example`），不能含控制字符，且 `new URL(returnTo, FORGE_PUBLIC_URL)` 的 origin 必须等于本站；任一条不满足都回落到 `/next/`。
 - 所有变更写审计；响应头返回 `X-Request-Id`。
 - 部门子树（AB，I-SCOPE-13 / I-SCOPE-14）：`orgSubtreeIds` 按路径字面匹配（`path = ? OR path LIKE ? ESCAPE '!'`，参数里的 `!`、`%`、`_` 先转义，后缀固定带 `/`），部门 key 里的 `_`、`%` 不再是通配符，`/a/b` 不会匹配 `/a/bc`，子部门 `/a/b/c` 仍在范围内；部门链启用检查同样按 `/` 分隔判断祖先。
+- 审计请求信息（当前实现，P3-10）：处理请求期间写的每条审计，`details_json` 里额外带 `ip`、`userAgent`（最多 512 个字符，超出截断；没有该请求头为 `null`）、`requestId`（即响应头 `X-Request-Id` 的值）三个键，不新增列、不迁移；与调用方传入的同名键冲突时以这三个值为准。`ip` 取 `request.ip`：默认不信任代理，`X-Forwarded-For` 被忽略（防止伪造），只有以 `trustProxy` 选项构建应用时才按 `X-Forwarded-For` 取客户端地址（目前只能在代码里设置，尚无环境变量）。请求之外写的审计（Runtime、脚本）不带这三个键。
 - 补齐的审计 action（Y，当前实现）：`auth.logout`（有有效会话时才写，actor 为该用户；写审计失败不影响登出）、`schedule.enable`、`schedule.disable`、`open.run.cancel`（actor 为应用）、`integration.run.create`、`integration.run.cancel`（actor 为映射用户）。只在操作成功后写；409 等失败不写。
 - 管理 API **不向 Agent Connector 入站开放**；集成调用使用专用 `/integration/v1`，见 [sso-and-connector.md](../02-architecture/sso-and-connector.md)。
 

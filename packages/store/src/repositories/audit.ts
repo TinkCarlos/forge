@@ -1,4 +1,5 @@
 import { ulidWithPrefix } from "@forge/core";
+import { withAuditRequestDetails } from "../audit-context.js";
 import { execute, json, one, query } from "../db.js";
 import { AUDIT_ORG_SOURCES, assertDeleteAuditOrgUnit, buildAuditListQuery, type AuditListScope } from "./audit-scope-sql.js";
 
@@ -21,13 +22,14 @@ export const auditRepo = {
    * Writes one audit row. orgUnitId = the resource's department: pass it when known (including an explicit null);
    * when omitted it is resolved from resourceType/resourceId (AUDIT_ORG_SOURCES), never from the actor.
    * Delete-class actions (DELETE_CLASS_AUDIT_ACTION) must pass it explicitly; omitting it throws.
+   * P3-10: inside a request, details_json also gets ip / userAgent / requestId (audit-context.ts).
    */
   async audit(input: { actorType: string; actorId?: string | null; action: string; resourceType: string; resourceId?: string | null; details?: unknown; orgUnitId?: string | null }): Promise<void> {
     assertDeleteAuditOrgUnit(input);
     const orgUnitId = input.orgUnitId !== undefined ? input.orgUnitId : await resolveAuditOrgUnit(input.resourceType, input.resourceId);
     await execute(
       "INSERT INTO audit_logs (id, actor_type, actor_id, action, resource_type, resource_id, org_unit_id, details_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-      [ulidWithPrefix("aud"), input.actorType, input.actorId ?? null, input.action, input.resourceType, input.resourceId ?? null, orgUnitId, json(input.details ?? {})],
+      [ulidWithPrefix("aud"), input.actorType, input.actorId ?? null, input.action, input.resourceType, input.resourceId ?? null, orgUnitId, json(withAuditRequestDetails(input.details))],
     );
   },
   /** I-SCOPE-13/14: the scope is mandatory (permissions.md 4.5, no unfiltered list). Build it with governance auditFilterFor. */

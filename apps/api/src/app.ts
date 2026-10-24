@@ -5,6 +5,7 @@ import fastifyStatic from "@fastify/static";
 import multipart from "@fastify/multipart";
 import { config } from "@forge/core";
 import type { ConnectorConfig } from "@forge/identity";
+import { auditUserAgent, runWithAuditContext } from "@forge/store";
 import { frameworkErrorHandler, installErrorHandler } from "./plugins/errors.js";
 import { installCsrfHook } from "./plugins/csrf.js";
 import { installSecurityHeaders } from "./plugins/security-headers.js";
@@ -31,6 +32,11 @@ export interface BuildAppOptions {
   logger?: FastifyServerOptions["logger"];
   /** Test hook: overrides merged over @forge/core config. Omit for default (env-driven) behavior. */
   config?: AppConfigOverrides;
+  /**
+   * P3-10: Fastify trustProxy. Default false: request.ip is the socket address and X-Forwarded-For is ignored (a
+   * client could forge it). Set only when the API runs behind a known reverse proxy.
+   */
+  trustProxy?: FastifyServerOptions["trustProxy"];
 }
 
 /**
@@ -52,6 +58,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       },
     ),
     bodyLimit: 2 * 1024 * 1024,
+    trustProxy: options.trustProxy ?? false,
     requestIdHeader: "x-request-id",
     // Route input schemas (plugins/input-schema.ts): no type coercion, so 42 is not accepted as a string.
     ajv: { customOptions: AJV_CUSTOM_OPTIONS },
@@ -64,6 +71,11 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   app.removeContentTypeParser("text/plain");
 
   app.decorate("forgeConfig", options.config ? { ...config, ...options.config } : config);
+
+  // P3-10: audit rows written while serving this request carry ip / userAgent (<= 512) / requestId in details_json.
+  app.addHook("preHandler", (request, _reply, done) => {
+    runWithAuditContext({ ip: request.ip ?? null, userAgent: auditUserAgent(request.headers["user-agent"]), requestId: String(request.id) }, done);
+  });
 
   installSecurityHeaders(app);
   await app.register(cookie);
