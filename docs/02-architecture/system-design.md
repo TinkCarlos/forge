@@ -292,7 +292,7 @@ queued ──▶ running ──▶ succeeded
 - 未落库的模型调用至少再执行一次，并写事件 `model.retried`。工具幂等键为 `runId:toolCallId`（`tool_calls.idempotency_key`）。
 - 低/中风险工具按 `limits.maxParallelTools` 并行；高风险工具仍串行审批。执行前再次确认工具仍在该 Run 的工具快照内。
 - 上下文超过 `limits.maxContextTokens` 时裁剪旧工具/助手正文，保留 system 与最近消息，事件 `context.compressed`。正文仍在 MySQL，不进调度历史。
-- 模型流式增量写入 `run_events.message.delta`。SSE 继续按 `Last-Event-ID` 从 MySQL 续传。Redis Stream 仍是多实例目标形态。
+- P1 起模型流式增量不再写入 `run_events`（不落库、不下发 `message.delta`），只写打码后的 `message.completed`；旧 delta 行读取时过滤。SSE 继续按 `Last-Event-ID` 从 MySQL 续传，所有事件读取时再过 `maskArgsDeep`。Redis Stream 仍是多实例目标形态。
 - 主模型遇到可重试错误（429/5xx/超时）按 `MODEL_MAX_ATTEMPTS` 重试，然后使用 `model.fallbackProvider` / `model.fallbackModel`。
 - 结构化输出校验失败时，把错误喂回模型，最多 `limits.maxOutputRetries` 次，最终失败码 `OUT-6001`。
 - 单进程同时执行的 Run 数由 `MAX_CONCURRENT_RUNS` 限制，默认 2。

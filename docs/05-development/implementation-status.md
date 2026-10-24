@@ -29,7 +29,7 @@
 - Agent 草稿与发布版本；运行固定版本；spec 支持 model/skills/toolsets/limits/approval/output schema。
 - Provider：`mock` 离线模型 + `openai-compatible`；模型目录、能力、上下文、价格字段；API Key AES-256-GCM 加密。
 - 运行循环：系统提示 + Skill 注入 + 工具调用 + 工具结果回填 + 最大步数 + 成本上限 + JSON Schema 输出校验与修复重试。
-- 运行时加固：MySQL 租约认领与过期续跑、`run_steps`、流式 `message.delta`、低/中风险工具并行、上下文压缩、主模型可重试错误后的 fallback。编排仍是 MySQL 队列，不是 Temporal。
+- 运行时加固：MySQL 租约认领与过期续跑、`run_steps`、`message.delta` 已停用（P1：只落库/下发打码后的 `message.completed`）、低/中风险工具并行、上下文压缩、主模型可重试错误后的 fallback。编排仍是 MySQL 队列，不是 Temporal。
 - 运行数据：threads、runs、messages、tool_calls、approvals、run_events、run_steps，全部 MySQL。
 - 后台：API 内嵌 worker（`EMBEDDED_WORKER=true`）或独立 `apps/worker`；MySQL 队列轮询，单进程并发由 `MAX_CONCURRENT_RUNS` 限制。
 

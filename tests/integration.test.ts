@@ -226,13 +226,13 @@ describe("runtime hardening", () => {
     expect(finalText).toContain("工具执行完成");
   });
 
-  it("streams more than one delta and resumes after Last-Event-ID", async () => {
+  it("writes no message.delta (P1) and resumes after Last-Event-ID", async () => {
     const runId = await makeRun({ model: { provider: "mock", model: "mock-1" }, limits: { maxSteps: 2 } }, "hello stream");
     await executeRun(runId);
     const events = await repos.listEvents(runId, 0);
-    const deltas = events.filter((event) => event.type === "message.delta");
-    expect(deltas.length).toBeGreaterThanOrEqual(2);
-    const seqs = deltas.map((event) => Number(event.seq));
+    expect(events.filter((event) => event.type === "message.delta")).toEqual([]);
+    expect(events.some((event) => event.type === "message.completed")).toBe(true);
+    const seqs = events.map((event) => Number(event.seq));
     expect(seqs).toEqual([...seqs].sort((left, right) => left - right));
     const first = seqs[0] ?? 0;
     const replay = await repos.listEvents(runId, first);

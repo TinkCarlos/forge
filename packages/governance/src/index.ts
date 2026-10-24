@@ -97,4 +97,3 @@ export { buildArgsPreview, isHttpUrl, isSecretValue, isSensitiveKey, keySegments
 export { assertCanGrant, assertCanManageUser, canSeeUser, grantDefaultDataScope, loadVisibleUserOr404, userFilterFor, USER_DATA_SCOPES } from "./user-admin.js";
 export { maskArgsDeep, MASK_ARGS_MAX_DEPTH } from "./mask-args.js";
 export { maskProseSecrets } from "./sensitive.js";
-export { createStreamMasker, STREAM_MASK_HOLD_MAX, type StreamMasker } from "./stream-mask.js";

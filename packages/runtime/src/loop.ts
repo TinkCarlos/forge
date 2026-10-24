@@ -14,7 +14,7 @@ import { emit } from "./events.js";
 import { claimRun, currentWorkerId } from "./lease.js";
 import { leaseTiming } from "./lease-timing.js";
 import { appendMessage, messageOf } from "./messages.js";
-import { createDeltaBuffer, decideAfterModelError, modelCandidates } from "./model-loop.js";
+import { decideAfterModelError, modelCandidates } from "./model-loop.js";
 import { repairCount, repairMessage, validateOutput } from "./output.js";
 import { assertLeaseHeld, LeaseLostError, settleToolCalls, toolIdempotencyKey } from "./tools.js";
 import { deliverDueWebhooks, enqueueRunWebhook } from "./webhook.js";
@@ -141,9 +141,6 @@ async function runLoop(run: RunRow, workerId: string, lease: AbortSignal): Promi
         type: "call_model",
         summary: { modelKey: `${candidate.provider}/${candidate.model}`, attempt },
       });
-      const deltas = createDeltaBuffer(async (delta) => {
-        await emit(fresh.id, "message.delta", { delta, masked: true });
-      });
       try {
         result = await callModel({
           providerKey: candidate.provider,
@@ -152,12 +149,10 @@ async function runLoop(run: RunRow, workerId: string, lease: AbortSignal): Promi
           tools: [...tools.values()].map((tool) => tool.definition),
           temperature: spec.model.temperature,
           maxTokens: spec.model.maxTokens,
-          onDelta: (delta) => deltas.push(delta),
           signal: lease,
         });
         // P3-09: a result that arrives after the lease was lost is dropped; the step stays running for the next owner.
         assertLeaseHeld(lease);
-        await deltas.end();
         await repos.finishRunStep(stepId, {
           status: "succeeded",
           summary: { modelKey: `${candidate.provider}/${candidate.model}`, attempt },
@@ -169,7 +164,6 @@ async function runLoop(run: RunRow, workerId: string, lease: AbortSignal): Promi
         break;
       } catch (error) {
         assertLeaseHeld(lease);
-        await deltas.end();
         const forgeError = error instanceof ForgeError ? error : errors.model(String(error));
         lastError = forgeError;
         await repos.finishRunStep(stepId, {

@@ -1,5 +1,4 @@
 import type { AgentSpec } from "@forge/core";
-import { createStreamMasker } from "@forge/governance";
 
 export interface ModelCandidate {
   provider: string;
@@ -28,24 +27,12 @@ export function decideAfterModelError(state: {
   return { kind: "fail" };
 }
 
-/**
- * Streamed model text -> message.delta chunks. P1: the text is masked before it is chunked (createStreamMasker: the
- * accumulated message masked with maskArgsDeep, only the stable prefix released), so no clear-text credential reaches
- * run_events or the SSE stream. Chunks never cut a `***` placeholder (a run of `*`) or a surrogate pair.
- */
 export function createDeltaBuffer(flush: (delta: string) => Promise<void>, size = 24) {
   let pending = "";
-  const masker = createStreamMasker();
-  const cutAt = (text: string): number => {
-    let cut = size;
-    while (cut < text.length && ((text[cut - 1] === "*" && text[cut] === "*") || /[\uD800-\uDBFF]/.test(text[cut - 1]!))) cut += 1;
-    return cut;
-  };
   const flushPending = async (force: boolean): Promise<void> => {
     while (pending.length >= size) {
-      const cut = cutAt(pending);
-      const chunk = pending.slice(0, cut);
-      pending = pending.slice(cut);
+      const chunk = pending.slice(0, size);
+      pending = pending.slice(size);
       await flush(chunk);
     }
     if (force && pending.length > 0) {
@@ -56,11 +43,10 @@ export function createDeltaBuffer(flush: (delta: string) => Promise<void>, size 
   };
   return {
     push: async (delta: string): Promise<void> => {
-      pending += masker.push(delta);
+      pending += delta;
       await flushPending(false);
     },
     end: async (): Promise<void> => {
-      pending += masker.end();
       await flushPending(true);
     },
   };
