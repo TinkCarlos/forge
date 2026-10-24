@@ -25,6 +25,8 @@ async function connectorUser(request: FastifyRequest): Promise<Principal> {
 export default async function integrationRoutes(app: FastifyInstance): Promise<void> {
   app.get("/integration/v1/agents", async (request) => {
     const principal = await connectorUser(request);
+    // F9: functional permission first (403 POL-2001), then the scope filter below (unchanged).
+    assertPermission(principal, "agent.view");
     // I-INT-17: same visibility as agentAccessible (mapped user's department subtree + unowned); disabled Agents are
     // not runnable, so they are not listed either.
     const agents = await repos.listAgents(await visibleAgentOrgIds(principal));
@@ -63,6 +65,8 @@ export default async function integrationRoutes(app: FastifyInstance): Promise<v
 
   app.get("/integration/v1/runs/:id", async (request) => {
     const principal = await connectorUser(request);
+    // F9: run.view first (403 POL-2001, also before 404); assertRunAccess (scope) stays.
+    assertPermission(principal, "run.view");
     const run = await repos.getRun(param(request, "id"));
     await assertRunAccess(principal, run);
     return presentRun(run!);
@@ -70,6 +74,8 @@ export default async function integrationRoutes(app: FastifyInstance): Promise<v
 
   app.get("/integration/v1/runs/:id/result", async (request) => {
     const principal = await connectorUser(request);
+    // F9: run.view first (403 POL-2001, also before 404); assertRunAccess (scope) stays.
+    assertPermission(principal, "run.view");
     const run = await repos.getRun(param(request, "id"));
     await assertRunAccess(principal, run);
     if (!["succeeded", "failed", "cancelled", "budget_exhausted"].includes(run!.status)) throw new ForgeError("RUN-7002", "Run 尚未结束", 409, { status: run!.status });
