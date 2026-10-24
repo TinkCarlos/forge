@@ -8,7 +8,7 @@ export default defineConfig({
   resolve: base.resolve,
   test: {
     environment: "node",
-    include: ["tests/config-required.test.ts", "tests/tick-backoff.test.ts", "tests/env-mode-callsites.test.ts", "tests/log-sanitize.test.ts", "tests/not-found-console.test.ts", "tests/approval-decide-execute-reject.test.ts", "tests/static-upgrade.test.ts", "tests/config-hardening.test.ts", "tests/audit-scope.test.ts", "tests/input-schema.test.ts", "apps/console/src/legacy/app-inline-handlers.test.ts", "tests/run-result-masking.test.ts", "tests/audit-delete-org.test.ts", "tests/session-ttl-config.test.ts", "tests/route-body-schema-guard.test.ts", "tests/audit-delete-guard.test.ts"],
+    include: ["tests/config-required.test.ts", "tests/tick-backoff.test.ts", "tests/env-mode-callsites.test.ts", "tests/log-sanitize.test.ts", "tests/not-found-console.test.ts", "tests/approval-decide-execute-reject.test.ts", "tests/static-upgrade.test.ts", "tests/config-hardening.test.ts", "tests/audit-scope.test.ts", "tests/input-schema.test.ts", "apps/console/src/legacy/app-inline-handlers.test.ts", "apps/console/src/legacy/schedule-patch-status.test.ts", "tests/run-result-masking.test.ts", "tests/audit-delete-org.test.ts", "tests/session-ttl-config.test.ts", "tests/route-body-schema-guard.test.ts", "tests/audit-delete-guard.test.ts"],
     pool: "forks",
   },
 });

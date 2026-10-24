@@ -782,7 +782,7 @@ const app = {
         ${field("时区", "timezone", schedule.timezone)}
         <div class="full">${textarea("输入 JSON", "input", JSON.stringify(schedule.input_json ?? {}, null, 2), 5)}</div>
       </div>`, async (data) => {
-      await api(`/admin/api/schedules/${id}`, { method: "PATCH", body: { name: data.get("name"), cron: data.get("cron"), timezone: data.get("timezone"), input: parseJsonField(data, "input", {}), status: schedule.status } });
+      await api(`/admin/api/schedules/${id}`, { method: "PATCH", body: { name: data.get("name"), cron: data.get("cron"), timezone: data.get("timezone"), input: parseJsonField(data, "input", {}) } });
       toast("定时任务已更新");
       await renderSchedules();
     });
