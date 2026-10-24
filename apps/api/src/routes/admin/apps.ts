@@ -93,7 +93,7 @@ export default async function adminAppRoutes(app: FastifyInstance): Promise<void
       webhookUrl: webhookUrlOf(body),
       webhookSecretEncrypted: webhookSecret ? encryptSecret(webhookSecret, config.FORGE_MASTER_KEY) : null,
       rateLimitPerMinute: body.rateLimitPerMinute === undefined ? 60 : Number(body.rateLimitPerMinute), // schema: integer 1..100000
-      dailyQuota: Number(body.dailyQuota ?? 1000),
+      dailyQuota: body.dailyQuota === undefined ? 1000 : Number(body.dailyQuota), // schema: integer 1..10000000
       createdBy: session.principal.id,
     });
     await writeAudit(session, "app.create", "api_app", appId, { key });

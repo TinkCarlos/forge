@@ -62,6 +62,8 @@ const bool = { type: "boolean" } as const;
 const int = (minimum: number, maximum: number) => ({ type: "integer", minimum, maximum }) as const;
 /** N-02 I-APP-03: requests per minute; 0 is not documented as "unlimited", so it is rejected. */
 const RATE_LIMIT_PER_MINUTE = int(1, 100_000);
+// P2 (QA 714b3f3 §4 P3-4): runs per app per day; integer, no negatives / NaN / null. 0 rejected (meaning undocumented).
+const DAILY_QUOTA = int(1, 10_000_000);
 /** N-03 I-MDL-04: provider request timeout in ms (default 120000 when omitted). */
 const PROVIDER_TIMEOUT_MS = int(1_000, 600_000);
 const jsonObject = (maxLength: number) => ({ type: ["object", "string"], maxLength }) as const;
@@ -106,10 +108,10 @@ export const ROUTE_SCHEMAS = {
   agentRun: { body: obj({ versionId: str(ID_MAX), text: str(MIB), input: runInput, threadId: str(ID_MAX) }) },
   // api_apps: key 64, name 128, description 1024, status 16, webhook_url 2048; api_keys.name 128
   appCreate: {
-    body: obj({ key: str(64), name: str(128), description: str(1024), scopes: arr(32, str(64)), webhookUrl: str(2048), webhookSecret: str(4096), rateLimitPerMinute: RATE_LIMIT_PER_MINUTE, dailyQuota: num }),
+    body: obj({ key: str(64), name: str(128), description: str(1024), scopes: arr(32, str(64)), webhookUrl: str(2048), webhookSecret: str(4096), rateLimitPerMinute: RATE_LIMIT_PER_MINUTE, dailyQuota: DAILY_QUOTA }),
   },
   appPatch: {
-    body: obj({ name: str(128), description: str(1024), status: str(16), scopes: arr(32, str(64)), webhookUrl: str(2048), webhookSecret: str(4096), rateLimitPerMinute: RATE_LIMIT_PER_MINUTE, dailyQuota: num }),
+    body: obj({ name: str(128), description: str(1024), status: str(16), scopes: arr(32, str(64)), webhookUrl: str(2048), webhookSecret: str(4096), rateLimitPerMinute: RATE_LIMIT_PER_MINUTE, dailyQuota: DAILY_QUOTA }),
   },
   apiKeyCreate: { body: obj({ name: str(128) }) },
   // service_accounts: key 64, name 128, description 1024, role 32, data_scope 32, status 16
