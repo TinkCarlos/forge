@@ -149,6 +149,9 @@ export function isValidTimezone(timezone: string): boolean {
 }
 
 export function isValidCron(cron: string, timezone: string): boolean {
+  // F2: standard 5-field cron only (minute hour day month weekday). The parser also takes 6-field (seconds) and pads
+  // short expressions, which the scheduler and the console do not support; empty / 4-field / 6-field -> invalid.
+  if (cron.trim().split(/\s+/).filter(Boolean).length !== 5) return false;
   try {
     CronExpressionParser.parse(cron, { currentDate: new Date(), tz: timezone }).next();
     return true;

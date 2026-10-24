@@ -15,7 +15,7 @@ import {
   agentAccessible,
   requireBodyString,
 } from "../../plugins/http-helpers.js";
-import { ROUTE_SCHEMAS, SCHEDULE_STATUSES, assertScheduleTiming, assertValidInput } from "../../plugins/input-schema.js";
+import { ROUTE_SCHEMAS, assertScheduleTiming, assertValidInput } from "../../plugins/input-schema.js";
 
 /** A schedule's service account must exist, be visible to the caller (own department or a sub-department unless dataScope all), be active and not platform_admin. */
 async function requireUsableServiceAccount(principal: Principal, id: string) {
@@ -126,10 +126,14 @@ export default async function adminScheduleRoutes(app: FastifyInstance): Promise
 
   scheduleByIdRoute(app, "PATCH", "", "schedule.manage", async ({ request, session, schedule }) => {
     const body = bodyOf(request);
-    // K-24 / I-ERR-22: every field is validated before anything is stored; cron and timezone are always checked
-    // (effective values, so a timezone-only change is checked against the stored cron and vice versa), whatever status.
+    // F3 (P1): status is not editable here; enabling / disabling only through /enable (stored cron, SCD-4801 service
+    // account, next_run_at) and /disable. Any status in the body -> 400 CFG-8501, nothing stored.
+    if (body.status !== undefined) throw errors.invalid("status 不能通过 PATCH 修改，请使用 /enable 或 /disable", { field: "status" });
+    // K-24 / I-ERR-22 / F2: every field is validated before anything is stored. Cron and timezone go through the same
+    // check as create and /enable (assertScheduleTiming: 5-field cron only), on the effective values, so a
+    // timezone-only change is checked against the stored cron and vice versa.
     assertValidInput(request);
-    const input = body as { cron?: string; timezone?: string; status?: (typeof SCHEDULE_STATUSES)[number] };
+    const input = body as { cron?: string; timezone?: string };
     const cron = input.cron ?? String(schedule.cron);
     const timezone = input.timezone ?? String(schedule.timezone);
     if (input.cron !== undefined || input.timezone !== undefined) assertScheduleTiming(cron, timezone);
@@ -138,9 +142,8 @@ export default async function adminScheduleRoutes(app: FastifyInstance): Promise
     if (body.cron !== undefined) fields.cron = stringBody(body, "cron");
     if (body.timezone !== undefined) fields.timezone = stringBody(body, "timezone");
     if (body.input !== undefined) fields.input_json = jsonBody(body, "input", {});
-    if (body.status !== undefined) fields.status = stringBody(body, "status");
     if (body.serviceAccountId !== undefined) fields.service_account_id = (await requireUsableServiceAccount(session.principal, requireBodyString(body, "serviceAccountId"))).id;
-    if ((input.cron !== undefined || input.timezone !== undefined) && (input.status ?? schedule.status) === "active") {
+    if ((input.cron !== undefined || input.timezone !== undefined) && schedule.status === "active") {
       fields.next_run_at = CronExpressionParser.parse(cron, { currentDate: new Date(), tz: timezone }).next().toDate();
     }
     await repos.updateSchedule(schedule.id as string, fields);
