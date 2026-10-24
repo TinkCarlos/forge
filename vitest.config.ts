@@ -1,4 +1,4 @@
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 import path from "node:path";
 
 const root = import.meta.dirname;
@@ -21,6 +21,8 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    // P3-08: console tests run with apps/console/vitest.config.ts (pnpm --filter console test), not in this node + DB run.
+    exclude: [...configDefaults.exclude, "apps/console/**"],
     globalSetup: ["tests/global-setup.ts"],
     env: { DATABASE_URL: testDatabaseUrl },
     testTimeout: 30000,
