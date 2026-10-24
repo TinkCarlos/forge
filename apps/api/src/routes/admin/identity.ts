@@ -7,7 +7,7 @@ import {
   type Role,
   USER_STATUSES,
 } from "@forge/core";
-import { assertCanGrant, assertCanManageUser, auditFilterFor, grantDefaultDataScope, loadVisibleUserOr404, maskArgsDeep, userFilterFor } from "@forge/governance";
+import { assertCanGrant, assertCanManageUser, assertOrgWritable, auditFilterFor, grantDefaultDataScope, loadVisibleUserOr404, maskArgsDeep, userFilterFor } from "@forge/governance";
 import { oidcConfigured } from "@forge/identity";
 import { repos, userUpdateAuditEntries, type UserRow } from "@forge/store";
 import {
@@ -20,6 +20,8 @@ import {
   enumBody,
 } from "../../plugins/http-helpers.js";
 import { ROUTE_SCHEMAS, assertValidInput, limitParam } from "../../plugins/input-schema.js";
+
+const PLATFORM_WRITE_MESSAGE = "平台级资源仅数据范围为全部（all）的管理员可修改";
 
 /**
  * User list DTO (I-USR-01): explicit whitelist instead of spreading the row. Field names stay snake_case because the
@@ -116,6 +118,8 @@ export default async function adminIdentityRoutes(app: FastifyInstance): Promise
 
   app.post("/admin/api/role-mappings", { schema: ROUTE_SCHEMAS.roleMappingUpsert, attachValidation: true }, async (request) => {
     const session = await admin(request, "sso.manage");
+    // P3 / P0-03 pattern: oidc_role_mappings is platform-wide (no department column) -> needs dataScope=all.
+    await assertOrgWritable(session.principal, null, PLATFORM_WRITE_MESSAGE);
     assertValidInput(request);
     const body = bodyOf(request);
     await repos.upsertRoleMapping(requireBodyString(body, "agentRoleCode"), stringBody(body, "agentRoleName"), requireBodyString(body, "localRole"));
