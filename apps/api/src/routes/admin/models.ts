@@ -1,5 +1,5 @@
 import { type FastifyInstance } from "fastify";
-import { ENV_REF_CODE, assertNoEnvRefs, assertOutboundUrlStatic, config, encryptSecret, errors, ForgeError, OUTBOUND_BLOCKED_CODE } from "@forge/core";
+import { ENV_REF_CODE, assertNoEnvRefs, assertOutboundUrlStatic, config, encryptSecret, errors, ForgeError, OUTBOUND_BLOCKED_CODE, storedJsonValue } from "@forge/core";
 import { callModel } from "@forge/models";
 import { assertOrgWritable } from "@forge/governance";
 import { repos } from "@forge/store";
@@ -35,7 +35,7 @@ export default async function adminModelRoutes(app: FastifyInstance): Promise<vo
           id: model.id,
           key: model.key,
           displayName: model.display_name,
-          capabilities: model.capabilities_json,
+          capabilities: model.capabilities_json == null ? null : storedJsonValue(model.capabilities_json, { table: "llm_models", column: "capabilities_json", id: String(model.id) }, "stringArray"),
           contextWindow: model.context_window,
           maxOutputTokens: model.max_output_tokens,
         })),
@@ -79,7 +79,7 @@ export default async function adminModelRoutes(app: FastifyInstance): Promise<vo
       providerId: provider.id,
       key: requireBodyString(body, "key"),
       displayName: stringBody(body, "displayName", stringBody(body, "key")),
-      capabilities: jsonBody(body, "capabilities", ["text", "tools"]),
+      capabilities: jsonBody(body, "capabilities", ["text", "tools"], "stringArray"),
       contextWindow: Number(body.contextWindow ?? 32768),
       maxOutputTokens: Number(body.maxOutputTokens ?? 4096),
       inputPrice: Number(body.inputPrice ?? 0),
@@ -122,7 +122,7 @@ export default async function adminModelRoutes(app: FastifyInstance): Promise<vo
     const body = bodyOf(request);
     const fields: Record<string, unknown> = {};
     if (body.displayName !== undefined) fields.display_name = stringBody(body, "displayName");
-    if (body.capabilities !== undefined) fields.capabilities_json = jsonBody(body, "capabilities", []);
+    if (body.capabilities !== undefined) fields.capabilities_json = jsonBody(body, "capabilities", [], "stringArray");
     if (body.contextWindow !== undefined) fields.context_window = Number(body.contextWindow);
     if (body.maxOutputTokens !== undefined) fields.max_output_tokens = Number(body.maxOutputTokens);
     if (body.inputPrice !== undefined) fields.input_price_per_mtok = Number(body.inputPrice);

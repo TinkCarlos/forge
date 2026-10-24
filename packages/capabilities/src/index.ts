@@ -339,6 +339,8 @@ export async function executeOpenApiTool(input: {
 export async function resolveTools(spec: AgentSpec): Promise<Map<string, ResolvedTool>> {
   const tools = new Map<string, ResolvedTool>();
   const builtins = builtinTools();
+  // Item A: MCP servers installed by a plugin with an invalid manifest are not loaded (no tools, so no calls either).
+  const unusable = (spec.toolsets ?? []).some((toolset) => "mcp" in toolset) ? (await repos.unusablePluginResourceIds()).mcp : new Set<string>();
   for (const toolset of spec.toolsets ?? []) {
     if ("builtin" in toolset) {
       for (const name of toolset.builtin) {
@@ -348,7 +350,7 @@ export async function resolveTools(spec: AgentSpec): Promise<Map<string, Resolve
     }
     if ("mcp" in toolset) {
       const server = await repos.getMcpServerByKey(toolset.mcp);
-      if (!server) continue;
+      if (!server || unusable.has(String(server.id))) continue;
       const allowed = toolset.allow;
       const rows = await repos.listMcpToolsByServerKey(toolset.mcp);
       for (const row of rows) {

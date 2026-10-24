@@ -32,3 +32,31 @@ export function storedJsonObject(raw: unknown, ref: StoredJsonRef, warn: StoredJ
   warn({ level: "warn", msg: "stored JSON is not an object, using {}", table: ref.table, column: ref.column, id: ref.id });
   return {};
 }
+
+/** Item A: the shape a JSON field must have (input: object or array; manifest / resources: object; capabilities: string[]). */
+export type JsonShape = "object" | "stringArray" | "objectOrArray";
+
+export function jsonShapeMatches(value: unknown, shape: JsonShape): boolean {
+  if (shape === "stringArray") return Array.isArray(value) && value.every((item) => typeof item === "string");
+  return isObject(value) || (shape === "objectOrArray" && Array.isArray(value));
+}
+
+/**
+ * Item A: storedJsonObject for any JsonShape. A value of the wrong shape (or text that does not parse to it) is {}
+ * ([] for stringArray) with one warning naming table, column and id only. null / undefined → the same default, no warning.
+ */
+export function storedJsonValue(raw: unknown, ref: StoredJsonRef, shape: JsonShape, warn: StoredJsonWarn = defaultWarn): unknown {
+  const empty = shape === "stringArray" ? [] : {};
+  if (raw === null || raw === undefined) return empty;
+  let value: unknown = raw;
+  if (typeof value === "string") {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      value = undefined;
+    }
+  }
+  if (jsonShapeMatches(value, shape)) return value;
+  warn({ level: "warn", msg: `stored JSON is not ${shape}, using ${JSON.stringify(empty)}`, table: ref.table, column: ref.column, id: ref.id });
+  return empty;
+}

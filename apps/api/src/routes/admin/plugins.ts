@@ -34,10 +34,10 @@ const list = (value: unknown): Record<string, unknown>[] => (Array.isArray(value
 
 /** S-29: every value the install uses, read and checked up front (throws 400 before anything is created). */
 function planPluginInstall(body: Record<string, unknown>): PluginInstallPlan {
-  const resources = asRecord(jsonBody(body, "resources", {}));
+  const resources = asRecord(jsonBody(body, "resources", {}, "object"));
   const key = requireBodyString(body, "key");
   const plan: PluginInstallPlan = {
-    plugin: { key, version: stringBody(body, "version", "1.0.0"), type: stringBody(body, "type", "mixed"), name: stringBody(body, "name", key), manifest: jsonBody(body, "manifest", {}) },
+    plugin: { key, version: stringBody(body, "version", "1.0.0"), type: stringBody(body, "type", "mixed"), name: stringBody(body, "name", key), manifest: jsonBody(body, "manifest", {}, "object") },
     agents: list(resources.agents).map((agent) => {
       const agentKey = requireBodyString(agent, "key");
       return { key: agentKey, name: stringBody(agent, "name", agentKey), description: stringBody(agent, "description"), version: stringBody(agent, "version", "1.0.0"), instructions: stringBody(agent, "instructions", "You are a helpful assistant."), spec: jsonObjectBody(agent, "spec", {}) };
@@ -62,7 +62,7 @@ function planPluginInstall(body: Record<string, unknown>): PluginInstallPlan {
       assertNoEnvRefs({ headers, apiKey: provider.apiKey });
       const models = list(provider.models).map((model) => {
         const modelKey = requireBodyString(model, "key");
-        return { key: modelKey, displayName: stringBody(model, "displayName", modelKey), capabilities: jsonBody(model, "capabilities", ["text", "tools"]) };
+        return { key: modelKey, displayName: stringBody(model, "displayName", modelKey), capabilities: jsonBody(model, "capabilities", ["text", "tools"], "stringArray") };
       });
       return { key: providerKey, name: stringBody(provider, "name", providerKey), protocol: stringBody(provider, "protocol", "openai-compatible"), baseUrl, apiKey: stringBody(provider, "apiKey"), headers, models };
     }),

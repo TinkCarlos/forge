@@ -1,6 +1,6 @@
 import { CronExpressionParser } from "cron-parser";
-import { errors, ForgeError, normalizeCron, type DataScope, type Principal, type Role } from "@forge/core";
-import { parseJsonValue, repos, type ServiceAccountRow } from "@forge/store";
+import { errors, ForgeError, normalizeCron, storedJsonValue, type DataScope, type Principal, type Role } from "@forge/core";
+import { repos, type ServiceAccountRow } from "@forge/store";
 import { createQueuedRun } from "./loop.js";
 
 /** Schedule paused because its identity/Agent is unusable (service account disabled, Agent disabled/unpublished, no permission). */
@@ -128,7 +128,7 @@ export async function triggerSchedule(schedule: Record<string, unknown>, now = n
       agentId,
       versionId: agent.published_version_id,
       principal,
-      input: parseJsonValue(schedule.input_json, { text: `Scheduled run: ${String(schedule.name)}` }),
+      input: schedule.input_json == null ? { text: `Scheduled run: ${String(schedule.name)}` } : storedJsonValue(schedule.input_json, { table: "schedules", column: "input_json", id: String(schedule.id) }, "object"),
       triggerType: "schedule",
       triggerRef: scheduleId,
     });

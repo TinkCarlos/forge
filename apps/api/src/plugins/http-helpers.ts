@@ -4,7 +4,9 @@ import {
   asString,
   config,
   errors,
-  parseJson,
+  jsonShapeMatches,
+  storedJsonValue,
+  type JsonShape,
   ROLE_PERMISSIONS,
   type Principal,
 } from "@forge/core";
@@ -56,10 +58,24 @@ export function arrayBody(body: Record<string, unknown>, key: string): string[] 
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
-export function jsonBody(body: Record<string, unknown>, key: string, fallback: unknown): unknown {
+const SHAPE_LABEL: Record<JsonShape, string> = { object: "JSON 对象", stringArray: "字符串数组", objectOrArray: "JSON 对象或数组" };
+
+/**
+ * Item A: a JSON field (input, manifest, resources, capabilities) given as a value or as JSON text. Text that does not
+ * parse, or parses to the wrong shape, is 400 CFG-8501 with details.field (no silent fallback, as jsonObjectBody).
+ * Non-string values are checked by the route schema. Missing → fallback.
+ */
+export function jsonBody(body: Record<string, unknown>, key: string, fallback: unknown, shape: JsonShape): unknown {
   const value = body[key];
-  if (typeof value === "string") return parseJson(value, fallback);
-  return value ?? fallback;
+  if (typeof value !== "string") return value ?? fallback;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw errors.invalid(`${key} 不是合法的 JSON`, { field: key });
+  }
+  if (!jsonShapeMatches(parsed, shape)) throw errors.invalid(`${key} 必须是${SHAPE_LABEL[shape]}`, { field: key });
+  return parsed;
 }
 
 /**
@@ -68,7 +84,7 @@ export function jsonBody(body: Record<string, unknown>, key: string, fallback: u
  * (details.field = "text"). `text` alone becomes `{ text }`.
  */
 export function runInputBody(body: Record<string, unknown>): unknown {
-  const input = jsonBody(body, "input", { text: stringBody(body, "text", "") });
+  const input = jsonBody(body, "input", { text: stringBody(body, "text", "") }, "objectOrArray");
   if (Object.hasOwn(body, "text") && Object.hasOwn(body, "input") && input !== null && typeof input === "object" && !("text" in input)) {
     throw errors.invalid("text 与不含 text 字段的 input 不能同时传", { field: "text" });
   }
@@ -181,7 +197,7 @@ export function presentRun(run: RunRow) {
     status: run.status,
     triggerType: run.trigger_type,
     triggerRef: run.trigger_ref,
-    input: maskArgsDeep(run.input_json),
+    input: maskArgsDeep(storedJsonValue(run.input_json, { table: "runs", column: "input_json", id: String(run.id) }, "objectOrArray")),
     output: presentRunOutput(run.output_json),
     usage: run.usage_json,
     costUsd: Number(run.cost_usd),

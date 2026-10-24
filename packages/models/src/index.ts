@@ -116,6 +116,8 @@ export async function callModel(input: {
   input.signal?.throwIfAborted();
   const provider = await repos.getProviderByKey(input.providerKey);
   if (!provider) throw errors.model(`模型供应商不存在: ${input.providerKey}`);
+  // Item A: providers installed by a plugin with an invalid manifest are not loaded.
+  if ((await repos.unusablePluginResourceIds()).providers.has(provider.id)) throw errors.model(`模型供应商所属插件不可用: ${input.providerKey}`);
   const model = await repos.getModel(input.providerKey, input.modelKey);
   if (!model) throw errors.model(`模型不存在: ${input.providerKey}/${input.modelKey}`);
 

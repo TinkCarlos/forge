@@ -42,7 +42,10 @@ export function compressContext(
 
 export async function buildSystemPrompt(instructions: string, spec: AgentSpec): Promise<string> {
   const parts = [instructions];
+  // Item A: skills installed by a plugin with an invalid manifest are not loaded.
+  const unusable = spec.skills?.length ? (await repos.unusablePluginResourceIds()).skills : new Set<string>();
   for (const skillKey of spec.skills ?? []) {
+    if (unusable.size && unusable.has(String((await repos.getSkillByKey(skillKey))?.id))) continue;
     const content = await repos.getPublishedSkillContent(skillKey);
     if (content) parts.push(`\n## Skill: ${skillKey}\n${content}`);
   }

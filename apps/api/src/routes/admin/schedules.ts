@@ -1,10 +1,10 @@
 import { type FastifyInstance, type FastifyRequest } from "fastify";
 import type { Session } from "@forge/identity";
 import { CronExpressionParser } from "cron-parser";
-import { errors, ForgeError, normalizeCron, type Principal } from "@forge/core";
+import { errors, ForgeError, normalizeCron, storedJsonValue, type Principal } from "@forge/core";
 import { createQueuedRun, resolveScheduleIdentity } from "@forge/runtime";
 import { inOrgScope, maskArgsDeep, orgScopeIds } from "@forge/governance";
-import { parseJsonValue, repos } from "@forge/store";
+import { repos } from "@forge/store";
 import {
   bodyOf,
   param,
@@ -116,7 +116,7 @@ export default async function adminScheduleRoutes(app: FastifyInstance): Promise
       serviceAccountId: account.id,
       cron,
       timezone,
-      input: jsonBody(body, "input", { text: "" }),
+      input: jsonBody(body, "input", { text: "" }, "object"),
       status: body.enabled === true ? "active" : "disabled",
       nextRunAt: body.enabled === true ? nextRunAt : null,
       createdBy: session.principal.id,
@@ -146,7 +146,7 @@ export default async function adminScheduleRoutes(app: FastifyInstance): Promise
     // A legacy macro row (e.g. @daily) is rewritten to its 5-field form on any PATCH; an unknown legacy value is left as is.
     else if (cron !== storedCron && isValidCron(cron, timezone)) fields.cron = cron;
     if (body.timezone !== undefined) fields.timezone = stringBody(body, "timezone");
-    if (body.input !== undefined) fields.input_json = jsonBody(body, "input", {});
+    if (body.input !== undefined) fields.input_json = jsonBody(body, "input", {}, "object");
     if (body.serviceAccountId !== undefined) fields.service_account_id = (await requireUsableServiceAccount(session.principal, requireBodyString(body, "serviceAccountId"))).id;
     if ((input.cron !== undefined || input.timezone !== undefined) && schedule.status === "active") {
       fields.next_run_at = CronExpressionParser.parse(cron, { currentDate: new Date(), tz: timezone }).next().toDate();
@@ -195,7 +195,7 @@ export default async function adminScheduleRoutes(app: FastifyInstance): Promise
       agentId: agent.id,
       versionId: agent.published_version_id,
       principal,
-      input: parseJsonValue(schedule.input_json, { text: "" }),
+      input: schedule.input_json == null ? { text: "" } : storedJsonValue(schedule.input_json, { table: "schedules", column: "input_json", id: String(schedule.id) }, "object"),
       triggerType: "schedule",
       triggerRef: String(schedule.id),
     });

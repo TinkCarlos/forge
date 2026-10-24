@@ -1,5 +1,5 @@
-import { ulidWithPrefix } from "@forge/core";
-import { execute, json, one, parseJsonValue, query, transaction } from "../db.js";
+import { jsonShapeMatches, storedJsonObject, ulidWithPrefix } from "@forge/core";
+import { execute, json, one, query, transaction } from "../db.js";
 import type { ModelRow, ProviderRow } from "../types.js";
 
 export const capabilitiesRepo = {
@@ -241,7 +241,7 @@ export const capabilitiesRepo = {
       const [rows] = await conn.query("SELECT id, resources_json FROM plugins WHERE `key` = ? AND version = ? FOR UPDATE", [input.key, input.version]);
       const existing = (rows as Array<{ id: string; resources_json: unknown }>)[0];
       if (existing) {
-        const merged = mergeResourceIds(parseJsonValue(existing.resources_json, {}), input.resources);
+        const merged = mergeResourceIds(storedJsonObject(existing.resources_json, { table: "plugins", column: "resources_json", id: existing.id }), input.resources);
         await conn.execute("UPDATE plugins SET manifest_json = ?, resources_json = ?, status = 'active' WHERE id = ?", [json(input.manifest), json(merged), existing.id]);
         return existing.id;
       }
@@ -258,6 +258,23 @@ export const capabilitiesRepo = {
   },
   async getPlugin(id: string): Promise<Record<string, unknown> | null> {
     return one("SELECT * FROM plugins WHERE id = ?", [id]);
+  },
+  /**
+   * Item A: a plugin whose stored manifest_json is not a JSON object is unusable: nothing it installed is loaded. Returns
+   * the ids of the resources such plugins recorded (resources_json), per kind. One warning per broken plugin (id only).
+   */
+  async unusablePluginResourceIds(): Promise<Record<"agents" | "skills" | "mcp" | "providers", Set<string>>> {
+    const out = { agents: new Set<string>(), skills: new Set<string>(), mcp: new Set<string>(), providers: new Set<string>() };
+    for (const row of await query<{ id: string; manifest_json: unknown; resources_json: unknown }>("SELECT id, manifest_json, resources_json FROM plugins")) {
+      if (jsonShapeMatches(row.manifest_json, "object")) continue;
+      console.warn(JSON.stringify({ level: "warn", msg: "plugin manifest is not a JSON object, plugin not loaded", table: "plugins", column: "manifest_json", id: row.id }));
+      const resources = storedJsonObject(row.resources_json, { table: "plugins", column: "resources_json", id: row.id });
+      for (const kind of Object.keys(out) as Array<keyof typeof out>) {
+        const ids = resources[kind];
+        if (Array.isArray(ids)) for (const id of ids) if (typeof id === "string") out[kind].add(id);
+      }
+    }
+    return out;
   },
   async uninstallPlugin(id: string): Promise<void> {
     await execute("UPDATE plugins SET status = 'uninstalled' WHERE id = ?", [id]);
