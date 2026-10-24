@@ -159,7 +159,7 @@ minio:9000/9001
 3. **建用户、改用户不再接受 `orgUnitId`**：传了返回 400 CFG-8501（以前建用户时会被忽略）。
 4. **multipart 请求**：管理端写接口（含 PATCH）和 `/auth` 写路由收到 multipart 返回 415，在 CSRF 和鉴权之前拒绝，Content-Type 大小写不影响判断；`/open` 和 `/integration` 收到 multipart 一律返回 400，不建 Run。
 5. **JSON 字段校验**：`spec`、`headers`、`input`、`manifest`、`resources`、`capabilities` 是非法 JSON 或形状不对时返回 400 CFG-8501。`input` 必须是对象：传数组、或 JSON 文本解析出字符串、数字时返回 400（以前会被悄悄换成默认值）。读库时遇到形状不对的旧数据按 `{}`（`capabilities` 按 `[]`）处理，warn 里只记表名、列名和 id。
-6. **`text` 与 `input` 同时传**：`text` 去掉首尾空白后非空、同时 `input` 是不带 `text` 键的对象时返回 400，不再存成 `[object Object]`。`text` 为 `null`、空串或只有空白时按没传处理，这时只带 `input` 对象是合法请求。
+6. **`text` 与 `input` 同时传**：`text` 去掉首尾空白后非空、同时 `input` 是不带 `text` 键的对象时返回 400，不再存成 `[object Object]`。`text` 为空串或只有空白时按没传处理，这时只带 `input` 对象是合法请求。`text: null` 按没传处理只适用于 `/open` 和 `/integration`，管理端试运行传 `text: null` 仍返回 400。
 7. **`/open` 和 `/integration` 拒绝空输入**：`text` 和 `input` 都为空时返回 400 CFG-8501，不建 Run、不写审计（以前返回 202 并建出空 Run）。`text` 为空指没传、`null`、空串或只有空白；`input` 为空指没传、`null`、`{}`，或者只有一个 `text` 键且该值按 `text` 的规则为空。管理端试运行和定时任务不受这条影响。
 8. **manifest 非法的插件不加载**：它的 MCP 不进工具列表、技能不进系统提示，Provider 调用报 MDL-3001；它带的 Agent 发起 Run 时返回 409 CFG-8503，定时触发只跳过这一次并记下 `last_error_code`，任务不禁用。manifest 修好后自动恢复，其他插件不受影响。
 
