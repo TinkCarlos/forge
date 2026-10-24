@@ -13,13 +13,14 @@ import { cleanupRealSessions, realSession, sessionHeaders } from "./helpers/real
 const seen = vi.hoisted(() => [] as RouteOptions[]);
 vi.mock("fastify", async (importOriginal) => {
   const mod = await importOriginal<typeof import("fastify")>();
-  const factory = ((...args: Parameters<typeof mod.default>) => {
-    const instance = mod.default(...args);
+  const create = mod.default as unknown as (...args: unknown[]) => FastifyInstance;
+  const factory = ((...args: unknown[]) => {
+    const instance = create(...args);
     instance.addHook("onRoute", (route) => {
       seen.push(route as RouteOptions);
     });
     return instance;
-  }) as typeof mod.default;
+  }) as unknown as typeof mod.default;
   return { ...mod, default: factory, fastify: factory };
 });
 const { buildApp } = await import("../apps/api/src/app.js");
