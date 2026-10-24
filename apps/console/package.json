@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
+    "csp:runtime": "node scripts/csp-runtime-check.mjs",
     "lint": "eslint ."
   },
   "dependencies": {
