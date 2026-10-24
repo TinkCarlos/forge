@@ -1,6 +1,6 @@
 import { ulidWithPrefix } from "@forge/core";
 import { execute, json, one, query } from "../db.js";
-import { AUDIT_ORG_SOURCES, buildAuditListQuery, type AuditListScope } from "./audit-scope-sql.js";
+import { AUDIT_ORG_SOURCES, assertDeleteAuditOrgUnit, buildAuditListQuery, type AuditListScope } from "./audit-scope-sql.js";
 
 /** I-SCOPE plan A: the resource's own department at write time (NULL for platform-level resources or on lookup failure). */
 async function resolveAuditOrgUnit(resourceType: string, resourceId: string | null | undefined): Promise<string | null> {
@@ -20,8 +20,10 @@ export const auditRepo = {
   /**
    * Writes one audit row. orgUnitId = the resource's department: pass it when known (including an explicit null);
    * when omitted it is resolved from resourceType/resourceId (AUDIT_ORG_SOURCES), never from the actor.
+   * Delete-class actions (DELETE_CLASS_AUDIT_ACTION) must pass it explicitly; omitting it throws.
    */
   async audit(input: { actorType: string; actorId?: string | null; action: string; resourceType: string; resourceId?: string | null; details?: unknown; orgUnitId?: string | null }): Promise<void> {
+    assertDeleteAuditOrgUnit(input);
     const orgUnitId = input.orgUnitId !== undefined ? input.orgUnitId : await resolveAuditOrgUnit(input.resourceType, input.resourceId);
     await execute(
       "INSERT INTO audit_logs (id, actor_type, actor_id, action, resource_type, resource_id, org_unit_id, details_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",

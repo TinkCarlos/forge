@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { DELETE_CLASS_AUDIT_ACTION } from "../packages/store/src/repositories/audit-scope-sql.js";
 
 // Delete-class audit actions must carry the resource department captured BEFORE the delete (pure, static).
 // repos.audit resolves org_unit_id from the resource row when orgUnitId is omitted (AUDIT_ORG_SOURCES); once the row
@@ -8,7 +9,8 @@ import { describe, expect, it } from "vitest";
 // whose action is delete-like must pass orgUnitId explicitly (read from the row before deleting it; an explicit
 // null for platform-level resources).
 const ROOT = join(import.meta.dirname, "..", "apps", "api", "src");
-const DELETE_LIKE = /^[a-z_.]+\.(delete|remove|uninstall|revoke|purge|destroy|archive)$/;
+// Same classifier repos.audit enforces at runtime (single source).
+const DELETE_LIKE = DELETE_CLASS_AUDIT_ACTION;
 
 function files(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {

@@ -71,3 +71,20 @@ export function userUpdateAuditEntries(before: string | null, after: string | nu
     { action: "user.org_transfer_out", orgUnitId: before, details: move },
   ];
 }
+
+/**
+ * Delete-class audit actions (architect ruling): the resource row is gone (or going) when the audit row is written,
+ * so the department cannot be resolved from it. Callers must pass orgUnitId explicitly (read before the delete), or an
+ * explicit null for platform-level resources; repos.audit throws when it is omitted.
+ */
+export const DELETE_CLASS_AUDIT_ACTION = /^[a-z_.]+\.(delete|remove|uninstall|revoke|purge|destroy|archive)$/;
+
+export function isDeleteClassAuditAction(action: string): boolean {
+  return DELETE_CLASS_AUDIT_ACTION.test(action);
+}
+
+export function assertDeleteAuditOrgUnit(input: { action: string; orgUnitId?: string | null }): void {
+  if (input.orgUnitId === undefined && isDeleteClassAuditAction(input.action)) {
+    throw new Error(`audit: delete-class action "${input.action}" requires an explicit orgUnitId (null for platform-level resources)`);
+  }
+}
