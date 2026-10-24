@@ -8,7 +8,7 @@ export function ForbiddenError() {
       <div className='mb-2 rounded-full bg-muted p-3 text-muted-foreground'>
         <ShieldX className='size-6' aria-hidden='true' />
       </div>
-      <h1 className='text-5xl leading-tight font-bold tabular-nums'>403</h1>
+      <h1 className='text-2xl font-semibold tabular-nums'>403</h1>
       <span className='font-medium'>没有权限访问这个页面</span>
       <p className='max-w-sm text-sm text-muted-foreground'>当前账号的角色没有这项权限。如需开通，请联系管理员。</p>
       <BackButton className='mt-4' />

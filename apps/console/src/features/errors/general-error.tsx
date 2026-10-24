@@ -16,7 +16,7 @@ export function GeneralError({
     <div className={cn('h-svh w-full', className)}>
       <div className='m-auto flex h-full w-full flex-col items-center justify-center gap-2'>
         {!minimal && (
-          <h1 className='text-[7rem] leading-tight font-bold'>500</h1>
+          <h1 className='text-2xl font-semibold tabular-nums'>500</h1>
         )}
         <span className='font-medium'>页面出错了</span>
         <p className='text-center text-muted-foreground'>
