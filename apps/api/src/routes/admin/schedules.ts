@@ -1,7 +1,7 @@
 import { type FastifyInstance, type FastifyRequest } from "fastify";
 import type { Session } from "@forge/identity";
 import { CronExpressionParser } from "cron-parser";
-import { errors, ForgeError, type Principal } from "@forge/core";
+import { errors, ForgeError, normalizeCron, type Principal } from "@forge/core";
 import { createQueuedRun, resolveScheduleIdentity } from "@forge/runtime";
 import { inOrgScope, maskArgsDeep, orgScopeIds } from "@forge/governance";
 import { parseJsonValue, repos } from "@forge/store";
@@ -15,7 +15,7 @@ import {
   agentAccessible,
   requireBodyString,
 } from "../../plugins/http-helpers.js";
-import { ROUTE_SCHEMAS, assertScheduleTiming, assertValidInput } from "../../plugins/input-schema.js";
+import { ROUTE_SCHEMAS, assertScheduleTiming, assertValidInput, isValidCron } from "../../plugins/input-schema.js";
 
 /** A schedule's service account must exist, be visible to the caller (own department or a sub-department unless dataScope all), be active and not platform_admin. */
 async function requireUsableServiceAccount(principal: Principal, id: string) {
@@ -101,7 +101,8 @@ export default async function adminScheduleRoutes(app: FastifyInstance): Promise
     // FR-TR-06 / permissions.md §3.4: new schedules run as a service account, never as the creator.
     const account = await requireUsableServiceAccount(session.principal, requireBodyString(body, "serviceAccountId"));
     assertValidInput(request);
-    const cron = requireBodyString(body, "cron");
+    // Cron macros (@daily, ...) are stored as their 5-field expression; @reboot and other macros -> 400.
+    const cron = normalizeCron(requireBodyString(body, "cron"));
     const timezone = stringBody(body, "timezone", "Asia/Shanghai");
     assertScheduleTiming(cron, timezone);
     const nextRunAt = CronExpressionParser.parse(cron, { currentDate: new Date(), tz: timezone }).next().toDate();
@@ -134,12 +135,16 @@ export default async function adminScheduleRoutes(app: FastifyInstance): Promise
     // timezone-only change is checked against the stored cron and vice versa.
     assertValidInput(request);
     const input = body as { cron?: string; timezone?: string };
-    const cron = input.cron ?? String(schedule.cron);
+    const storedCron = String(schedule.cron);
+    const cron = normalizeCron(input.cron ?? storedCron);
     const timezone = input.timezone ?? String(schedule.timezone);
+    // A PATCH without cron / timezone does not re-check the stored values (they may predate validation).
     if (input.cron !== undefined || input.timezone !== undefined) assertScheduleTiming(cron, timezone);
     const fields: Record<string, unknown> = {};
     if (body.name !== undefined) fields.name = stringBody(body, "name");
-    if (body.cron !== undefined) fields.cron = stringBody(body, "cron");
+    if (input.cron !== undefined) fields.cron = cron;
+    // A legacy macro row (e.g. @daily) is rewritten to its 5-field form on any PATCH; an unknown legacy value is left as is.
+    else if (cron !== storedCron && isValidCron(cron, timezone)) fields.cron = cron;
     if (body.timezone !== undefined) fields.timezone = stringBody(body, "timezone");
     if (body.input !== undefined) fields.input_json = jsonBody(body, "input", {});
     if (body.serviceAccountId !== undefined) fields.service_account_id = (await requireUsableServiceAccount(session.principal, requireBodyString(body, "serviceAccountId"))).id;
@@ -157,9 +162,12 @@ export default async function adminScheduleRoutes(app: FastifyInstance): Promise
       if (!account || account.status !== "active") throw new ForgeError("SCD-4801", "服务账号已停用，不能启用定时任务", 409);
     }
     // I-SCH-12: a cron / timezone stored before validation existed -> 400 CFG-8501, nothing changes (was 500).
-    assertScheduleTiming(String(schedule.cron), String(schedule.timezone));
-    const next = CronExpressionParser.parse(String(schedule.cron), { currentDate: new Date(), tz: String(schedule.timezone) }).next().toDate();
-    await repos.updateSchedule(String(schedule.id), { status: "active", next_run_at: next });
+    // A legacy macro (@daily, ...) is normalized first, then checked, and its 5-field form is stored with the enable.
+    const storedCron = String(schedule.cron);
+    const cron = normalizeCron(storedCron);
+    assertScheduleTiming(cron, String(schedule.timezone));
+    const next = CronExpressionParser.parse(cron, { currentDate: new Date(), tz: String(schedule.timezone) }).next().toDate();
+    await repos.updateSchedule(String(schedule.id), { status: "active", next_run_at: next, ...(cron !== storedCron ? { cron } : {}) });
     await writeAudit(session, "schedule.enable", "schedule", String(schedule.id), { nextRunAt: next });
     return { ok: true };
   });

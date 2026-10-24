@@ -1,6 +1,6 @@
 import type { FastifyRequest } from "fastify";
 import { CronExpressionParser } from "cron-parser";
-import { errors, type Role } from "@forge/core";
+import { CRON_INVALID_MESSAGE, errors, type Role } from "@forge/core";
 
 /**
  * Route input schemas (K-23 / K-24 / I-USR-02 / I-APR-34 / I-RUN-02 / S-25), as Fastify route schemas: plain JSON
@@ -255,9 +255,10 @@ export function isValidCron(cron: string, timezone: string): boolean {
 
 /**
  * Effective cron + timezone after a create/patch: timezone first (I-SCH-04: an invalid timezone is reported as a
- * timezone error, not as a cron error), then cron against that timezone. Throws 400 CFG-8501.
+ * timezone error, not as a cron error), then cron against that timezone. Throws 400 CFG-8501. Callers pass the cron
+ * through normalizeCron (@forge/core) first, so the accepted macros arrive here as 5-field expressions.
  */
 export function assertScheduleTiming(cron: string, timezone: string): void {
   if (!isValidTimezone(timezone)) throw errors.invalid("时区无效", { field: "timezone" });
-  if (!isValidCron(cron, timezone)) throw errors.invalid("Cron 表达式无效", { field: "cron" });
+  if (!isValidCron(cron, timezone)) throw errors.invalid(CRON_INVALID_MESSAGE, { field: "cron" });
 }

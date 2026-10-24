@@ -11,7 +11,8 @@ const { ForgeError } = vi.hoisted(() => ({
     }
   },
 }));
-vi.mock("@forge/core", () => ({
+vi.mock("@forge/core", async () => ({
+  ...(await import("../packages/core/src/cron.js")),
   ForgeError,
   errors: { invalid: (m: string, details?: unknown) => new ForgeError("CFG-8501", m, 400, details) },
 }));
@@ -142,7 +143,7 @@ describe("400 CFG-8501 with details.field and the previous messages", () => {
       }
       return null;
     };
-    expect(err(() => assertScheduleTiming("not a cron", "Asia/Shanghai"))).toEqual({ code: "CFG-8501", field: "cron", message: "Cron 表达式无效" });
+    expect(err(() => assertScheduleTiming("not a cron", "Asia/Shanghai"))).toEqual({ code: "CFG-8501", field: "cron", message: "只支持 5 段 cron 或 @yearly/@annually/@monthly/@weekly/@daily/@midnight/@hourly" });
     expect(err(() => assertScheduleTiming("0 9 * * *", "Mars/Olympus"))).toEqual({ code: "CFG-8501", field: "timezone", message: "时区无效" });
     expect(err(() => assertScheduleTiming("0 9 * * *", ""))).toMatchObject({ field: "timezone" });
     expect(err(() => assertScheduleTiming("0 9 * * *", "Asia/Shanghai"))).toBeNull();

@@ -1,5 +1,5 @@
 import { CronExpressionParser } from "cron-parser";
-import { errors, ForgeError, type DataScope, type Principal, type Role } from "@forge/core";
+import { errors, ForgeError, normalizeCron, type DataScope, type Principal, type Role } from "@forge/core";
 import { parseJsonValue, repos, type ServiceAccountRow } from "@forge/store";
 import { createQueuedRun } from "./loop.js";
 
@@ -84,7 +84,8 @@ export async function triggerSchedule(schedule: Record<string, unknown>, now = n
     // stops it before anything else is looked at, so no Run is ever created for it.
     let nextSlot: Date;
     try {
-      const cron = String(schedule.cron ?? "").trim();
+      // Legacy rows may hold a macro (@daily, @MIDNIGHT, ...): same normalizer as the API write side.
+      const cron = normalizeCron(String(schedule.cron ?? ""));
       if (!cron) throw new Error("empty cron");
       nextSlot = CronExpressionParser.parse(cron, { currentDate: now, tz: String(schedule.timezone ?? "Asia/Shanghai") }).next().toDate();
     } catch {
