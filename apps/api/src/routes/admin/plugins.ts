@@ -1,6 +1,7 @@
 import { type FastifyInstance } from "fastify";
 import { asRecord, assertNoEnvRefs, assertOutboundUrlStatic, config, encryptSecret, errors } from "@forge/core";
 import { discoverMcpTools } from "@forge/capabilities";
+import { assertOrgWritable } from "@forge/governance";
 import { repos } from "@forge/store";
 import {
   bodyOf,
@@ -12,6 +13,10 @@ import {
   requireBodyString,
 } from "../../plugins/http-helpers.js";
 
+// P0-03 / U-15: MCP servers, Skills, tool sources, plugins and LLM Providers/Models have no department column, so they
+// are platform-wide (org = null) and only a dataScope=all principal may write them, whatever its role permissions.
+const PLATFORM_WRITE_MESSAGE = "平台级资源仅数据范围为全部（all）的管理员可修改";
+
 export default async function adminPluginRoutes(app: FastifyInstance): Promise<void> {
   app.get("/admin/api/plugins", async (request) => {
     await admin(request, "package.view");
@@ -20,6 +25,7 @@ export default async function adminPluginRoutes(app: FastifyInstance): Promise<v
 
   app.post("/admin/api/plugins/install", async (request) => {
     const session = await admin(request, "plugin.install");
+    await assertOrgWritable(session.principal, null, PLATFORM_WRITE_MESSAGE); // P0-03 / U-15: platform-wide resource (no department column)
     const body = bodyOf(request);
     const resources = asRecord(body.resources);
     // Outbound guard (S-46): check every URL in the package before creating anything (static: scheme, IP literals, localhost).
@@ -98,6 +104,7 @@ export default async function adminPluginRoutes(app: FastifyInstance): Promise<v
 
   app.post("/admin/api/plugins/:id/uninstall", async (request) => {
     const session = await admin(request, "plugin.uninstall");
+    await assertOrgWritable(session.principal, null, PLATFORM_WRITE_MESSAGE); // P0-03 / U-15: platform-wide resource (no department column)
     // #68 / I-PLG-04: unknown id -> 404 (no audit). Department scoping waits for an owner-department column.
     const plugin = await repos.getPlugin(param(request, "id"));
     if (!plugin) throw errors.notFound("插件不存在");

@@ -1,6 +1,7 @@
 import { type FastifyInstance } from "fastify";
 import { ENV_REF_CODE, assertNoEnvRefs, assertOutboundUrlStatic, config, encryptSecret, errors, ForgeError, OUTBOUND_BLOCKED_CODE } from "@forge/core";
 import { callModel } from "@forge/models";
+import { assertOrgWritable } from "@forge/governance";
 import { repos } from "@forge/store";
 import {
   bodyOf,
@@ -11,6 +12,10 @@ import {
   writeAudit,
   requireBodyString,
 } from "../../plugins/http-helpers.js";
+
+// P0-03 / U-15: MCP servers, Skills, tool sources, plugins and LLM Providers/Models have no department column, so they
+// are platform-wide (org = null) and only a dataScope=all principal may write them, whatever its role permissions.
+const PLATFORM_WRITE_MESSAGE = "平台级资源仅数据范围为全部（all）的管理员可修改";
 
 export default async function adminModelRoutes(app: FastifyInstance): Promise<void> {
   app.get("/admin/api/providers", async (request) => {
@@ -39,6 +44,7 @@ export default async function adminModelRoutes(app: FastifyInstance): Promise<vo
 
   app.post("/admin/api/providers", async (request) => {
     const session = await admin(request, "model.manage");
+    await assertOrgWritable(session.principal, null, PLATFORM_WRITE_MESSAGE); // P0-03 / U-15: platform-wide resource (no department column)
     const body = bodyOf(request);
     const key = requireBodyString(body, "key");
     if (await repos.getProviderByKey(key)) throw errors.conflict("Provider key 已存在");
@@ -61,6 +67,7 @@ export default async function adminModelRoutes(app: FastifyInstance): Promise<vo
 
   app.post("/admin/api/providers/:id/models", async (request) => {
     const session = await admin(request, "model.manage");
+    await assertOrgWritable(session.principal, null, PLATFORM_WRITE_MESSAGE); // P0-03 / U-15: platform-wide resource (no department column)
     const provider = await repos.getProviderById(param(request, "id"));
     if (!provider) throw errors.notFound("Provider 不存在");
     const body = bodyOf(request);
@@ -80,6 +87,7 @@ export default async function adminModelRoutes(app: FastifyInstance): Promise<vo
 
   app.patch("/admin/api/providers/:id", async (request) => {
     const session = await admin(request, "model.manage");
+    await assertOrgWritable(session.principal, null, PLATFORM_WRITE_MESSAGE); // P0-03 / U-15: platform-wide resource (no department column)
     const provider = await repos.getProviderById(param(request, "id"));
     if (!provider) throw errors.notFound("Provider 不存在");
     const body = bodyOf(request);
@@ -102,6 +110,7 @@ export default async function adminModelRoutes(app: FastifyInstance): Promise<vo
 
   app.patch("/admin/api/models/:id", async (request) => {
     const session = await admin(request, "model.manage");
+    await assertOrgWritable(session.principal, null, PLATFORM_WRITE_MESSAGE); // P0-03 / U-15: platform-wide resource (no department column)
     const model = await repos.getModelById(param(request, "id"));
     if (!model) throw errors.notFound("模型不存在");
     const body = bodyOf(request);
@@ -119,7 +128,8 @@ export default async function adminModelRoutes(app: FastifyInstance): Promise<vo
   });
 
   app.post("/admin/api/providers/:id/test", async (request) => {
-    await admin(request, "model.manage");
+    const session = await admin(request, "model.manage");
+    await assertOrgWritable(session.principal, null, PLATFORM_WRITE_MESSAGE); // P0-03 / U-15: platform-wide resource (no department column)
     const provider = await repos.getProviderById(param(request, "id"));
     if (!provider) throw errors.notFound("Provider 不存在");
     const models = await repos.listModels(provider.id);

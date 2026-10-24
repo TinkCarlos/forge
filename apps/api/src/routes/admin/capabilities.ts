@@ -1,7 +1,7 @@
 import { type FastifyInstance } from "fastify";
 import { SKILL_STATUSES, assertNoEnvRefs, assertOutboundUrlStatic, errors } from "@forge/core";
 import { discoverMcpTools, parseOpenApi } from "@forge/capabilities";
-import { maskArgsDeep } from "@forge/governance";
+import { assertOrgWritable, maskArgsDeep } from "@forge/governance";
 import { repos } from "@forge/store";
 import {
   bodyOf,
@@ -13,6 +13,10 @@ import {
   requireBodyString,
   enumBody,
 } from "../../plugins/http-helpers.js";
+
+// P0-03 / U-15: MCP servers, Skills, tool sources, plugins and LLM Providers/Models have no department column, so they
+// are platform-wide (org = null) and only a dataScope=all principal may write them, whatever its role permissions.
+const PLATFORM_WRITE_MESSAGE = "平台级资源仅数据范围为全部（all）的管理员可修改";
 
 export default async function adminCapabilityRoutes(app: FastifyInstance): Promise<void> {
   app.get("/admin/api/mcp", async (request) => {
@@ -35,6 +39,7 @@ export default async function adminCapabilityRoutes(app: FastifyInstance): Promi
 
   app.post("/admin/api/mcp", async (request) => {
     const session = await admin(request, "mcp.manage");
+    await assertOrgWritable(session.principal, null, PLATFORM_WRITE_MESSAGE); // P0-03 / U-15: platform-wide resource (no department column)
     const body = bodyOf(request);
     const key = requireBodyString(body, "key");
     if (await repos.getMcpServerByKey(key)) throw errors.conflict("MCP key 已存在");
@@ -65,6 +70,7 @@ export default async function adminCapabilityRoutes(app: FastifyInstance): Promi
 
   app.patch("/admin/api/mcp/:id", async (request) => {
     const session = await admin(request, "mcp.manage");
+    await assertOrgWritable(session.principal, null, PLATFORM_WRITE_MESSAGE); // P0-03 / U-15: platform-wide resource (no department column)
     const server = await repos.getMcpServer(param(request, "id"));
     if (!server) throw errors.notFound("MCP 不存在");
     const body = bodyOf(request);
@@ -86,6 +92,7 @@ export default async function adminCapabilityRoutes(app: FastifyInstance): Promi
 
   app.post("/admin/api/mcp/:id/refresh", async (request) => {
     const session = await admin(request, "mcp.manage");
+    await assertOrgWritable(session.principal, null, PLATFORM_WRITE_MESSAGE); // P0-03 / U-15: platform-wide resource (no department column)
     const server = await repos.getMcpServer(param(request, "id"));
     if (!server) throw errors.notFound("MCP 不存在");
     const tools = await discoverMcpTools(server);
@@ -103,6 +110,7 @@ export default async function adminCapabilityRoutes(app: FastifyInstance): Promi
 
   app.post("/admin/api/skills", async (request) => {
     const session = await admin(request, "skill.manage");
+    await assertOrgWritable(session.principal, null, PLATFORM_WRITE_MESSAGE); // P0-03 / U-15: platform-wide resource (no department column)
     const body = bodyOf(request);
     const key = requireBodyString(body, "key");
     if (await repos.getSkillByKey(key)) throw errors.conflict("Skill key 已存在");
@@ -128,6 +136,7 @@ export default async function adminCapabilityRoutes(app: FastifyInstance): Promi
 
   app.patch("/admin/api/skills/:id", async (request) => {
     const session = await admin(request, "skill.manage");
+    await assertOrgWritable(session.principal, null, PLATFORM_WRITE_MESSAGE); // P0-03 / U-15: platform-wide resource (no department column)
     const skill = await repos.getSkill(param(request, "id"));
     if (!skill) throw errors.notFound("Skill 不存在");
     const body = bodyOf(request);
@@ -143,6 +152,7 @@ export default async function adminCapabilityRoutes(app: FastifyInstance): Promi
 
   app.post("/admin/api/skills/:id/versions", async (request) => {
     const session = await admin(request, "skill.manage");
+    await assertOrgWritable(session.principal, null, PLATFORM_WRITE_MESSAGE); // P0-03 / U-15: platform-wide resource (no department column)
     const skill = await repos.getSkill(param(request, "id"));
     if (!skill) throw errors.notFound("Skill 不存在");
     const body = bodyOf(request);
@@ -173,6 +183,7 @@ export default async function adminCapabilityRoutes(app: FastifyInstance): Promi
 
   app.post("/admin/api/tool-sources/import", async (request) => {
     const session = await admin(request, "tool.manage");
+    await assertOrgWritable(session.principal, null, PLATFORM_WRITE_MESSAGE); // P0-03 / U-15: platform-wide resource (no department column)
     const body = bodyOf(request);
     const key = requireBodyString(body, "key");
     if (await repos.getToolSourceByKey(key)) throw errors.conflict("工具源 key 已存在");

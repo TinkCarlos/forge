@@ -182,6 +182,8 @@
 | 审计日志 | `audit.view` + `audit_log` 数据范围；默认平台管理员/审计角色 |
 | 定时任务 | 以服务账号身份运行，使用其数据范围；创建者停用不影响服务账号，服务账号停用则暂停 |
 | 跨部门写入（K-05） | 写带部门归属的资源前，用与审计列表同一份数据范围（`dataScopeFor` + `scopeCoversOrg`）判断资源所属部门：`all` 可写全部；`org_tree` 可写本部门及子部门；`custom_orgs` 只写所列部门；`self` 不覆盖任何部门。范围外 → **403 POL-2001**，在任何写入之前拒绝（表无变化、不写审计）。用 403 而不是 404，是因为这类资源（API 应用、密钥、Webhook 投递）列表全局可读，存在性本来就可见。没有部门的资源（全局应用）只有 `dataScope=all` 可写。已覆盖：`PATCH /admin/api/apps/:id`、`POST /admin/api/apps/:id/keys`、`POST /admin/api/webhook-deliveries/:id/replay`（按投递所属应用的部门） |
+| 平台级资源写入（P0-03 / U-15） | MCP 服务、Skill、工具源、插件、LLM Provider/Model 没有部门列（schema.sql），视为平台级资源（部门 = null），写入前统一 `assertOrgWritable(principal, null)`：只有 `dataScope=all` 可写，角色有 `mcp/skill/tool/model.manage`、`plugin.install` 但范围为 `org`/`self` 的 org_admin、builder → **403 POL-2001**，在任何写入之前拒绝（表无变化、不写审计）。已覆盖：`POST /admin/api/mcp`、`PATCH /admin/api/mcp/:id`、`POST /admin/api/mcp/:id/refresh`、`POST /admin/api/skills`、`PATCH /admin/api/skills/:id`、`POST /admin/api/skills/:id/versions`、`POST /admin/api/tool-sources/import`、`POST /admin/api/plugins/install`、`POST /admin/api/providers`、`POST /admin/api/providers/:id/models`、`PATCH /admin/api/providers/:id`、`PATCH /admin/api/models/:id`、`POST /admin/api/providers/:id/test`。`POST /admin/api/plugins/:id/uninstall` 需要 `plugin.uninstall`（仅平台管理员有），同样加了 `assertOrgWritable(principal, null)` |
+| 集成 API 功能权限（P0-04 / P0-05） | `/integration/v1/*` 的调用方只有一种：Connector 签名的 Principal，按 `idp_subject` 映射到 Forge 用户，因此按该用户的功能权限检查：`POST /integration/v1/runs` 需要 `agent.run`，`POST /integration/v1/runs/:id/cancel` 需要 `run.cancel`，缺少 → **403 POL-2001**（先于范围检查，不写 Run、不改状态、不写审计）。原有范围检查（`agentAccessible` → 404、`assertRunAccess`）不变 |
 
 **SQL 示例**（Repository 内部生成，不拼接用户输入）：
 
