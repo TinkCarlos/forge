@@ -82,6 +82,7 @@
 - `EMBEDDED_WORKER`：单进程开发默认 `true`；生产拆分 worker 时在 API 设为 `false`，单独运行 `apps/worker`。
 - `MAX_CONCURRENT_RUNS`：单进程同时执行的 Run 数，默认 `2`。
 - `LEASE_TTL_SECONDS`：运行租约秒数，默认 `30`；worker 在租约到期前续租，过期后其他 worker 可重领。
+  - 续租失败时中止执行（当前实现，P3-09）：心跳返回租约已不属于本 worker → 立即中止；心跳报错（如断库）时容忍，直到距上次成功续租满 `LEASE_TTL_SECONDS`（此后租约可能被别的 worker 重领）再中止；一次瞬时报错、下一次续租成功 → 不中止。中止时 AbortSignal 传到模型调用和工具调用（web_fetch、MCP、OpenAPI 的出站请求随之断开），被中止的那次执行不再写 step 结果、消息、工具结果和终态；`running` 的 call_model 步骤由下一个领到 Run 的 worker 记为失败并发 `model.retried`（`reason: incomplete_step`），`running` 的工具调用由它重新执行。释放租约在中止后为尽力而为。
 - `MODEL_MAX_ATTEMPTS`：单个模型候选的可重试次数，默认 `2`，耗尽后才切 `fallbackProvider` / `fallbackModel`。
 - `DEFAULT_MAX_CONTEXT_TOKENS`：未在 AgentSpec 指定 `limits.maxContextTokens` 时的压缩阈值，默认 `8000`。
 - `DEFAULT_MAX_PARALLEL_TOOLS`：未指定 `limits.maxParallelTools` 时的并行工具上限，默认 `4`。

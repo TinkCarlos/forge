@@ -16,9 +16,19 @@ import {
 } from "@forge/core";
 import { parseJsonValue, repos } from "@forge/store";
 
+/** P3-09: `signal` aborts the call when the worker lost the Run's lease (passed by the runtime). */
+export interface ToolContext {
+  signal?: AbortSignal;
+}
 export interface ResolvedTool {
   definition: ToolDefinition;
-  execute: (args: Record<string, unknown>) => Promise<ToolResult>;
+  execute: (args: Record<string, unknown>, context?: ToolContext) => Promise<ToolResult>;
+}
+
+/** A timeout signal, also aborted by the caller's signal when one is given (P3-09). */
+function callSignal(timeoutMs: number, signal?: AbortSignal): AbortSignal {
+  const timeout = AbortSignal.timeout(timeoutMs);
+  return signal ? AbortSignal.any([timeout, signal]) : timeout;
 }
 
 function toolNameFor(kind: string, source: string, name: string): string {
@@ -100,12 +110,10 @@ export function builtinTools(): Map<string, ResolvedTool> {
       },
       risk: "medium",
     },
-    execute: async (args) => {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 15000);
+    execute: async (args, context) => {
       try {
         // Outbound guard (S-46): scheme + DNS check, socket pinned to the checked address, every redirect re-checked.
-        const response = await safeFetch(String(args.url ?? ""), { signal: controller.signal, redirect: "follow" });
+        const response = await safeFetch(String(args.url ?? ""), { signal: callSignal(15000, context?.signal), redirect: "follow" });
         const text = await response.text();
         const content = response.headers.get("content-type")?.includes("html") ? stripHtml(text) : text;
         return { ok: response.ok, content: truncate(content), errorCode: httpToolErrorCode(response.status) };
@@ -113,8 +121,6 @@ export function builtinTools(): Map<string, ResolvedTool> {
         const blocked = blockedToolResult(error);
         if (blocked) return blocked;
         return { ok: false, content: `web_fetch failed: ${String(error)}`, errorCode: "HTP-4002" };
-      } finally {
-        clearTimeout(timer);
       }
     },
   });
@@ -173,7 +179,7 @@ export async function discoverMcpTools(server: Record<string, unknown>): Promise
   });
 }
 
-export async function callMcpTool(server: Record<string, unknown>, toolName: string, args: Record<string, unknown>): Promise<ToolResult> {
+export async function callMcpTool(server: Record<string, unknown>, toolName: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<ToolResult> {
   const url = String(server.url);
   let headers: Record<string, string>;
   try {
@@ -196,7 +202,7 @@ export async function callMcpTool(server: Record<string, unknown>, toolName: str
       method: "POST",
       headers: { ...headers, "Content-Type": "application/json", Accept: "application/json, text/event-stream", ...(sessionId ? { "Mcp-Session-Id": sessionId } : {}) },
       body: JSON.stringify({ jsonrpc: "2.0", ...(id === null ? {} : { id }), method, params }),
-      signal: AbortSignal.timeout(config.MCP_TIMEOUT_MS),
+      signal: callSignal(config.MCP_TIMEOUT_MS, signal),
     });
     const newSession = response.headers.get("mcp-session-id");
     if (newSession) sessionId = newSession;
@@ -277,6 +283,7 @@ export async function executeOpenApiTool(input: {
   source: Record<string, unknown>;
   tool: Record<string, unknown>;
   args: Record<string, unknown>;
+  signal?: AbortSignal;
 }): Promise<ToolResult> {
   const baseUrl = String(input.source.base_url ?? "");
   const path = String(input.tool.path ?? "");
@@ -314,7 +321,7 @@ export async function executeOpenApiTool(input: {
     body = JSON.stringify(args);
   }
   try {
-    const response = await safeFetch(url, { method, headers, body, signal: AbortSignal.timeout(30000) });
+    const response = await safeFetch(url, { method, headers, body, signal: callSignal(30000, input.signal) });
     const text = await response.text();
     return {
       ok: response.ok,
@@ -354,7 +361,7 @@ export async function resolveTools(spec: AgentSpec): Promise<Map<string, Resolve
             parameters: parseJsonValue(row.input_schema_json, { type: "object", properties: {} }),
             risk: (String(row.risk_level) as ToolDefinition["risk"]) ?? "medium",
           },
-          execute: async (args) => callMcpTool(server, name, args),
+          execute: async (args, context) => callMcpTool(server, name, args, context?.signal),
         });
       }
     }
@@ -374,7 +381,7 @@ export async function resolveTools(spec: AgentSpec): Promise<Map<string, Resolve
             parameters: parseJsonValue(row.input_schema_json, { type: "object", properties: {} }),
             risk: String(row.risk_level) as ToolDefinition["risk"],
           },
-          execute: async (args) => executeOpenApiTool({ source, tool: row, args }),
+          execute: async (args, context) => executeOpenApiTool({ source, tool: row, args, signal: context?.signal }),
         });
       }
     }

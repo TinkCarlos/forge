@@ -15,7 +15,7 @@ import { claimRun, currentWorkerId } from "./lease.js";
 import { appendMessage, messageOf } from "./messages.js";
 import { createDeltaBuffer, decideAfterModelError, modelCandidates } from "./model-loop.js";
 import { repairCount, repairMessage, validateOutput } from "./output.js";
-import { settleToolCalls, toolIdempotencyKey } from "./tools.js";
+import { assertLeaseHeld, LeaseLostError, settleToolCalls, toolIdempotencyKey } from "./tools.js";
 import { deliverDueWebhooks, enqueueRunWebhook } from "./webhook.js";
 
 const TERMINAL = ["succeeded", "failed", "cancelled", "budget_exhausted"];
@@ -63,7 +63,8 @@ export async function finalize(
   }
 }
 
-async function runLoop(run: RunRow, workerId: string, lostLease: () => boolean): Promise<void> {
+async function runLoop(run: RunRow, workerId: string, lease: AbortSignal): Promise<void> {
+  const lostLease = () => lease.aborted;
   const agent = await repos.getAgent(run.agent_id);
   if (!agent) throw errors.notFound("Agent 不存在");
   const version = await repos.getAgentVersion(run.agent_version_id);
@@ -94,7 +95,7 @@ async function runLoop(run: RunRow, workerId: string, lostLease: () => boolean):
       return;
     }
 
-    const openState = await settleToolCalls(fresh, spec, tools);
+    const openState = await settleToolCalls(fresh, spec, tools, lease);
     if (openState === "waiting") return;
 
     const historyRows = await repos.listThreadMessages(fresh.thread_id);
@@ -151,7 +152,10 @@ async function runLoop(run: RunRow, workerId: string, lostLease: () => boolean):
           temperature: spec.model.temperature,
           maxTokens: spec.model.maxTokens,
           onDelta: (delta) => deltas.push(delta),
+          signal: lease,
         });
+        // P3-09: a result that arrives after the lease was lost is dropped; the step stays running for the next owner.
+        assertLeaseHeld(lease);
         await deltas.end();
         await repos.finishRunStep(stepId, {
           status: "succeeded",
@@ -163,6 +167,7 @@ async function runLoop(run: RunRow, workerId: string, lostLease: () => boolean):
         lastError = null;
         break;
       } catch (error) {
+        assertLeaseHeld(lease);
         await deltas.end();
         const forgeError = error instanceof ForgeError ? error : errors.model(String(error));
         lastError = forgeError;
@@ -263,7 +268,7 @@ async function runLoop(run: RunRow, workerId: string, lostLease: () => boolean):
       return;
     }
 
-    const state = await settleToolCalls(fresh, spec, tools);
+    const state = await settleToolCalls(fresh, spec, tools, lease);
     if (state === "waiting") return;
   }
 }
@@ -275,16 +280,30 @@ export async function runClaimed(claimed: ClaimedRun, workerId = currentWorkerId
   } else if (claimed.previousStatus === "running" || claimed.previousStatus === "waiting_approval") {
     await emit(run.id, "run.resumed", { workerId, previousStatus: claimed.previousStatus });
   }
-  const ownership = { lost: false };
+  // P3-09: losing the lease aborts the execution in hand (model and tool calls get the signal) and nothing more is
+  // written for this Run. The DB saying the lease is not ours (heartbeat false) aborts at once. A heartbeat that errors
+  // (DB unreachable) is tolerated until the last confirmed renewal is LEASE_TTL_SECONDS old, when another worker may
+  // reclaim the Run; a transient error followed by a successful renewal does not abort.
+  const lease = new AbortController();
+  const ttlMs = config.LEASE_TTL_SECONDS * 1000;
+  let confirmedAt = Date.now();
   const timer = setInterval(() => {
+    if (lease.signal.aborted) return;
+    if (Date.now() - confirmedAt >= ttlMs) {
+      lease.abort();
+      return;
+    }
     void repos.heartbeatRun(run.id, workerId, config.LEASE_TTL_SECONDS).then((ok) => {
-      if (!ok) ownership.lost = true;
-    }).catch(() => undefined);
-  }, Math.max(1000, Math.floor((config.LEASE_TTL_SECONDS * 1000) / 3)));
+      if (ok) confirmedAt = Date.now();
+      else lease.abort();
+    }).catch(() => {
+      if (Date.now() - confirmedAt >= ttlMs) lease.abort();
+    });
+  }, Math.max(1000, Math.floor(ttlMs / 3)));
   try {
-    await runLoop(run, workerId, () => ownership.lost);
+    await runLoop(run, workerId, lease.signal);
   } catch (error) {
-    if (ownership.lost) return;
+    if (lease.signal.aborted || error instanceof LeaseLostError) return;
     const forgeError = error instanceof ForgeError ? error : new ForgeError("SYS-9001", String(error), 500);
     const fresh = await repos.getRun(run.id);
     if (fresh && !TERMINAL.includes(fresh.status)) {
@@ -292,7 +311,9 @@ export async function runClaimed(claimed: ClaimedRun, workerId = currentWorkerId
     }
   } finally {
     clearInterval(timer);
-    await repos.releaseRunLease(run.id, workerId);
+    // After a lease loss the DB may still be unreachable: the release is best effort (the lease expires anyway).
+    if (lease.signal.aborted) await repos.releaseRunLease(run.id, workerId).catch(() => undefined);
+    else await repos.releaseRunLease(run.id, workerId);
   }
 }
 

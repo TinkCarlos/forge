@@ -110,7 +110,10 @@ export async function callModel(input: {
   temperature?: number;
   maxTokens?: number;
   onDelta?: (delta: string) => void | Promise<void>;
+  /** P3-09: aborts the upstream request (the worker lost the Run's lease). */
+  signal?: AbortSignal;
 }): Promise<LlmResult> {
+  input.signal?.throwIfAborted();
   const provider = await repos.getProviderByKey(input.providerKey);
   if (!provider) throw errors.model(`模型供应商不存在: ${input.providerKey}`);
   const model = await repos.getModel(input.providerKey, input.modelKey);
@@ -135,6 +138,7 @@ async function callOpenAiCompatible(
     temperature?: number;
     maxTokens?: number;
     onDelta?: (delta: string) => void | Promise<void>;
+    signal?: AbortSignal;
   },
 ): Promise<LlmResult> {
   const base = provider.base_url.replace(/\/$/, "");
@@ -156,6 +160,8 @@ async function callOpenAiCompatible(
   }
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), provider.timeout_ms);
+  const abortOnCaller = () => controller.abort();
+  input.signal?.addEventListener("abort", abortOnCaller, { once: true });
   try {
     const response = await safeFetch(url, {
       method: "POST",
@@ -206,6 +212,7 @@ async function callOpenAiCompatible(
     throw new ForgeError("MDL-3001", "模型调用失败", 502, String(error), true);
   } finally {
     clearTimeout(timeout);
+    input.signal?.removeEventListener("abort", abortOnCaller);
   }
 }
 

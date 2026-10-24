@@ -57,7 +57,19 @@ export async function mapLimit<T>(items: readonly T[], limit: number, fn: (item:
   await Promise.all(workers);
 }
 
-async function executeToolCall(run: RunRow, stored: OpenToolCall, tools: Map<string, ResolvedTool>): Promise<void> {
+/** P3-09: thrown when the worker lost the Run's lease mid-execution; the caller writes nothing more for that Run. */
+export class LeaseLostError extends Error {
+  constructor() {
+    super("run lease lost");
+    this.name = "LeaseLostError";
+  }
+}
+/** P3-09: stop here (write nothing) once the lease signal fired. */
+export function assertLeaseHeld(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) throw new LeaseLostError();
+}
+
+async function executeToolCall(run: RunRow, stored: OpenToolCall, tools: Map<string, ResolvedTool>, signal?: AbortSignal): Promise<void> {
   const tool = tools.get(stored.tool_key);
   const args = parseJsonValue<Record<string, unknown>>(stored.args_json, {});
   const nextAttempt = stored.status === "running" ? Number(stored.attempt ?? 1) + 1 : Number(stored.attempt ?? 1) || 1;
@@ -79,14 +91,19 @@ async function executeToolCall(run: RunRow, stored: OpenToolCall, tools: Map<str
   const started = Date.now();
   const executed = await withToolRetries(config.TOOL_MAX_ATTEMPTS, nextAttempt, async () => {
     try {
-      return await tool.execute(args);
+      const outcome = await tool.execute(args, { signal });
+      assertLeaseHeld(signal); // no retry / tool.retried after an abort
+      return outcome;
     } catch (error) {
+      assertLeaseHeld(signal);
       const code = error instanceof ForgeError ? error.code : "HTP-4001";
       return { ok: false, content: String(error), errorCode: code === "HTP-4002" || code === "MCP-4102" ? code : "HTP-4001" };
     }
   }, async (attempt, failed) => {
     await emit(run.id, "tool.retried", { toolCallId: stored.id, tool: stored.tool_key, attempt, error: failed.errorCode ?? null });
   });
+  // P3-09: an execution aborted by lease loss writes no tool result; the next owner re-runs the running call.
+  assertLeaseHeld(signal);
   const result = executed.result;
   const durationMs = Date.now() - started;
   await repos.updateToolCall(stored.id, {
@@ -110,7 +127,7 @@ async function executeToolCall(run: RunRow, stored: OpenToolCall, tools: Map<str
   await repos.finishRunStep(stepId, { status: result.ok ? "succeeded" : "failed", errorCode: result.errorCode ?? null });
 }
 
-export async function settleToolCalls(run: RunRow, spec: AgentSpec, tools: Map<string, ResolvedTool>): Promise<"continue" | "waiting"> {
+export async function settleToolCalls(run: RunRow, spec: AgentSpec, tools: Map<string, ResolvedTool>, signal?: AbortSignal): Promise<"continue" | "waiting"> {
   await repos.timeoutApprovals(run.id);
   const open = await repos.listOpenToolCalls(run.id);
   if (!open.length) return "continue";
@@ -150,9 +167,10 @@ export async function settleToolCalls(run: RunRow, spec: AgentSpec, tools: Map<s
 
   const limit = spec.limits?.maxParallelTools ?? config.DEFAULT_MAX_PARALLEL_TOOLS;
   await mapLimit(executable, limit, async (stored) => {
-    await executeToolCall(run, stored, tools);
+    await executeToolCall(run, stored, tools, signal);
   });
 
+  assertLeaseHeld(signal);
   if (blocked) return "waiting";
   const pending = needsApproval[0];
   if (!pending) return "continue";
