@@ -15,7 +15,7 @@ import {
   agentAccessible,
   requireBodyString,
 } from "../../plugins/http-helpers.js";
-import { assertScheduleTiming, parseInput, scheduleCreateSchema, schedulePatchSchema } from "../../plugins/input-schema.js";
+import { ROUTE_SCHEMAS, SCHEDULE_STATUSES, assertScheduleTiming, assertValidInput } from "../../plugins/input-schema.js";
 
 /** A schedule's service account must exist, be visible to the caller (own department or a sub-department unless dataScope all), be active and not platform_admin. */
 async function requireUsableServiceAccount(principal: Principal, id: string) {
@@ -50,10 +50,12 @@ function scheduleByIdRoute(
   suffix: "" | `/${string}`,
   permission: string,
   handler: (ctx: ScheduleByIdContext) => Promise<unknown>,
+  options: { schema?: (typeof ROUTE_SCHEMAS)[keyof typeof ROUTE_SCHEMAS] } = {},
 ): void {
   app.route({
     method,
     url: `/admin/api/schedules/:id${suffix}`,
+    ...(options.schema ? { schema: options.schema, attachValidation: true } : {}),
     handler: async (request) => {
       const session = await admin(request, permission);
       const schedule = await loadVisibleScheduleOr404(session.principal, param(request, "id"));
@@ -90,7 +92,7 @@ export default async function adminScheduleRoutes(app: FastifyInstance): Promise
     return presentScheduleExtras(row);
   });
 
-  app.post("/admin/api/schedules", async (request) => {
+  app.post("/admin/api/schedules", { schema: ROUTE_SCHEMAS.scheduleCreate, attachValidation: true }, async (request) => {
     const session = await admin(request, "schedule.manage");
     const body = bodyOf(request);
     const agent = await repos.getAgent(requireBodyString(body, "agentId"));
@@ -98,7 +100,7 @@ export default async function adminScheduleRoutes(app: FastifyInstance): Promise
     if (!agent.published_version_id) throw errors.invalid("Agent 尚未发布");
     // FR-TR-06 / permissions.md §3.4: new schedules run as a service account, never as the creator.
     const account = await requireUsableServiceAccount(session.principal, requireBodyString(body, "serviceAccountId"));
-    parseInput(scheduleCreateSchema, body);
+    assertValidInput(request);
     const cron = requireBodyString(body, "cron");
     const timezone = stringBody(body, "timezone", "Asia/Shanghai");
     assertScheduleTiming(cron, timezone);
@@ -126,7 +128,8 @@ export default async function adminScheduleRoutes(app: FastifyInstance): Promise
     const body = bodyOf(request);
     // K-24 / I-ERR-22: every field is validated before anything is stored; cron and timezone are always checked
     // (effective values, so a timezone-only change is checked against the stored cron and vice versa), whatever status.
-    const input = parseInput(schedulePatchSchema, body);
+    assertValidInput(request);
+    const input = body as { cron?: string; timezone?: string; status?: (typeof SCHEDULE_STATUSES)[number] };
     const cron = input.cron ?? String(schedule.cron);
     const timezone = input.timezone ?? String(schedule.timezone);
     if (input.cron !== undefined || input.timezone !== undefined) assertScheduleTiming(cron, timezone);
@@ -143,7 +146,7 @@ export default async function adminScheduleRoutes(app: FastifyInstance): Promise
     await repos.updateSchedule(schedule.id as string, fields);
     await writeAudit(session, "schedule.update", "schedule", String(schedule.id), maskArgsDeep(fields));
     return { ok: true };
-  });
+  }, { schema: ROUTE_SCHEMAS.schedulePatch });
 
   scheduleByIdRoute(app, "POST", "/enable", "schedule.manage", async ({ session, schedule }) => {
     if (schedule.service_account_id) {

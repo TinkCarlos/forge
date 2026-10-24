@@ -81,6 +81,27 @@ describe("route input schema -> 400 CFG-8501", () => {
     expect(missing.statusCode).toBe(404);
   });
 
+  it("ajv bounds: user password over 256 / agent version over 32 / schedule key over 64 -> 400 CFG-8501, nothing stored", async () => {
+    const user = await app.inject({ method: "POST", url: "/admin/api/users", headers, payload: { email: `it-val-pw-${suffix}@forge.local`, password: "p".repeat(257) } });
+    expect(user.statusCode, user.body).toBe(400);
+    expect(code(user)).toBe("CFG-8501");
+    expect(await query("SELECT id FROM users WHERE email = ?", [`it-val-pw-${suffix}@forge.local`])).toHaveLength(0);
+    const agent = await app.inject({ method: "POST", url: "/admin/api/agents", headers, payload: { key: `it-val-ver-${suffix}`, version: "v".repeat(33) } });
+    expect(agent.statusCode, agent.body).toBe(400);
+    expect(code(agent)).toBe("CFG-8501");
+    expect(await query("SELECT id FROM agents WHERE `key` = ?", [`it-val-ver-${suffix}`])).toHaveLength(0);
+    const sched = await app.inject({ method: "PATCH", url: `/admin/api/schedules/${scheduleId}`, headers, payload: { name: "n".repeat(129) } });
+    expect(sched.statusCode, sched.body).toBe(400);
+    expect((await query<{ name: string }>("SELECT name FROM schedules WHERE id = ?", [scheduleId]))[0]!.name).toBe("IT val");
+  });
+
+  it("validation runs after auth and lookup: no session -> 401 (not 400); unknown approval with a bad body -> 404", async () => {
+    const anon = await app.inject({ method: "POST", url: "/admin/api/users", payload: { email: "abc" } });
+    expect(anon.statusCode).toBe(401);
+    const missing = await app.inject({ method: "POST", url: "/admin/api/approvals/01JNOTEXIST000000000000000/decide", headers, payload: { decision: "nope", comment: "c".repeat(2000) } });
+    expect(missing.statusCode).toBe(404);
+  });
+
   it("I-RUN-02 / S-25: runs and audit limit=abc/1.5/-1 -> 400; limit=10 -> 200", async () => {
     for (const url of ["/admin/api/runs", "/admin/api/audit"]) {
       for (const limit of ["abc", "1.5", "-1"]) {

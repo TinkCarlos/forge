@@ -12,17 +12,18 @@ import {
   presentRun,
   streamRun,
 } from "../../plugins/http-helpers.js";
-import { approvalDecideSchema, limitQuerySchema, parseInput } from "../../plugins/input-schema.js";
+import { ROUTE_SCHEMAS, assertValidInput, limitParam } from "../../plugins/input-schema.js";
 
 export default async function adminRunRoutes(app: FastifyInstance): Promise<void> {
-  app.get("/admin/api/runs", async (request) => {
+  app.get("/admin/api/runs", { schema: ROUTE_SCHEMAS.runsList, attachValidation: true }, async (request) => {
     const session = await admin(request, "run.view");
+    assertValidInput(request, "querystring");
     const query = request.query as Record<string, unknown>;
     const filter = await runFilterFor(session.principal);
     const runs = await repos.listRuns({
       ...filter,
       status: typeof query.status === "string" ? query.status : undefined,
-      limit: parseInput(limitQuerySchema(200), query ?? {}).limit ?? 50,
+      limit: limitParam(request, 50),
     });
     const items = await Promise.all(
       runs.map(async (run) => {
@@ -83,14 +84,16 @@ export default async function adminRunRoutes(app: FastifyInstance): Promise<void
     return paged ? { items, page, pageSize, total } : { items };
   });
 
-  app.post("/admin/api/approvals/:id/decide", async (request) => {
+  app.post("/admin/api/approvals/:id/decide", { schema: ROUTE_SCHEMAS.approvalDecide, attachValidation: true }, async (request) => {
     const session = await admin(request, "approval.decide");
     // Missing approval, missing run and a run outside the caller's scope all answer the same 404 「审批不存在」 (no Run details).
     const approval = await repos.getApproval(param(request, "id"));
     const run = approval ? await repos.getRun(approval.run_id) : null;
     if (!approval || !run || !(await canAccessRun(session.principal, run))) throw errors.notFound("审批不存在");
     const body = bodyOf(request);
-    const { decision, comment } = parseInput(approvalDecideSchema, body);
+    assertValidInput(request);
+    const decision = body.decision as "approved" | "rejected";
+    const comment = typeof body.comment === "string" ? body.comment : undefined;
     // I-APR-38: the Run already ended -> the approval is no longer operable (pending -> expired), 409 RUN-7005, no audit,
     // no executeRun. Checked here at the API, not in the loop.
     if (isRunFinished(run.status)) {

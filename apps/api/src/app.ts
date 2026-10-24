@@ -9,6 +9,7 @@ import { installErrorHandler } from "./plugins/errors.js";
 import { installCsrfHook } from "./plugins/csrf.js";
 import { installSecurityHeaders } from "./plugins/security-headers.js";
 import { installSanitizedNotFoundHandler, requestLogSerializers } from "./plugins/log-sanitize.js";
+import { AJV_CUSTOM_OPTIONS } from "./plugins/input-schema.js";
 import healthRoutes from "./routes/health.js";
 import authRoutes from "./routes/auth.js";
 import adminRoutes from "./routes/admin/index.js";
@@ -52,6 +53,8 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     ),
     bodyLimit: 2 * 1024 * 1024,
     requestIdHeader: "x-request-id",
+    // Route input schemas (plugins/input-schema.ts): no type coercion, so 42 is not accepted as a string.
+    ajv: { customOptions: AJV_CUSTOM_OPTIONS },
   });
 
   app.decorate("forgeConfig", options.config ? { ...config, ...options.config } : config);

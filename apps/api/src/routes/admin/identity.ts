@@ -19,7 +19,7 @@ import {
   requireBodyString,
   enumBody,
 } from "../../plugins/http-helpers.js";
-import { limitQuerySchema, parseInput, userCreateSchema } from "../../plugins/input-schema.js";
+import { ROUTE_SCHEMAS, assertValidInput, limitParam } from "../../plugins/input-schema.js";
 
 /**
  * User list DTO (I-USR-01): explicit whitelist instead of spreading the row. Field names stay snake_case because the
@@ -52,10 +52,11 @@ export default async function adminIdentityRoutes(app: FastifyInstance): Promise
     return { items: users.map((user) => presentUser(user, platformAdmin)) };
   });
 
-  app.post("/admin/api/users", async (request) => {
+  app.post("/admin/api/users", { schema: ROUTE_SCHEMAS.userCreate, attachValidation: true }, async (request) => {
     const session = await admin(request, "user.manage");
     const body = bodyOf(request);
-    const { email } = parseInput(userCreateSchema, body);
+    assertValidInput(request);
+    const email = String(body.email).trim();
     const status = enumBody(body, "status", USER_STATUSES);
     if (await repos.getUserByEmail(email)) throw errors.conflict("邮箱已存在");
     const role = stringBody(body, "role", "user");
@@ -120,10 +121,11 @@ export default async function adminIdentityRoutes(app: FastifyInstance): Promise
     return { ok: true };
   });
 
-  app.get("/admin/api/audit", async (request) => {
+  app.get("/admin/api/audit", { schema: ROUTE_SCHEMAS.auditList, attachValidation: true }, async (request) => {
     const session = await admin(request, "audit.view");
+    assertValidInput(request, "querystring");
     // I-SCOPE-13/14: rows filtered by the caller's dataScope (auditFilterFor); NULL-department rows only for dataScope all.
-    return { items: await repos.listAudit(await auditFilterFor(session.principal), parseInput(limitQuerySchema(500), request.query ?? {}).limit ?? 100) };
+    return { items: await repos.listAudit(await auditFilterFor(session.principal), limitParam(request, 100)) };
   });
 
   app.get("/admin/api/sso", async (request) => {

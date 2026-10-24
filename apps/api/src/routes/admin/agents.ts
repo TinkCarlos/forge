@@ -16,7 +16,7 @@ import {
   requireBodyString,
   sessionPayload,
 } from "../../plugins/http-helpers.js";
-import { agentFieldsSchema, parseInput } from "../../plugins/input-schema.js";
+import { ROUTE_SCHEMAS, assertValidInput } from "../../plugins/input-schema.js";
 
 export default async function adminAgentRoutes(app: FastifyInstance): Promise<void> {
   app.get("/admin/api/dashboard", async (request) => {
@@ -39,12 +39,12 @@ export default async function adminAgentRoutes(app: FastifyInstance): Promise<vo
     return { items };
   });
 
-  app.post("/admin/api/agents", async (request) => {
+  app.post("/admin/api/agents", { schema: ROUTE_SCHEMAS.agentCreate, attachValidation: true }, async (request) => {
     const session = await admin(request, "agent.manage");
     const body = bodyOf(request);
     const key = requireBodyString(body, "key").trim();
     if (!/^[a-z0-9][a-z0-9-]{1,63}$/.test(key)) throw errors.invalid("key 必须为小写字母、数字、连字符，2-64 位");
-    parseInput(agentFieldsSchema, body);
+    assertValidInput(request);
     if (await repos.getAgentByKey(key)) throw errors.conflict("Agent key 已存在");
     const agentId = await repos.createAgent({
       key,
@@ -77,14 +77,14 @@ export default async function adminAgentRoutes(app: FastifyInstance): Promise<vo
     return { ...presentAgent(agent), instructions: versions[0]?.instructions ?? null, versions };
   });
 
-  app.patch("/admin/api/agents/:id", async (request) => {
+  app.patch("/admin/api/agents/:id", { schema: ROUTE_SCHEMAS.agentPatch, attachValidation: true }, async (request) => {
     const session = await admin(request, "agent.manage");
     const agent = await repos.getAgent(param(request, "id"));
     if (!agent || !(await agentAccessible(session.principal, agent))) throw errors.notFound("Agent 不存在");
     assertAgentWritable(session.principal, agent);
     const body = bodyOf(request);
     const fields: Record<string, unknown> = {};
-    parseInput(agentFieldsSchema, body);
+    assertValidInput(request);
     if (body.name !== undefined) fields.name = stringBody(body, "name");
     if (body.description !== undefined) fields.description = stringBody(body, "description");
     if (body.status !== undefined) {

@@ -1,41 +1,141 @@
-import { z, type ZodTypeAny } from "zod";
+import type { FastifyRequest } from "fastify";
 import { CronExpressionParser } from "cron-parser";
 import { errors } from "@forge/core";
 
 /**
- * Route input schemas (K-23 / K-24 / I-USR-02 / I-APR-34 / I-RUN-02 / S-25).
+ * Route input schemas (K-23 / K-24 / I-USR-02 / I-APR-34 / I-RUN-02 / S-25), as Fastify route schemas: plain JSON
+ * schema compiled by Fastify's ajv at route registration. No zod in the route layer.
  *
- * Inputs are checked here, in the route layer, before anything touches the database, and a bad input is always
- * 400 CFG-8501 (`errors.invalid`) with `details.field`. The errorHandler does not map anything and DB errors are
- * never translated to 400: a value that would overflow a column is rejected by these limits first.
- * Lengths mirror packages/store/src/schema.sql.
+ * Every string has maxLength and every array has maxItems (tests/input-schema.test.ts walks ROUTE_SCHEMAS).
+ * Lengths mirror packages/store/src/schema.sql. A bad input is always 400 CFG-8501 (`errors.invalid`) with
+ * `details.field`; the errorHandler maps nothing and DB errors are never translated to 400.
+ *
+ * Routes register `{ schema: ROUTE_SCHEMAS.x, attachValidation: true }` and call `assertValidInput(request)` at the
+ * point where the old check stood, i.e. after the session / permission check and after the 404 lookup
+ * (I-APR-34: an unknown approval stays 404; no session stays 401). Fastify therefore never rejects on its own.
  */
-export function parseInput<T extends ZodTypeAny>(schema: T, value: unknown): z.infer<T> {
-  const result = schema.safeParse(value);
-  if (result.success) return result.data;
-  const issue = result.error.issues[0]!;
-  const field = issue.path.join(".");
-  throw errors.invalid(issue.message, field ? { field } : undefined);
+
+/** Same options in apps/api/src/app.ts and the unit test: no type coercion ("42" stays a string, 42 is not a string). */
+export const AJV_CUSTOM_OPTIONS = { coerceTypes: false } as const;
+
+const str = (maxLength: number) => ({ type: "string", maxLength }) as const;
+const ID_MAX = 64; // ids are CHAR(26); 64 keeps an unknown long id a 404 rather than a new 400
+
+/** Decimal digits only, no sign / decimal / exponent / leading zero, 1..max (max is a multiple of 100, >= 200). */
+function limitPattern(max: number): string {
+  const head = max / 100;
+  return `^(?:[1-9][0-9]?|[1-${head - 1}][0-9]{2}|${max})$`;
+}
+const limitQuery = (max: number) =>
+  ({ type: "object", properties: { limit: { type: "string", maxLength: String(max).length, pattern: limitPattern(max) } } }) as const;
+
+// agents: key VARCHAR(64), name VARCHAR(128), description VARCHAR(1024), status VARCHAR(16);
+// agent_versions: version VARCHAR(32), instructions MEDIUMTEXT (bounded at 1 MiB characters; the body limit is 2 MiB)
+const agentProps = {
+  name: str(128),
+  description: str(1024),
+  status: str(16),
+  instructions: str(1_048_576),
+  version: str(32),
+} as const;
+
+// schedules: key VARCHAR(64), name VARCHAR(128), cron VARCHAR(128), timezone VARCHAR(64), status active|disabled
+export const SCHEDULE_STATUSES = ["active", "disabled"] as const;
+const scheduleProps = {
+  name: str(128),
+  cron: str(128),
+  timezone: str(64),
+  agentId: str(ID_MAX),
+  serviceAccountId: str(ID_MAX),
+} as const;
+
+export const ROUTE_SCHEMAS = {
+  agentCreate: { body: { type: "object", properties: { key: str(64), ...agentProps } } },
+  agentPatch: { body: { type: "object", properties: agentProps } },
+  // users: email VARCHAR(255), username VARCHAR(64), display_name VARCHAR(128), role VARCHAR(32), data_scope / status
+  // VARCHAR(16); password is hashed (password_hash VARCHAR(255)), bounded at 256 so hashing cannot be abused.
+  userCreate: {
+    body: {
+      type: "object",
+      required: ["email"],
+      properties: {
+        email: { type: "string", minLength: 1, maxLength: 255, pattern: "^\\s*[^\\s@]+@[^\\s@]+\\.[^\\s@]+\\s*$" },
+        username: str(64),
+        displayName: str(128),
+        role: str(32),
+        dataScope: str(16),
+        status: str(16),
+        password: str(256),
+        orgUnitId: str(ID_MAX),
+      },
+    },
+  },
+  // approvals: comment VARCHAR(1024)
+  approvalDecide: {
+    body: { type: "object", required: ["decision"], properties: { decision: { type: "string", maxLength: 16, enum: ["approved", "rejected"] }, comment: str(1024) } },
+  },
+  runsList: { querystring: limitQuery(200) },
+  auditList: { querystring: limitQuery(500) },
+  scheduleCreate: { body: { type: "object", properties: { key: str(64), ...scheduleProps } } },
+  schedulePatch: { body: { type: "object", properties: { ...scheduleProps, status: { type: "string", maxLength: 16, enum: SCHEDULE_STATUSES } } } },
+} as const;
+
+/** Messages that differ from the generic ones (kept from the previous checks). */
+const FIELD_MESSAGES: Record<string, string> = {
+  "email.pattern": "email 格式无效",
+  "email.minLength": "缺少字段: email",
+  "decision.enum": "decision 必须为 approved/rejected",
+};
+
+type AjvError = { keyword: string; instancePath: string; params: Record<string, unknown> };
+
+function messageFor(error: AjvError, field: string, limitMax: string | undefined): string {
+  // `limit` (I-RUN-02 / S-25): one message whatever failed (type, length or pattern), naming the route's maximum.
+  if (field === "limit" && limitMax) return `limit 必须是 1-${limitMax} 之间的整数`;
+  const custom = FIELD_MESSAGES[`${field}.${error.keyword}`];
+  if (custom) return custom;
+  switch (error.keyword) {
+    case "required":
+      return `缺少字段: ${field}`;
+    case "type":
+      if (!field) return "请求参数必须是 JSON 对象";
+      return error.params.type === "string" ? `${field} 必须是字符串` : `${field} 类型无效`;
+    case "maxLength":
+      return `${field} 不能超过 ${String(error.params.limit)} 个字符`;
+    case "minLength":
+      return `${field} 不能为空`;
+    case "maxItems":
+      return `${field} 不能超过 ${String(error.params.limit)} 项`;
+    case "enum":
+      return `${field} 只能是 ${(error.params.allowedValues as unknown[]).join(" 或 ")}`;
+    case "pattern":
+      return `${field} 格式无效`;
+    default:
+      return `${field || "请求参数"} 无效`;
+  }
 }
 
-export function boundedString(field: string, max: number) {
-  return z
-    .string({ invalid_type_error: `${field} 必须是字符串` })
-    .max(max, `${field} 不能超过 ${max} 个字符`);
+/**
+ * Runs the route's compiled schema for `part` on the request (a non-object body counts as {} like bodyOf) and throws
+ * 400 CFG-8501 with details.field for the first error. Requires the route to be registered with that schema part.
+ */
+export function assertValidInput(request: FastifyRequest, part: "body" | "querystring" = "body"): void {
+  const validate = request.getValidationFunction(part);
+  if (!validate) throw new Error(`route ${request.routeOptions.url ?? ""} has no ${part} schema`);
+  const raw = part === "body" ? request.body : request.query;
+  const value = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  if (validate(value)) return;
+  const error = (validate.errors?.[0] ?? { keyword: "invalid", instancePath: "", params: {} }) as AjvError;
+  const field = error.keyword === "required" ? String(error.params.missingProperty) : error.instancePath.replace(/^\//, "").replace(/\//g, ".");
+  const schema = request.routeOptions.schema as { querystring?: { properties?: { limit?: { pattern?: string } } } } | undefined;
+  const limitMax = /\|(\d+)\)\$$/.exec(schema?.querystring?.properties?.limit?.pattern ?? "")?.[1];
+  throw errors.invalid(messageFor(error, field, limitMax), field ? { field } : undefined);
 }
 
-/** Query or body integer: a number or a decimal-digit string, no sign/decimal/exponent; within [min, max]. */
-export function integerParam(field: string, min: number, max: number) {
-  return z
-    .union([z.number(), z.string()], { invalid_type_error: `${field} 必须是整数` })
-    .transform((value, ctx) => {
-      const n = typeof value === "number" ? value : /^\d+$/.test(value.trim()) ? Number(value.trim()) : NaN;
-      if (!Number.isInteger(n) || n < min || n > max) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${field} 必须是 ${min}-${max} 之间的整数` });
-        return z.NEVER;
-      }
-      return n;
-    });
+/** `limit` from an already validated querystring, or the default when absent. */
+export function limitParam(request: FastifyRequest, fallback: number): number {
+  const limit = (request.query as Record<string, unknown> | undefined)?.limit;
+  return typeof limit === "string" ? Number(limit) : fallback;
 }
 
 export function isValidTimezone(timezone: string): boolean {
@@ -56,51 +156,6 @@ export function isValidCron(cron: string, timezone: string): boolean {
     return false;
   }
 }
-
-// agents: name VARCHAR(128), description VARCHAR(1024)
-export const agentFieldsSchema = z
-  .object({ name: boundedString("name", 128).optional(), description: boundedString("description", 1024).optional() })
-  .passthrough();
-
-// users: email VARCHAR(255), username VARCHAR(64), display_name VARCHAR(128)
-export const userCreateSchema = z
-  .object({
-    email: z
-      .string({ required_error: "缺少字段: email", invalid_type_error: "email 必须是字符串" })
-      .trim()
-      .min(1, "缺少字段: email")
-      .max(255, "email 不能超过 255 个字符")
-      .email("email 格式无效"),
-    username: boundedString("username", 64).optional(),
-    displayName: boundedString("displayName", 128).optional(),
-  })
-  .passthrough();
-
-// approvals: comment VARCHAR(1024)
-export const approvalDecideSchema = z
-  .object({
-    decision: z.enum(["approved", "rejected"], { errorMap: () => ({ message: "decision 必须为 approved/rejected" }) }),
-    comment: boundedString("comment", 1024).optional(),
-  })
-  .passthrough();
-
-/** List `limit` query: optional; when present a positive integer up to `max`. */
-export function limitQuerySchema(max: number) {
-  return z.object({ limit: integerParam("limit", 1, max).optional() }).passthrough();
-}
-
-// schedules: name VARCHAR(128), cron VARCHAR(128), timezone VARCHAR(64), status active|disabled
-export const SCHEDULE_STATUSES = ["active", "disabled"] as const;
-export const schedulePatchSchema = z
-  .object({
-    name: boundedString("name", 128).optional(),
-    cron: boundedString("cron", 128).optional(),
-    timezone: boundedString("timezone", 64).optional(),
-    status: z.enum(SCHEDULE_STATUSES, { errorMap: () => ({ message: "status 只能是 active 或 disabled" }) }).optional(),
-  })
-  .passthrough();
-
-export const scheduleCreateSchema = schedulePatchSchema.omit({ status: true }).extend({ key: boundedString("key", 64).optional() });
 
 /**
  * Effective cron + timezone after a create/patch: timezone first (I-SCH-04: an invalid timezone is reported as a
