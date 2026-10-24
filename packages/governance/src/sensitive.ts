@@ -58,10 +58,14 @@ export function isSecretValue(value: string): boolean {
 }
 
 // Prose credentials inside a longer string (P2, QA 714b3f3): `Bearer <token>` (token has a digit), `Basic <base64>`,
-// and `<credential key>=value` / `key: value` / `密码：value`. Only the value becomes `***`; the sentence stays.
+// and `<credential key>=value` / `key: value` / `密码：value`, and standalone `sk-…` keys. Only the value becomes `***`;
+// the sentence stays.
 const PROSE_BEARER = /\b(bearer\s+)(?=[A-Za-z0-9._~+/=-]*\d)[A-Za-z0-9._~+/=-]{6,}/gi;
 // Basic: base64-looking (a digit, + / =, or an inner lower->upper switch), so "Basic Authentication" stays readable.
 const PROSE_BASIC = /\b(Basic\s+)(?=[A-Za-z0-9+/=]*(?:[0-9+/=]|[a-z][A-Z]))[A-Za-z0-9+/]{8,}={0,2}/g;
+// P2: an OpenAI-style key standing alone in prose: `sk-` + at least 16 key characters with a digit among them
+// (so `sk-learn`, `sk-ii` stay readable). The whole key becomes `***`.
+const PROSE_SK = /(^|[^\w-])sk-(?=[A-Za-z0-9_-]*\d)[A-Za-z0-9_-]{16,}/g;
 const PROSE_KEY_VALUE =
   /(^|[^\w-])((?:password|passwd|pwd|secret|client[_-]?secret|api[_-]?key|apikey|access[_-]?token|refresh[_-]?token|id[_-]?token|token|密码|口令|密钥|令牌)\s*[=:：]\s*)(?!\*\*\*)([^\s,;，；。"'()（）<>]+)/gi;
 
@@ -70,6 +74,7 @@ export function maskProseSecrets(value: string): string {
   return value
     .replace(PROSE_BEARER, `$1${MASK}`)
     .replace(PROSE_BASIC, `$1${MASK}`)
+    .replace(PROSE_SK, `$1${MASK}`)
     .replace(PROSE_KEY_VALUE, (_m, lead: string, key: string) => `${lead}${key}${MASK}`);
 }
 
