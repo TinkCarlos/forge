@@ -17,6 +17,7 @@ import {
   SidebarMenuSubItem,
   useSidebar,
 } from '@/components/ui/sidebar'
+import { LEGACY_LINK_ATTRS, LEGACY_LINK_HINT } from '@/lib/legacy-link'
 import { Badge } from '../ui/badge'
 import {
   DropdownMenu,
@@ -76,10 +77,11 @@ function SidebarMenuLink({ item, href }: { item: NavLink; href: string }) {
         tooltip={item.title}
       >
         {item.external ? (
-          <a href={item.url} title='在旧版控制台中打开'>
+          <a href={item.url} {...LEGACY_LINK_ATTRS} title={LEGACY_LINK_HINT}>
             {item.icon && <item.icon />}
             <span>{item.title}</span>
-            <ArrowUpRight className='ms-auto size-3.5 opacity-0 transition-opacity group-hover/menu-item:opacity-60' />
+            <span className='sr-only'>（{LEGACY_LINK_HINT}）</span>
+            <ArrowUpRight aria-hidden className='ms-auto size-3.5 opacity-60 transition-opacity group-hover/menu-item:opacity-100' />
           </a>
         ) : (
           <Link to={item.url} onClick={() => setOpenMobile(false)}>
