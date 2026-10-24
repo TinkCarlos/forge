@@ -114,6 +114,9 @@ export function installSanitizedNotFoundHandler(app: FastifyInstance): void {
   app.setNotFoundHandler((request, reply) => {
     const message = `Route ${request.method}:${sanitizeUrlForLog(request.raw.url ?? request.url)} not found`;
     request.log.info(message);
-    reply.code(404).send({ message, error: "Not Found", statusCode: 404 });
+    // P3-01: the unified error body (same as an unknown id / FST_ERR_MAX_PARAM_LENGTH); the sanitized route line goes
+    // to the log only, the response echoes nothing of the path or query (K-26). Wrong method on a known path is the
+    // same 404 (no 405).
+    reply.code(404).send({ error: { code: "RUN-7001", message: "资源不存在", requestId: String(request.id), details: null, retryable: false } });
   });
 }

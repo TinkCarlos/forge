@@ -76,7 +76,7 @@ describe("K-26: end to end through a Fastify logger (app.inject, no network, no 
     expect(ok.statusCode).toBe(200);
     const missing = await app.inject({ method: "GET", url: "/nope?client_secret=SECRET3&code=SECRET4" });
     expect(missing.statusCode).toBe(404);
-    expect(missing.json()).toEqual({ message: `Route GET:/nope?client_secret=${R}&code=${R} not found`, error: "Not Found", statusCode: 404 });
+    expect(missing.json()).toEqual({ error: { code: "RUN-7001", message: "资源不存在", requestId: expect.any(String), details: null, retryable: false } }); // P3-01: unified body, nothing of the URL
     await app.close();
     const all = lines.join("");
     expect(all).not.toMatch(/SECRET[1-4]/);

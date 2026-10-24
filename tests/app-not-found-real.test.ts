@@ -51,11 +51,10 @@ describe("real buildApp: unknown route 404 is sanitized in response and logs", (
     const res = await app.inject({ method: "GET", url: "/admin/api/does-not-exist?token=x&page=2" });
     expect(res.statusCode).toBe(404);
     const body = res.json();
-    expect(body).toMatchObject({ error: "Not Found", statusCode: 404 });
-    expect(body.message).toBe(`Route GET:/admin/api/does-not-exist?token=${REDACTED}&page=2 not found`);
-    expect(res.body).toContain(REDACTED);
+    // P3-01: unified error body; the (sanitized) route line is only in the log.
+    expect(body).toEqual({ error: { code: "RUN-7001", message: "资源不存在", requestId: expect.any(String), details: null, retryable: false } });
     expect(res.body).not.toContain("token=x");
-    expect(res.body).toContain("page=2");
+    expect(res.body).not.toContain("does-not-exist");
 
     const log = lines.join("");
     expect(log).toContain("does-not-exist");

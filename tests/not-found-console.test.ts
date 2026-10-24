@@ -72,7 +72,8 @@ describe("unmatched routes go through the sanitized 404 handler", () => {
     lines.length = 0;
     const res = await app.inject({ method: "GET", url: "/admin/api/does-not-exist?token=x&q=1" });
     expect(res.statusCode).toBe(404);
-    expect(res.json()).toEqual({ message: `Route GET:/admin/api/does-not-exist?token=${REDACTED}&q=1 not found`, error: "Not Found", statusCode: 404 });
+    expect(res.json()).toEqual({ error: { code: "RUN-7001", message: "资源不存在", requestId: expect.any(String), details: null, retryable: false } }); // P3-01: unified body, no path echo
+    expect(res.body).not.toContain("does-not-exist");
     const logs = lines.join("");
     expect(logs).toContain(`token=${REDACTED}`);
     expect(logs).not.toMatch(/token=x\b/);
