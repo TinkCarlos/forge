@@ -9,7 +9,7 @@ function exampleValue(name: string): string | undefined {
   const text = fs.readFileSync(path.join(__dirname, "..", ".env.example"), "utf8");
   for (const line of text.split(/\r?\n/)) {
     const match = /^\s*([A-Z0-9_]+)\s*=(.*)$/.exec(line);
-    if (match && match[1] === name) return match[2].trim().replace(/^["']|["']$/g, "");
+    if (match && match[1] === name) return (match[2] ?? "").trim().replace(/^["']|["']$/g, "");
   }
   return undefined;
 }
