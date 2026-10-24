@@ -53,6 +53,23 @@ const DATABASE_URL_REQUIRED = "DATABASE_URL is required in every environment (no
 export type SecretName = keyof typeof DEV_SECRET_DEFAULTS;
 const SECRET_NAMES = Object.keys(DEV_SECRET_DEFAULTS) as SecretName[];
 
+/**
+ * P3-18: secrets for which a whitespace-only value counts as unset (no environment may run with an empty key). The
+ * DEV_SECRET_DEFAULTS ones then fall back to the development default (development/test, with a warning) or refuse
+ * startup (elsewhere); FORGE_ADMIN_PASSWORD has no default and refuses startup naming the variable; the optional
+ * client secrets behave as if not configured.
+ */
+export const BLANK_AS_UNSET_SECRETS = [...SECRET_NAMES, "FORGE_ADMIN_PASSWORD", "OIDC_CLIENT_SECRET", "AGENT_CONNECTOR_CLIENT_SECRET"] as const;
+
+function blankSecretsUnset(env: Record<string, string | undefined>): Record<string, string | undefined> {
+  const normalized = { ...env };
+  for (const name of BLANK_AS_UNSET_SECRETS) {
+    const value = normalized[name];
+    if (typeof value === "string" && value.trim() === "") normalized[name] = undefined;
+  }
+  return normalized;
+}
+
 /** NODE_ENV values recognised as-is. Anything else that is set triggers a startup warning (treated as production). */
 const KNOWN_NODE_ENVS = ["development", "test", "production"] as const;
 
@@ -181,7 +198,7 @@ export interface ParseConfigOptions {
 
 /** Validates an env object (pure; no process.env access) and returns the typed config, or throws. */
 export function parseConfig(env: Record<string, string | undefined>, options: ParseConfigOptions = {}): Config {
-  const parsed = envSchema.safeParse(env);
+  const parsed = envSchema.safeParse(blankSecretsUnset(env));
   if (!parsed.success) {
     const messages = parsed.error.issues.map((issue) => {
       const key = issue.path.join(".");

@@ -71,7 +71,7 @@ minio:9000/9001
 | `S3_BUCKET` | 是 | `forge-prod` |
 | `S3_ACCESS_KEY` / `S3_SECRET_KEY` | 是 | Secret 注入 |
 | `FORGE_MASTER_KEY` | 是 | 32 字节 base64；信封加密主密钥；单独托管 |
-| `SESSION_SECRET` | 是 | BFF 会话签名 |
+| `SESSION_SECRET` | 是 | BFF 会话签名。只含空白（空格、制表符、换行）的密钥一律视为未设置（P3-18）：`FORGE_MASTER_KEY` / `SESSION_SECRET` / `API_KEY_PEPPER` 在 development/test 下改用内置开发密钥并打 warn（列出变量名），其他环境按上面的规则拒绝启动；`FORGE_ADMIN_PASSWORD` 没有默认值，只含空白时任何环境都拒绝启动并写出变量名；`OIDC_CLIENT_SECRET`、`AGENT_CONNECTOR_CLIENT_SECRET` 只含空白时按未配置处理 |
 | `LOG_LEVEL` | 否 | `info` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | 否 | OTel Collector |
 | `OUTBOUND_ALLOWLIST` | 否 | 出站请求白名单，逗号分隔的 `host:port`（IPv6 写 `[addr]:port`），默认空。列出的目标跳过内网/回环/元数据地址检查（协议仍只允许 http/https）。每项必须是精确的 `host:port`（不支持通配符、CIDR、只写 host；无效项会让进程启动失败）。生产只放行确实需要的内网服务，例如内网模型网关 `llm.acme.internal:443`；**私有部署的 OIDC IdP 也必须列入，否则 SSO 无法登录**。被拦截的请求在服务端日志里记 `outbound.blocked`（host、解析出的 IP、reason）。本地开发连 mock（`pnpm mock:services`）需要 `OUTBOUND_ALLOWLIST=127.0.0.1:8090`；`pnpm smoke:isolated` 会给它启动的 API 自动带上这一项（除非已显式设置）。详见 admin-api.md §2.1 |
