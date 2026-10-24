@@ -4,6 +4,7 @@ import tailwindcss from '@tailwindcss/vite'
 import { tanstackRouter } from '@tanstack/router-plugin/vite'
 import { fileURLToPath, URL } from 'node:url'
 import { sonnerNoInsertCss } from './vite-plugins/sonner-no-insert-css.ts'
+import { styleSingletonAdopted } from './vite-plugins/style-singleton-adopted.ts'
 
 const api = process.env.FORGE_API_URL ?? 'http://127.0.0.1:3100'
 
@@ -13,7 +14,8 @@ export default defineConfig({
   // 旧控制台在 public/，不能被当成 Vite 的静态目录复制进 dist。
   publicDir: false,
   // FE-CSP-01：sonner 不在运行时插 <style>，样式由 src/styles/index.css 静态引入
-  plugins: [sonnerNoInsertCss(), tanstackRouter({ target: 'react', autoCodeSplitting: true }), react(), tailwindcss()],
+  // FE-CSP-03：Radix 弹层的滚动锁样式改走 adoptedStyleSheets
+  plugins: [sonnerNoInsertCss(), styleSingletonAdopted(), tanstackRouter({ target: 'react', autoCodeSplitting: true }), react(), tailwindcss()],
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   server: {
     port: 5175,
