@@ -1,7 +1,7 @@
 import { type FastifyInstance } from "fastify";
 import { errors, ForgeError } from "@forge/core";
 import { assertRunAccess, buildArgsPreview, canAccessRun, maskArgsDeep, runFilterFor } from "@forge/governance";
-import { cancelRun, executeRun, isRunFinished, RUN_FINISHED_CODE } from "@forge/runtime";
+import { cancelRun, describeTickError, executeRun, isRunFinished, RUN_FINISHED_CODE } from "@forge/runtime";
 import { repos } from "@forge/store";
 import {
   bodyOf,
@@ -100,7 +100,8 @@ export default async function adminRunRoutes(app: FastifyInstance): Promise<void
     const ok = await repos.decideApproval(approval.id, decision as "approved" | "rejected", session.principal.id, stringBody(body, "comment"));
     if (!ok) throw errors.conflict("审批已处理或已过期");
     await writeAudit(session, "approval.decide", "approval", approval.id, { decision });
-    void executeRun(approval.run_id);
+    // Fire-and-forget like the worker (K-20): a rejected executeRun is logged (sanitized), never an unhandled rejection.
+    void executeRun(approval.run_id).catch((error) => console.error(`Run ${approval.run_id} execution failed: ${describeTickError(error)}`));
     return { ok: true };
   });
 }
