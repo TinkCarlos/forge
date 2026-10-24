@@ -59,6 +59,10 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     frameworkErrors: frameworkErrorHandler,
   });
 
+  // I-DOC-16: JSON is the only body type the routes read. Fastify's built-in text/plain parser handed the raw string to
+  // the route (then "缺少字段" / 401); without it a text/plain body is 415 OPN-4505 like XML, forms or no Content-Type.
+  app.removeContentTypeParser("text/plain");
+
   app.decorate("forgeConfig", options.config ? { ...config, ...options.config } : config);
 
   installSecurityHeaders(app);
