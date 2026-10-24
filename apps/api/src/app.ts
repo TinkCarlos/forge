@@ -7,6 +7,7 @@ import { config } from "@forge/core";
 import type { ConnectorConfig } from "@forge/identity";
 import { installErrorHandler } from "./plugins/errors.js";
 import { installCsrfHook } from "./plugins/csrf.js";
+import { installSecurityHeaders } from "./plugins/security-headers.js";
 import { installSanitizedNotFoundHandler, requestLogSerializers } from "./plugins/log-sanitize.js";
 import healthRoutes from "./routes/health.js";
 import authRoutes from "./routes/auth.js";
@@ -55,6 +56,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
 
   app.decorate("forgeConfig", options.config ? { ...config, ...options.config } : config);
 
+  installSecurityHeaders(app);
   await app.register(cookie);
   await app.register(multipart, { limits: { fileSize: 20 * 1024 * 1024 } });
   await app.register(fastifyStatic, {
