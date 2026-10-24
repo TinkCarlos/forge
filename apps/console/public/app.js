@@ -166,6 +166,7 @@ async function init() {
     showLogin();
   });
   $("#refresh").addEventListener("click", () => renderCurrent());
+  bindAgentActions();
   window.addEventListener("hashchange", () => switchTab(location.hash.slice(1) || "dashboard"));
   try {
     state.session = await api("/auth/session");
@@ -332,8 +333,8 @@ async function renderAgents() {
           <td>${agent.apiEnabled ? `<span class="pill ok">已开放</span>` : `<span class="pill">未开放</span>`}</td>
           <td>${statusPill(agent.status)}</td>
           <td><div class="actions">
-            <button class="btn ghost small" onclick="app.openAgentRun('${esc(agent.id)}','${esc(agent.name)}')">试运行</button>
-            <button class="btn ghost small" onclick="app.openAgentNewVersion('${esc(agent.id)}','${esc(agent.name)}')">新版本</button>
+            <button class="btn ghost small" type="button" data-action="agent-run" data-agent-id="${esc(agent.id)}">试运行</button>
+            <button class="btn ghost small" type="button" data-action="agent-new-version" data-agent-id="${esc(agent.id)}">新版本</button>
             ${agent.draft ? `<button class="btn ghost small" onclick="app.publishAgent('${esc(agent.id)}')">发布草稿 ${esc(vLabel(agent.draft.version))}</button>` : ""}
             <button class="btn ghost small" onclick="app.toggleAgentApi('${esc(agent.id)}',${agent.apiEnabled ? "false" : "true"})">${agent.apiEnabled ? "关闭 API" : "开放 API"}</button>
             <button class="btn ghost small" onclick="app.openAgentDetail('${esc(agent.id)}')">详情</button>
@@ -545,6 +546,29 @@ async function renderSso() {
 
 // ---------- modal ----------
 
+/** FE-XSS-01：名字按 id 从 state 取（只用于 textContent 标题），找不到就退回 id。 */
+function agentNameById(id) {
+  return state.agents.find((agent) => agent.id === id)?.name ?? id;
+}
+
+/**
+ * FE-XSS-01：试运行/新版本不再用内联 onclick 拼名字（esc 的 &#39; 在属性里会被解码回 '，可注入）。
+ * 改为 data-action + data-agent-id，在不会被替换的 #content 上委托；只挂一次。
+ */
+let agentActionsBound = false;
+function bindAgentActions() {
+  if (agentActionsBound) return;
+  agentActionsBound = true;
+  const content = $("#content");
+  content.addEventListener("click", (event) => {
+    const button = event.target instanceof Element ? event.target.closest("[data-action][data-agent-id]") : null;
+    if (!button || !content.contains(button)) return;
+    const id = button.dataset.agentId;
+    if (button.dataset.action === "agent-run") app.openAgentRun(id);
+    else if (button.dataset.action === "agent-new-version") app.openAgentNewVersion(id);
+  });
+}
+
 function openModal(title, body, onSubmit, submitLabel = "保存", danger = false) {
   const dialog = $("#modal");
   $("#modal-title").textContent = title;
@@ -639,7 +663,8 @@ const app = {
     }, "创建并发布");
   },
 
-  async openAgentNewVersion(id, name) {
+  async openAgentNewVersion(id) {
+    const name = agentNameById(id);
     try {
       const detail = await api(`/admin/api/agents/${id}`);
       const latest = detail.versions?.[0];
@@ -763,7 +788,8 @@ const app = {
     });
   },
 
-  openAgentRun(id, name) {
+  openAgentRun(id) {
+    const name = agentNameById(id);
     openModal(`试运行 ${name}`, `${textarea("输入", "text", "你好，介绍一下 Forge。", 5)}`, async (data) => {
       const result = await api(`/admin/api/agents/${id}/run`, { method: "POST", body: { input: { text: data.get("text") } } });
       toast(`Run 已创建：${result.runId}`);
