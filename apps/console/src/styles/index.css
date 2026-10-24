@@ -107,7 +107,7 @@
   .table-cards tbody { display: block; width: 100%; }
   .table-cards tbody > tr {
     display: flex; flex-direction: column; gap: 0.5rem;
-    height: auto; padding: 0.875rem 1rem;
+    height: auto; padding: 1rem; /* UI-057：4px 栅格，原 14px/16px */
   }
   .table-cards tbody > tr > td {
     display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;

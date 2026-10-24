@@ -129,7 +129,7 @@ export function Approvals() {
                 const created = shortTime(a.created_at)
                 const expires = shortTime(a.expires_at)
                 return (
-                  <MotionRow key={a.id} {...rowMotion(i)} className='h-13 [&>td]:py-1.5'>
+                  <MotionRow key={a.id} {...rowMotion(i)} className='h-13 [&>td]:py-2'>
                     <TableCell>
                       <div className='truncate font-medium lg:max-w-[200px]' title={a.agent_name}>{a.agent_name}</div>
                       <RunId id={a.run_id} />
