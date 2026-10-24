@@ -37,7 +37,7 @@ function ArgsPreview({ value }: { value?: string | null }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <code className='block max-w-72 truncate rounded max-lg:max-w-[60vw] bg-muted px-1.5 font-mono text-xs leading-4'>{value}</code>
+        <code title={value} className='block max-w-72 truncate rounded max-lg:max-w-[60vw] bg-muted px-1.5 font-mono text-xs leading-4'>{value}</code>
       </TooltipTrigger>
       <TooltipContent className='max-w-md font-mono text-xs break-all'>{value}</TooltipContent>
     </Tooltip>
@@ -105,7 +105,7 @@ export function Approvals() {
         <Table>
           <TableHeader className='bg-muted/40'>
             <TableRow className='hover:bg-transparent'>
-              <TableHead className='w-[22%]'>Agent</TableHead>
+              <TableHead className='w-[200px] max-w-[200px]'>Agent</TableHead>
               <TableHead>工具与参数</TableHead>
               <TableHead>风险</TableHead>
               <TableHead>提交时间</TableHead>
@@ -127,7 +127,7 @@ export function Approvals() {
                 return (
                   <MotionRow key={a.id} {...rowMotion(i)} className='h-13 [&>td]:py-1.5'>
                     <TableCell>
-                      <div className='font-medium'>{a.agent_name}</div>
+                      <div className='truncate font-medium lg:max-w-[200px]' title={a.agent_name}>{a.agent_name}</div>
                       <RunId id={a.run_id} />
                     </TableCell>
                     <TableCell data-label='工具与参数' className='max-lg:items-start'>

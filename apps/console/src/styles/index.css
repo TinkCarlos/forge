@@ -123,6 +123,19 @@
   .table-cards tbody > tr > td[data-actions] { justify-content: flex-end; padding-top: 0.25rem; }
 }
 
+/* K-19 兜底：表格布局下容器内横滚，操作列固定在右侧 */
+@media (min-width: 1024px) {
+  .table-cards [data-slot='table-container'] { overflow-x: auto; }
+  .table-cards th:last-child,
+  .table-cards td[data-actions] {
+    position: sticky; right: 0; z-index: 1;
+    background: var(--card);
+    box-shadow: inset 1px 0 0 var(--border);
+  }
+  .table-cards thead th:last-child { background: color-mix(in oklab, var(--muted) 40%, var(--card)); }
+  .table-cards tbody tr:hover td[data-actions] { background: color-mix(in oklab, var(--muted) 50%, var(--card)); }
+}
+
 /* ---------- 点击区：小控件用 ::after 扩大可点范围，视觉尺寸不变 ---------- */
 .hit-area::after {
   content: ''; position: absolute; top: 50%; left: 50%;
