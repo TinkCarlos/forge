@@ -44,10 +44,12 @@ export default async function adminRunRoutes(app: FastifyInstance): Promise<void
     return {
       ...presentRun(run!),
       messages: messages.map((message) => ({ id: message.id, seq: message.seq, role: message.role, content: maskMessageContent(message.role, message.content_json), createdAt: message.created_at })),
-      // Tool arguments are masked (same rules as args_preview, structure kept); results are returned as stored.
+      // Tool arguments AND results are masked (same rules as args_preview, structure kept; U-12): a tool may echo
+      // credentials back (Authorization headers, token responses). Stored rows keep the raw values.
       toolCalls: toolCalls.map((call) => {
         const args = maskArgsDeep(call.args_json);
-        return { ...call, args_json: args, args, result: call.result_json };
+        const result = maskArgsDeep(call.result_json);
+        return { ...call, args_json: args, args, result_json: result, result, result_text: maskArgsDeep(call.result_text) };
       }),
       approvals,
     };
@@ -109,9 +111,12 @@ export default async function adminRunRoutes(app: FastifyInstance): Promise<void
   });
 }
 
-/** User messages are user input -> masked whole; assistant messages -> only the tool_calls (their arguments) are masked. */
+/**
+ * User messages are user input and tool messages carry tool results -> masked whole (U-12); assistant messages -> only
+ * the tool_calls (their arguments) are masked.
+ */
 function maskMessageContent(role: string, content: unknown): unknown {
-  if (role === "user") return maskArgsDeep(content);
+  if (role === "user" || role === "tool") return maskArgsDeep(content);
   if (role === "assistant" && content && typeof content === "object" && !Array.isArray(content) && "tool_calls" in content) {
     const record = content as Record<string, unknown>;
     return { ...record, tool_calls: maskArgsDeep(record.tool_calls) };
