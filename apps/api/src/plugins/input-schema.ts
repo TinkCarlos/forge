@@ -54,6 +54,10 @@ const scheduleProps = {
 const MIB = 1_048_576;
 const num = { type: ["number", "string", "null"], maxLength: 32 } as const;
 const bool = { type: "boolean" } as const;
+/** Strict integer in [minimum, maximum] (no strings, no null; coerceTypes is off). */
+const int = (minimum: number, maximum: number) => ({ type: "integer", minimum, maximum }) as const;
+/** N-02 I-APP-03: requests per minute; 0 is not documented as "unlimited", so it is rejected. */
+const RATE_LIMIT_PER_MINUTE = int(1, 100_000);
 const jsonObject = (maxLength: number) => ({ type: ["object", "string"], maxLength }) as const;
 const runInput = { type: ["object", "array", "string"], maxLength: MIB, maxItems: 1000 } as const;
 const arr = <T extends object>(maxItems: number, items: T) => ({ type: "array", maxItems, items }) as const;
@@ -96,10 +100,10 @@ export const ROUTE_SCHEMAS = {
   agentRun: { body: obj({ versionId: str(ID_MAX), text: str(MIB), input: runInput, threadId: str(ID_MAX) }) },
   // api_apps: key 64, name 128, description 1024, status 16, webhook_url 2048; api_keys.name 128
   appCreate: {
-    body: obj({ key: str(64), name: str(128), description: str(1024), scopes: arr(32, str(64)), webhookUrl: str(2048), webhookSecret: str(4096), rateLimitPerMinute: num, dailyQuota: num }),
+    body: obj({ key: str(64), name: str(128), description: str(1024), scopes: arr(32, str(64)), webhookUrl: str(2048), webhookSecret: str(4096), rateLimitPerMinute: RATE_LIMIT_PER_MINUTE, dailyQuota: num }),
   },
   appPatch: {
-    body: obj({ name: str(128), description: str(1024), status: str(16), scopes: arr(32, str(64)), webhookUrl: str(2048), webhookSecret: str(4096), rateLimitPerMinute: num, dailyQuota: num }),
+    body: obj({ name: str(128), description: str(1024), status: str(16), scopes: arr(32, str(64)), webhookUrl: str(2048), webhookSecret: str(4096), rateLimitPerMinute: RATE_LIMIT_PER_MINUTE, dailyQuota: num }),
   },
   apiKeyCreate: { body: obj({ name: str(128) }) },
   // service_accounts: key 64, name 128, description 1024, role 32, data_scope 32, status 16

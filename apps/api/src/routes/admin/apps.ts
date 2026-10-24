@@ -92,7 +92,7 @@ export default async function adminAppRoutes(app: FastifyInstance): Promise<void
       scopes: arrayBody(body, "scopes").length ? arrayBody(body, "scopes") : ["agents:read", "runs:create", "runs:read", "runs:cancel"],
       webhookUrl: webhookUrlOf(body),
       webhookSecretEncrypted: webhookSecret ? encryptSecret(webhookSecret, config.FORGE_MASTER_KEY) : null,
-      rateLimitPerMinute: Number(body.rateLimitPerMinute ?? 60),
+      rateLimitPerMinute: body.rateLimitPerMinute === undefined ? 60 : Number(body.rateLimitPerMinute), // schema: integer 1..100000
       dailyQuota: Number(body.dailyQuota ?? 1000),
       createdBy: session.principal.id,
     });
