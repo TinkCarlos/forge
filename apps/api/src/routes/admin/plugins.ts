@@ -108,8 +108,11 @@ export default async function adminPluginRoutes(app: FastifyInstance): Promise<v
     // #68 / I-PLG-04: unknown id -> 404 (no audit). Department scoping waits for an owner-department column.
     const plugin = await repos.getPlugin(param(request, "id"));
     if (!plugin) throw errors.notFound("插件不存在");
+    // Delete-class audit: the department is taken before the change and passed explicitly, never re-resolved from a
+    // row that may be gone. Plugins are platform-level (no department column) -> explicit null.
+    const orgUnitId = null;
     await repos.uninstallPlugin(String(plugin.id));
-    await writeAudit(session, "plugin.uninstall", "plugin", param(request, "id"));
+    await writeAudit(session, "plugin.uninstall", "plugin", String(plugin.id), undefined, { orgUnitId });
     return { ok: true };
   });
 }
