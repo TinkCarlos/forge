@@ -51,7 +51,7 @@ GET /admin/v1/session
 | 内容类型 | `application/json; charset=utf-8`；上传 `multipart/form-data` |
 | ID | ULID，带资源前缀（`agt_`、`run_`、`pkg_`、`ins_` 等） |
 | 时间 | ISO 8601 UTC |
-| 分页 | 新的管理端列表用 `?page=&pageSize=`（`page` 从 1 开始；`pageSize` 默认 20，最大 100，超过 100 按 100 处理，不报错）；响应 `{ items, page, pageSize, total }`。历史例外：`/admin/api/runs` 和 `/admin/api/audit` 仍只支持 `?limit=`，响应只有 `{ items }`。`cursor` / `nextCursor` 只用于开放平台接口（见 open-platform.md） |
+| 分页 | 新的管理端列表用 `?page=&pageSize=`（`page` 从 1 开始；`pageSize` 默认 20，最大 100，超过 100 按 100 处理，不报错）；响应 `{ items, page, pageSize, total }`。历史例外：`/admin/api/runs` 和 `/admin/api/audit` 仍只支持 `?limit=`，响应只有 `{ items }`；`limit` 必须是正整数（只含数字），runs 最大 200、audit 最大 500，不传时分别为 50、100；`abc`、`1.5`、`-1`、`0`、空串、`1e2` 或超过最大值都返回 `400 CFG-8501`（不截断）。`cursor` / `nextCursor` 只用于开放平台接口（见 open-platform.md） |
 | 筛选 | `q`、`status`、`orgId`、`type`、`from`、`to`；具体见各资源 |
 | 排序 | `sort=field:asc|desc`；仅白名单字段 |
 | 乐观并发 | 资源含 `revision`；更新带 `If-Match: "rev-3"`；冲突 `409 CFG-8503` |

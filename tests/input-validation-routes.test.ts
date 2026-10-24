@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { sessionCookieValue } from "@forge/identity";
-import { execute, repos } from "@forge/store";
+import { execute, query, repos } from "@forge/store";
 import { buildApp } from "../apps/api/src/app.js";
 import { cleanupRealSessions, realSession, sessionHeaders } from "./helpers/real-session.js";
 
@@ -90,5 +90,25 @@ describe("route input schema -> 400 CFG-8501", () => {
       }
       expect((await app.inject({ method: "GET", url: `${url}?limit=10`, headers })).statusCode).toBe(200);
     }
+  });
+  it("P1-05 bounds: runs limit 0 / 201 / empty / 1e2 -> 400; 1 and 200 -> 200 (admin-api.md: over the max is 400)", async () => {
+    for (const limit of ["0", "201", "", "1e2"]) {
+      const res = await app.inject({ method: "GET", url: `/admin/api/runs?limit=${limit}`, headers });
+      expect(res.statusCode, `limit=${limit}`).toBe(400);
+    }
+    for (const limit of ["1", "200"]) expect((await app.inject({ method: "GET", url: `/admin/api/runs?limit=${limit}`, headers })).statusCode).toBe(200);
+  });
+  it("P1-11 / I-SCH-12: enable with an invalid cron / timezone already stored -> 400, still disabled, no audit", async () => {
+    for (const [cron, timezone] of [["not-a-cron", "Asia/Shanghai"], ["0 9 * * *", "Mars/Olympus"]] as const) {
+      await execute("UPDATE schedules SET cron = ?, timezone = ?, status = 'disabled', next_run_at = NULL WHERE id = ?", [cron, timezone, scheduleId]);
+      const res = await app.inject({ method: "POST", url: `/admin/api/schedules/${scheduleId}/enable`, headers });
+      expect(res.statusCode, `${cron} ${timezone}`).toBe(400);
+      expect(code(res)).toBe("CFG-8501");
+      const [row] = await query<{ status: string; next_run_at: unknown }>("SELECT status, next_run_at FROM schedules WHERE id = ?", [scheduleId]);
+      expect(row).toEqual({ status: "disabled", next_run_at: null });
+    }
+    const audits = await query<{ n: number }>("SELECT COUNT(*) AS n FROM audit_logs WHERE action = 'schedule.enable' AND resource_id = ?", [scheduleId]);
+    expect(Number(audits[0]!.n)).toBe(0);
+    await execute("UPDATE schedules SET cron = '0 9 * * *', timezone = 'Asia/Shanghai' WHERE id = ?", [scheduleId]);
   });
 });

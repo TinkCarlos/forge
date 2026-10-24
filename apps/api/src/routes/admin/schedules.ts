@@ -150,6 +150,8 @@ export default async function adminScheduleRoutes(app: FastifyInstance): Promise
       const account = await repos.getServiceAccount(String(schedule.service_account_id));
       if (!account || account.status !== "active") throw new ForgeError("SCD-4801", "服务账号已停用，不能启用定时任务", 409);
     }
+    // I-SCH-12: a cron / timezone stored before validation existed -> 400 CFG-8501, nothing changes (was 500).
+    assertScheduleTiming(String(schedule.cron), String(schedule.timezone));
     const next = CronExpressionParser.parse(String(schedule.cron), { currentDate: new Date(), tz: String(schedule.timezone) }).next().toDate();
     await repos.updateSchedule(String(schedule.id), { status: "active", next_run_at: next });
     await writeAudit(session, "schedule.enable", "schedule", String(schedule.id), { nextRunAt: next });

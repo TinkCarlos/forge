@@ -74,3 +74,11 @@ describe("route input schemas (400 CFG-8501, before any DB access)", () => {
     expect(() => assertScheduleTiming("0 9 * * *", "Asia/Shanghai")).not.toThrow();
   });
 });
+
+describe("validation lives in the route schema, not the error handler (P1-01 3)", () => {
+  it("errors.ts maps no MySQL data errors to 400", async () => {
+    const fs = await import("node:fs");
+    const src = fs.readFileSync(new URL("../apps/api/src/plugins/errors.ts", import.meta.url), "utf8");
+    for (const code of ["ER_DATA_TOO_LONG", "ER_TRUNCATED_WRONG_VALUE", "ER_BAD_NULL_ERROR", "WARN_DATA_TRUNCATED"]) expect(src).not.toContain(code);
+  });
+});
