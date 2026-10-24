@@ -1,3 +1,5 @@
+// 必须第一个引入：在任何 zod schema 解析前关闭 JIT（FE-CSP-02）
+import './lib/zod-config'
 import { StrictMode } from 'react'
 import ReactDOM from 'react-dom/client'
 import { MotionConfig, MotionGlobalConfig } from 'motion/react'
