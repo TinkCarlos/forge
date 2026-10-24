@@ -8,3 +8,8 @@ export const LEGACY_LINK_HINT = '在新标签页打开旧版控制台'
 export function openLegacy(url: string) {
   window.open(url, '_blank', 'noopener,noreferrer')
 }
+
+/** K-33：旧版 Agent 详情的深链，旧版 switchTab 解析 `#agents/<id>` 后打开详情弹窗。 */
+export function legacyAgentHref(id: string) {
+  return `/#agents/${encodeURIComponent(id)}`
+}

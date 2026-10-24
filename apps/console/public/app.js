@@ -182,7 +182,7 @@ async function init() {
   });
   $("#refresh").addEventListener("click", () => renderCurrent());
   bindAgentActions();
-  window.addEventListener("hashchange", () => switchTab(location.hash.slice(1) || "dashboard"));
+  window.addEventListener("hashchange", onHashChange);
   try {
     state.session = await api("/auth/session");
     await enterApp();
@@ -238,16 +238,41 @@ function renderNav() {
     .join("");
 }
 
-async function switchTab(tab) {
+// K-33：hash 形如 `tab` 或 `agents/<encodeURIComponent(id)>`；只有 Agents 页认 id，渲染完列表后打开该 Agent 详情。
+function parseRoute(route) {
+  const raw = String(route ?? "").replace(/^#/, "");
+  const slash = raw.indexOf("/");
+  const tab = slash === -1 ? raw : raw.slice(0, slash);
+  let id = slash === -1 ? "" : raw.slice(slash + 1);
+  try {
+    id = decodeURIComponent(id);
+  } catch {
+    id = "";
+  }
+  return { tab, id };
+}
+
+// switchTab 会先把规范化后的路由写回 location.hash；对这次写入触发的 hashchange 不再渲染第二遍。
+function onHashChange() {
+  const route = location.hash.slice(1) || "dashboard";
+  if (route === state.route) return;
+  return switchTab(route);
+}
+
+async function switchTab(route) {
+  let { tab, id } = parseRoute(route);
   if (!tabMeta[tab]) tab = "dashboard";
+  if (tab !== "agents") id = "";
   state.tab = tab;
-  location.hash = tab;
+  state.route = id ? `${tab}/${encodeURIComponent(id)}` : tab;
+  location.hash = state.route;
   $("#page-title").textContent = tabMeta[tab][0];
   $("#page-subtitle").textContent = tabMeta[tab][1];
   renderNav();
   $("#content").innerHTML = `<div class="card"><div class="card-body muted">加载中…</div></div>`;
   try {
     await renderCurrent();
+    if (id) await app.openAgentDetail(id);
   } catch (error) {
     $("#content").innerHTML = errorCard(error);
   }

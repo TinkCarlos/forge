@@ -16,6 +16,7 @@ import { api } from '@/lib/api'
 import { useCan } from '@/hooks/use-can'
 import { versionLabel } from '@/lib/format'
 import { handleDialogServerError, handleServerError } from '@/lib/handle-server-error'
+import { legacyAgentHref } from '@/lib/legacy-link'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -188,7 +189,7 @@ export function Agents() {
                   </>
                 )}
                 <DropdownMenuItem asChild>
-                  <a href='/#agents'>
+                  <a href={legacyAgentHref(a.id)}>
                     <ExternalLink /> 在旧版中查看详情
                   </a>
                 </DropdownMenuItem>
