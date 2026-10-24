@@ -1,5 +1,5 @@
 import { ulidWithPrefix } from "@forge/core";
-import { execute, json, one, query, transaction } from "../db.js";
+import { execute, json, one, parseJsonValue, query, transaction } from "../db.js";
 import type { ModelRow, ProviderRow } from "../types.js";
 
 export const capabilitiesRepo = {
@@ -231,13 +231,27 @@ export const capabilitiesRepo = {
   },
 
   // Plugins
+  /**
+   * Installs a plugin record. P2: a reinstall (same key + version, e.g. after an uninstall) reuses the original row and
+   * its `pkg_` id (returned, so audit entries point at a real row); the resource references are merged (the original
+   * ids are kept, ids created by this install are added) and the record is active again.
+   */
   async createPlugin(input: { key: string; version: string; type: string; name: string; manifest: unknown; resources: unknown; createdBy?: string | null }): Promise<string> {
-    const id = ulidWithPrefix("pkg");
-    await execute(
-      "INSERT INTO plugins (id, `key`, version, type, name, manifest_json, resources_json, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE manifest_json = VALUES(manifest_json), resources_json = VALUES(resources_json), status = 'active'",
-      [id, input.key, input.version, input.type, input.name, json(input.manifest), json(input.resources), input.createdBy ?? null],
-    );
-    return id;
+    return transaction(async (conn) => {
+      const [rows] = await conn.query("SELECT id, resources_json FROM plugins WHERE `key` = ? AND version = ? FOR UPDATE", [input.key, input.version]);
+      const existing = (rows as Array<{ id: string; resources_json: unknown }>)[0];
+      if (existing) {
+        const merged = mergeResourceIds(parseJsonValue(existing.resources_json, {}), input.resources);
+        await conn.execute("UPDATE plugins SET manifest_json = ?, resources_json = ?, status = 'active' WHERE id = ?", [json(input.manifest), json(merged), existing.id]);
+        return existing.id;
+      }
+      const id = ulidWithPrefix("pkg");
+      await conn.execute(
+        "INSERT INTO plugins (id, `key`, version, type, name, manifest_json, resources_json, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [id, input.key, input.version, input.type, input.name, json(input.manifest), json(input.resources), input.createdBy ?? null],
+      );
+      return id;
+    });
   },
   async listPlugins(): Promise<Record<string, unknown>[]> {
     return query("SELECT * FROM plugins ORDER BY created_at DESC");
@@ -268,3 +282,17 @@ export const capabilitiesRepo = {
     });
   },
 };
+
+/** Union of two `{ kind: id[] }` resource maps, original ids first, no duplicates. */
+function mergeResourceIds(original: unknown, added: unknown): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const source of [original, added]) {
+    if (!source || typeof source !== "object" || Array.isArray(source)) continue;
+    for (const [kind, ids] of Object.entries(source as Record<string, unknown>)) {
+      if (!Array.isArray(ids)) continue;
+      const list = (out[kind] ??= []);
+      for (const id of ids) if (typeof id === "string" && !list.includes(id)) list.push(id);
+    }
+  }
+  return out;
+}
