@@ -44,11 +44,16 @@ export function installErrorHandler(app: FastifyInstance): void {
 /**
  * Fastify `frameworkErrors` (P2-01 / K26-BADURL): errors raised before routing, chiefly FST_ERR_BAD_URL for a path that
  * cannot be percent-decoded. Fastify's default body echoes the raw path; this answers with the unified error body and
- * nothing of the URL, path or query. Anything else raised there is a server error (no details).
+ * nothing of the URL, path or query. A path parameter over maxParamLength (FST_ERR_MAX_PARAM_LENGTH) names an id that
+ * cannot exist: 404 RUN-7001 like any unknown id (was 500). Anything else raised there is a server error (no details).
  */
 export function frameworkErrorHandler(error: { code?: string }, request: FastifyRequest, reply: FastifyReply): void {
   if (error.code === "FST_ERR_BAD_URL") {
     reply.status(400).send({ error: { code: "CFG-8501", message: "请求地址无法解析", requestId: reqId(request), details: null, retryable: false } });
+    return;
+  }
+  if (error.code === "FST_ERR_MAX_PARAM_LENGTH") {
+    reply.status(404).send({ error: { code: "RUN-7001", message: "资源不存在", requestId: reqId(request), details: null, retryable: false } });
     return;
   }
   request.log.error({ code: error.code }, "framework error");

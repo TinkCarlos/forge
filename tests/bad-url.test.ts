@@ -29,3 +29,18 @@ describe("malformed URL", () => {
     });
   }
 });
+
+// P2-01 follow-up: a path parameter over find-my-way's maxParamLength (100) raised FST_ERR_MAX_PARAM_LENGTH, which the
+// frameworkErrors handler answered 500 SYS-9001. An over-long id can never exist: 404 RUN-7001, nothing echoed.
+describe("over-long path parameter", () => {
+  for (const [method, url] of [["GET", "/admin/api/agents/"], ["PATCH", "/admin/api/schedules/"], ["POST", "/open/v1/agents/"]] as const) {
+    it(`${method} ${url}<300 chars> -> 404`, async () => {
+      const id = `SEKRET${"x".repeat(300)}`;
+      const res = await app.inject({ method, url: `${url}${id}${method === "POST" ? "/runs" : ""}`, payload: method === "GET" ? undefined : {} });
+      expect(res.statusCode).toBe(404);
+      const body = res.json() as { error: { code: string; requestId: string } };
+      expect(body.error.code).toBe("RUN-7001");
+      expect(res.body).not.toContain("SEKRET"); // (the access log keeps the path, as for any request)
+    });
+  }
+});
