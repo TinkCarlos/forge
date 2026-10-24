@@ -75,7 +75,7 @@ export function createSession(principal: Principal): Session {
     token,
     userId: principal.id,
     csrfToken,
-    expiresAt: Date.now() + 8 * 60 * 60 * 1000,
+    expiresAt: Date.now() + config.SESSION_TTL_SECONDS * 1000, // N-01 (default 8h)
   };
   sessions.set(token, stored);
   return { ...stored, principal };

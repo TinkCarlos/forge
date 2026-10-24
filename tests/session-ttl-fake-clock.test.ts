@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { getSession, sessionCookieValue, type Session } from "@forge/identity";
+import { config } from "@forge/core";
 import { buildApp } from "../apps/api/src/app.js";
 import { cleanupRealSessions, realSession, sessionHeaders } from "./helpers/real-session.js";
 
@@ -30,6 +31,14 @@ describe("I-G-03: session TTL (fake clock)", () => {
     vi.setSystemTime(new Date("2026-10-24T08:00:00Z"));
     const session = await admin();
     expect(session.expiresAt - Date.now()).toBe(SESSION_TTL_MS);
+  });
+
+  it("N-01: createSession uses config.SESSION_TTL_SECONDS", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-24T08:00:00Z"));
+    const session = await admin();
+    expect(typeof config.SESSION_TTL_SECONDS).toBe("number");
+    expect(session.expiresAt - Date.now()).toBe(config.SESSION_TTL_SECONDS * 1000);
   });
 
   it("boundary: at TTL minus 1 second the session is still valid (getSession + cookie -> 200)", async () => {

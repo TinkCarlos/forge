@@ -25,6 +25,11 @@ export const DEV_SECRET_DEFAULTS = {
 export const MIN_SECRET_LENGTH = 32;
 /** OPS-003: FORGE_MASTER_KEY is an AES-256-GCM key, so it must base64-decode to exactly this many bytes. */
 export const MASTER_KEY_BYTES = 32;
+/** N-01: session lifetime (seconds) when SESSION_TTL_SECONDS is unset: 8h, the previous hard-coded TTL. */
+export const SESSION_TTL_DEFAULT_SECONDS = 8 * 60 * 60;
+export const SESSION_TTL_MIN_SECONDS = 300;
+export const SESSION_TTL_MAX_SECONDS = 86400;
+const SESSION_TTL_MESSAGE = `SESSION_TTL_SECONDS must be an integer number of seconds between ${SESSION_TTL_MIN_SECONDS} and ${SESSION_TTL_MAX_SECONDS}`;
 /** OPS-007: admin passwords shipped in .env.example; refused when NODE_ENV is not development/test. */
 export const EXAMPLE_ADMIN_PASSWORDS: readonly string[] = ["change-me-now"];
 
@@ -118,6 +123,20 @@ const envSchema = z.object({
       for (const message of allowlistProblems(value)) ctx.addIssue({ code: z.ZodIssueCode.custom, message });
     }),
   MCP_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
+  // N-01: server session TTL and forge_session cookie Max-Age. Digits only (no 1e3 / 1.5 / units), 300..86400.
+  SESSION_TTL_SECONDS: z
+    .string()
+    .optional()
+    .transform((value, ctx) => {
+      const trimmed = value?.trim();
+      if (!trimmed) return SESSION_TTL_DEFAULT_SECONDS;
+      const seconds = /^[0-9]{1,6}$/.test(trimmed) ? Number(trimmed) : NaN;
+      if (!(seconds >= SESSION_TTL_MIN_SECONDS && seconds <= SESSION_TTL_MAX_SECONDS)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: SESSION_TTL_MESSAGE });
+        return z.NEVER;
+      }
+      return seconds;
+    }),
   LOG_LEVEL: z.string().default("info"),
   SSO_MODE: z.enum(["disabled", "optional", "required"]).default("optional"),
   SSO_TOKEN_VALIDATION_MODE: z
