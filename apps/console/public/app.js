@@ -14,6 +14,7 @@ const state = {
   toolSources: [],
   sso: null,
   eventSource: null,
+  runView: null,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -1039,15 +1040,16 @@ const app = {
     closeStream();
     try {
       const run = await api(`/admin/api/runs/${idSeg(id)}`);
-      const messages = (run.messages ?? []).map((message) => `<div style="padding:10px 0;border-bottom:1px solid var(--border)"><div class="muted"><strong>${esc(message.role)}</strong> · #${message.seq}</div><div style="white-space:pre-wrap">${esc(message.content?.text ?? JSON.stringify(message.content))}</div></div>`).join("");
-      const tools = (run.toolCalls ?? []).map((call) => `<div style="padding:10px 0;border-bottom:1px solid var(--border)"><div><strong>${esc(call.tool_key)}</strong> ${statusPill(call.status)}</div><div class="muted mono">${esc(JSON.stringify(call.args))}</div><div style="white-space:pre-wrap">${esc(call.result_text ?? "")}</div></div>`).join("");
       openModal(`Run ${run.id}`, `
-        <div class="toolbar"><span>${statusPill(run.status)}</span><span class="muted">成本 $${Number(run.costUsd).toFixed(4)}</span>${["queued","running","waiting_approval"].includes(run.status) ? `<button class="btn danger small" type="button" onclick="app.cancelRun('${esc(run.id)}')">取消 Run</button>` : ""}</div>
+        <div id="run-toolbar" class="toolbar">${runToolbarHtml(run)}</div>
+        <div id="run-stream" class="muted"></div>
         <div class="split">
-          <div><h4>消息</h4>${messages || `<span class="muted">暂无消息</span>`}</div>
-          <div><h4>工具调用</h4>${tools || `<span class="muted">暂无工具调用</span>`}<h4 style="margin-top:16px">实时事件</h4><div id="event-log" class="event-log"></div></div>
+          <div><h4>消息</h4><div id="run-messages">${runMessagesHtml(run.messages)}</div></div>
+          <div><h4>工具调用</h4><div id="run-tools">${runToolsHtml(run.toolCalls)}</div><h4 style="margin-top:16px">实时事件</h4><div id="event-log" class="event-log"></div></div>
         </div>`, async () => {}, "关闭");
-      listenRun(run.id);
+      // 弹窗关闭（关闭按钮 / Esc / 取消 Run）一律关流；同一个函数引用重复 addEventListener 不会叠加。
+      $("#modal").addEventListener("close", closeStream);
+      listenRun(run.id, run.status);
     } catch (error) {
       toast(errorText(error), "error");
     }
@@ -1209,32 +1211,162 @@ const app = {
 
 window.app = app;
 
-function listenRun(runId) {
+const RUN_TERMINAL_EVENTS = ["run.completed", "run.failed", "run.cancelled", "run.budget_exhausted"];
+const RUN_ACTIVE_STATUSES = ["queued", "running", "waiting_approval"];
+const STREAM_MAX_RETRIES = 3;
+
+function runMessagesHtml(messages) {
+  const rows = (messages ?? []).map((message) => `<div style="padding:10px 0;border-bottom:1px solid var(--border)" data-message-id="${esc(message.id)}"><div class="muted"><strong>${esc(message.role)}</strong> · #${esc(message.seq)}</div><div style="white-space:pre-wrap">${esc(message.content?.text ?? JSON.stringify(message.content))}</div></div>`).join("");
+  return rows || `<span class="muted">暂无消息</span>`;
+}
+
+function runToolsHtml(toolCalls) {
+  const rows = (toolCalls ?? []).map((call) => `<div style="padding:10px 0;border-bottom:1px solid var(--border)"><div><strong>${esc(call.tool_key)}</strong> ${statusPill(call.status)}</div><div class="muted mono">${esc(JSON.stringify(call.args))}</div><div style="white-space:pre-wrap">${esc(call.result_text ?? "")}</div></div>`).join("");
+  return rows || `<span class="muted">暂无工具调用</span>`;
+}
+
+function runToolbarHtml(run) {
+  return `<span>${statusPill(run.status)}</span><span class="muted">成本 $${Number(run.costUsd).toFixed(4)}</span>${RUN_ACTIVE_STATUSES.includes(run.status) ? `<button class="btn danger small" type="button" onclick="app.cancelRun('${esc(run.id)}')">取消 Run</button>` : ""}`;
+}
+
+/** 以 REST 快照为准整体重渲染 Run 弹窗的状态栏、消息区和工具调用区（事件日志不动）。 */
+function renderRunView(run) {
+  const toolbar = $("#run-toolbar");
+  const messages = $("#run-messages");
+  const tools = $("#run-tools");
+  if (toolbar) toolbar.innerHTML = runToolbarHtml(run);
+  if (messages) messages.innerHTML = runMessagesHtml(run.messages);
+  if (tools) tools.innerHTML = runToolsHtml(run.toolCalls);
+}
+
+/**
+ * 「生成中…」只在连接正常且没收到 run.* 结束事件时显示；浏览器重连中显示重连进度；
+ * 重连失败显示「连接已断开，点此刷新」（点击走 #run-stream 上的委托，不用内联处理器）。
+ */
+function renderStreamStatus(view) {
+  const box = $("#run-stream");
+  if (!box) return;
+  if (view.finished) box.textContent = "";
+  else if (view.link === "lost") box.innerHTML = `<button class="btn ghost small" type="button" data-run-refresh="1">连接已断开，点此刷新</button>`;
+  else if (view.link === "retrying") box.textContent = `连接中断，正在重连（${view.attempts}/${STREAM_MAX_RETRIES}）…`;
+  else box.textContent = "生成中…";
+}
+
+/**
+ * SSE 新契约：不再有 message.delta；message.completed 只带 { text, usage }（没有消息 id / role），
+ * 所以收到后重取 REST，按 REST 的 messages 整体重渲染，前端不拼内容、不去重。
+ * 断线只靠 EventSource 自带的重连：浏览器重连时自动带 Last-Event-ID（服务端 streamRun 只认这个 header），
+ * 最多 STREAM_MAX_RETRIES 次；重连成功后再用 REST 整体重渲染一次。
+ */
+function listenRun(runId, status) {
   closeStream();
+  if (!$("#event-log")) return;
+  const view = { runId, source: null, attempts: 0, link: "live", finished: !RUN_ACTIVE_STATUSES.includes(status), sync: 0 };
+  state.runView = view;
+  const box = $("#run-stream");
+  if (box) {
+    box.onclick = (event) => {
+      if (event.target?.closest?.("[data-run-refresh]")) void refreshRunStream();
+    };
+  }
+  connectRunStream(view);
+  renderStreamStatus(view);
+}
+
+function connectRunStream(view) {
   const log = $("#event-log");
   if (!log) return;
-  const types = ["run.queued", "run.started", "run.resumed", "message.delta", "message.completed", "context.compressed", "model.retried", "output.rejected", "tool.started", "tool.retried", "tool.completed", "tool.failed", "approval.required", "approval.resolved", "run.completed", "run.failed", "run.cancelled", "run.budget_exhausted"];
+  const runId = view.runId;
+  const types = ["run.queued", "run.started", "run.resumed", "message.completed", "context.compressed", "model.retried", "output.rejected", "tool.started", "tool.retried", "tool.completed", "tool.failed", "approval.required", "approval.resolved", ...RUN_TERMINAL_EVENTS];
   const source = new EventSource(`/admin/api/runs/${idSeg(runId)}/events`);
+  view.source = source;
   state.eventSource = source;
+  const current = () => state.runView === view && view.source === source;
   const append = (type, event) => {
+    if (!current()) return;
     const row = document.createElement("div");
     row.className = "event-row";
     const payload = JSON.parse(event.data);
-    row.innerHTML = `<span class="muted">${payload.seq}</span><span class="type">${esc(type)}</span><span>${esc(JSON.stringify(payload.data).slice(0, 320))}</span>`;
+    row.innerHTML = `<span class="muted">${esc(payload.seq)}</span><span class="type">${esc(type)}</span><span>${esc(JSON.stringify(payload.data).slice(0, 320))}</span>`;
     log.appendChild(row);
     log.scrollTop = log.scrollHeight;
-    if (["run.completed", "run.failed", "run.cancelled", "run.budget_exhausted"].includes(type)) {
-      source.close();
-      state.eventSource = null;
+    if (RUN_TERMINAL_EVENTS.includes(type)) {
+      view.finished = true;
+      endRunStream(view);
+      renderStreamStatus(view);
+      void syncRunFromRest(view);
+    } else if (type === "message.completed") {
+      void syncRunFromRest(view);
     }
   };
   for (const type of types) source.addEventListener(type, (event) => append(type, event));
+  source.onopen = () => {
+    if (!current()) return;
+    const resumed = view.link !== "live";
+    view.attempts = 0;
+    view.link = "live";
+    renderStreamStatus(view);
+    if (resumed) void syncRunFromRest(view);
+  };
   source.onerror = () => {
-    if (state.eventSource === source) source.close();
+    if (!current()) return;
+    if (view.finished) {
+      endRunStream(view);
+      return;
+    }
+    view.attempts += 1;
+    if (source.readyState === EventSource.CLOSED || view.attempts > STREAM_MAX_RETRIES) {
+      endRunStream(view);
+      view.link = "lost";
+    } else {
+      view.link = "retrying";
+    }
+    renderStreamStatus(view);
+    // 断线期间 Run 可能已结束（服务端在终态后会主动结束流）：以 REST 为准，结束了就不再提示断开。
+    void syncRunFromRest(view);
   };
 }
 
+async function syncRunFromRest(view, { notify = false } = {}) {
+  const ticket = ++view.sync;
+  try {
+    const run = await api(`/admin/api/runs/${idSeg(view.runId)}`);
+    if (state.runView !== view || ticket !== view.sync) return;
+    renderRunView(run);
+    if (!RUN_ACTIVE_STATUSES.includes(run.status)) {
+      view.finished = true;
+      endRunStream(view);
+    }
+    renderStreamStatus(view);
+  } catch (error) {
+    if (notify && state.runView === view) toast(errorText(error), "error");
+  }
+}
+
+function endRunStream(view) {
+  if (view.source) view.source.close();
+  if (state.eventSource === view.source) state.eventSource = null;
+  view.source = null;
+}
+
+/** 「连接已断开，点此刷新」：重取 REST；Run 仍在进行就清空事件日志、重新订阅（服务端从头回放，日志按原样重建）。 */
+async function refreshRunStream() {
+  const view = state.runView;
+  if (!view) return;
+  await syncRunFromRest(view, { notify: true });
+  if (state.runView !== view || view.finished || view.link !== "lost") return;
+  const log = $("#event-log");
+  if (log) log.textContent = "";
+  view.attempts = 0;
+  view.link = "live";
+  connectRunStream(view);
+  renderStreamStatus(view);
+}
+
 function closeStream() {
+  const view = state.runView;
+  state.runView = null;
+  if (view) endRunStream(view);
   if (state.eventSource) {
     state.eventSource.close();
     state.eventSource = null;
