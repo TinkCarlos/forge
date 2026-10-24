@@ -36,7 +36,10 @@ const ROOT = new URL("../apps/api/src/routes/", import.meta.url).pathname;
 const REGISTRATION = /\bapp\.(get|post|put|patch|delete)\(\s*"([^"]+)"|\bscheduleByIdRoute\(app,\s*"(GET|POST|PUT|PATCH|DELETE)",\s*"([^"]*)"/g;
 const HELPERS = "stringBody|requireBodyString|jsonBody|arrayBody|enumBody";
 /** Whole-body helpers and the fields they read (checked against their source below). */
-const WHOLE_BODY_HELPERS: Record<string, { file: string; reads: string[] }> = { webhookUrlOf: { file: "admin/apps.ts", reads: ["webhookUrl"] } };
+const WHOLE_BODY_HELPERS: Record<string, { file: string; reads: string[] }> = {
+  webhookUrlOf: { file: "admin/apps.ts", reads: ["webhookUrl"] },
+  planPluginInstall: { file: "admin/plugins.ts", reads: ["resources", "key", "version", "type", "name", "manifest"] },
+};
 
 function files(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {

@@ -248,4 +248,23 @@ export const capabilitiesRepo = {
   async uninstallPlugin(id: string): Promise<void> {
     await execute("UPDATE plugins SET status = 'uninstalled' WHERE id = ?", [id]);
   },
+  /**
+   * S-29 compensation: hard-deletes the resources a failed plugin install created in this request (ids only, never
+   * pre-existing rows), in one transaction. Skill versions, MCP tools and models go by ON DELETE CASCADE; agent
+   * versions are removed explicitly (RESTRICT) after clearing the agent's version pointers.
+   */
+  async discardPluginResources(created: { agents?: string[]; skills?: string[]; mcp?: string[]; providers?: string[] }): Promise<void> {
+    const inList = (ids: string[]) => ids.map(() => "?").join(", ");
+    await transaction(async (conn) => {
+      const agents = created.agents ?? [];
+      if (agents.length) {
+        await conn.execute(`UPDATE agents SET published_version_id = NULL, latest_version_id = NULL WHERE id IN (${inList(agents)})`, agents);
+        await conn.execute(`DELETE FROM agent_versions WHERE agent_id IN (${inList(agents)})`, agents);
+        await conn.execute(`DELETE FROM agents WHERE id IN (${inList(agents)})`, agents);
+      }
+      for (const [table, ids] of [["skills", created.skills ?? []], ["mcp_servers", created.mcp ?? []], ["llm_providers", created.providers ?? []]] as const) {
+        if (ids.length) await conn.execute(`DELETE FROM ${table} WHERE id IN (${inList(ids)})`, ids);
+      }
+    });
+  },
 };

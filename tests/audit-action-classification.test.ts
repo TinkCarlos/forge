@@ -17,7 +17,7 @@ const CLASSIFIED: Record<string, "delete" | "keep"> = {
   "integration.run.cancel": "keep", "integration.run.create": "keep",
   "mcp.create": "keep", "mcp.refresh": "keep", "mcp.update": "keep", "model.create": "keep", "model.update": "keep",
   "open.run.cancel": "keep", "open.run.create": "keep",
-  "plugin.install": "keep", "plugin.uninstall": "delete",
+  "plugin.install": "keep", "plugin.install.failed": "keep", "plugin.uninstall": "delete",
   "provider.create": "keep", "provider.update": "keep", "role_mapping.upsert": "keep",
   "run.cancel": "keep", "run.create": "keep",
   "schedule.create": "keep", "schedule.disable": "keep", "schedule.enable": "keep", "schedule.run": "keep", "schedule.update": "keep",

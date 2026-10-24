@@ -207,6 +207,8 @@ Agent 状态与运行（当前实现，I-AGT-11 / 11b / 11c）：
 
 卸载插件（当前实现 `POST /admin/api/plugins/{id}/uninstall`，#68 / I-PLG-04）：先校验 `plugin.uninstall`（只有 platform_admin 有；org_admin 等返回 403）；插件不存在 → `404 RUN-7001「插件不存在」`，不写审计；已卸载的插件再卸载返回 200。按安装部门限定卸载范围尚未实现（`plugins` 表目前只有 `created_by`，没有 owner 部门列，待定）。
 
+安装插件（当前实现 `POST /admin/api/plugins/install`，S-29 / I-PLG-01）：先读取并校验整个包的所有字段（顶层 `key`、每个 agent / skill / mcp / provider / model 的 `key`、mcp `url` 与 provider `baseUrl` 的出站静态检查、`env:` 引用），任一不合法 → `400 CFG-8501`，不创建任何资源、不写审计。开始创建后若失败（例如包内同一 provider 下模型 key 重复 → `409 CFG-8503`，或写插件记录失败 → 500），删除本次请求已创建的 agent（含版本）、skill、MCP Server、Provider（含模型），已存在而被跳过的同 key 资源不动；写一条 `plugin.install.failed` 审计（`resource_id` 为空，details：`key`、`error`（错误码，非 ForgeError 记 `internal`）、`compensated`（补偿是否成功）、`rolledBack`（被删除的 id）），再返回原错误。成功时只写 `plugin.install`。
+
 **安装**
 
 ```http
