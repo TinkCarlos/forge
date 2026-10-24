@@ -27,8 +27,25 @@ const SSO_ERROR_PAGE = "/next/sign-in";
 function isOutboundBlocked(error: unknown): boolean {
   return error instanceof ForgeError && error.code === OUTBOUND_BLOCKED_CODE;
 }
-function ssoErrorLocation(rawReturnTo: unknown): string {
-  const params = new URLSearchParams({ ssoError: OUTBOUND_BLOCKED_CODE });
+/**
+ * P3-04: the only codes a browser SSO error redirect may carry (`ssoError`). Anything else (an unexpected error, a
+ * code outside this list) is sent as SYS-9001. The console maps each code to fixed text; the raw value is never shown.
+ * SSO-1212: the IdP answered the callback with `error=` (e.g. access_denied); its error / error_description are dropped.
+ */
+export const SSO_ERROR_CODES: ReadonlySet<string> = new Set([
+  OUTBOUND_BLOCKED_CODE,
+  "SSO-1201", "SSO-1202", "SSO-1203", "SSO-1204", "SSO-1205", "SSO-1206",
+  "SSO-1207", "SSO-1208", "SSO-1209", "SSO-1210", "SSO-1211", "SSO-1212",
+  "SYS-9001",
+]);
+const SSO_FALLBACK_CODE = "SYS-9001";
+/** P3-04: an API client asks for JSON and not for HTML; a browser navigation (text/html or none) gets the redirect. */
+function wantsJson(accept: unknown): boolean {
+  const value = typeof accept === "string" ? accept.toLowerCase() : "";
+  return value.includes("application/json") && !value.includes("text/html");
+}
+function ssoErrorLocation(rawReturnTo: unknown, code: string = OUTBOUND_BLOCKED_CODE): string {
+  const params = new URLSearchParams({ ssoError: SSO_ERROR_CODES.has(code) ? code : SSO_FALLBACK_CODE });
   // AE: the console sign-in page reads the post-login target from `redirect`. Keep it only when it survives the
   // S-30 check as given; a rejected value (falls back) or the default /next/ is dropped. URLSearchParams encodes it.
   if (typeof rawReturnTo === "string" && rawReturnTo) {
@@ -94,14 +111,21 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
     const query = request.query as Record<string, unknown>;
     const code = typeof query.code === "string" ? query.code : "";
     const state = typeof query.state === "string" ? query.state : "";
-    if (!code || !state) throw new ForgeError("SSO-1203", "回调参数缺失", 400);
-    const pendingReturnTo = pendingOidcReturnTo(state);
+    const pendingReturnTo = state ? pendingOidcReturnTo(state) : null;
     let result: Awaited<ReturnType<typeof handleOidcCallback>>;
     try {
+      // P3-04: the IdP's own error (error=access_denied ...) is one fixed code; error_description is never used.
+      if (query.error !== undefined) throw new ForgeError("SSO-1212", "身份提供方拒绝了登录", 401);
+      if (!code || !state) throw new ForgeError("SSO-1203", "回调参数缺失", 400);
       result = await handleOidcCallback(code, state);
     } catch (error) {
+      // AD: an outbound block always redirects (unchanged). P3-04: every other error redirects a browser to the sign-in
+      // page with a whitelisted code only; an API client (Accept: application/json) keeps the JSON error.
       if (isOutboundBlocked(error)) return reply.redirect(ssoErrorLocation(pendingReturnTo));
-      throw error;
+      if (wantsJson(request.headers.accept)) throw error;
+      if (!(error instanceof ForgeError)) request.log.error({ err: logSafeError(error) }, "oidc callback failed");
+      const ssoCode = error instanceof ForgeError ? error.code : SSO_FALLBACK_CODE;
+      return reply.redirect(ssoErrorLocation(pendingReturnTo, ssoCode));
     }
     const { principal, returnTo } = result;
     const session = createSession(principal);
