@@ -8,6 +8,7 @@ import {
   param,
   stringBody,
   jsonBody,
+  jsonObjectBody,
   admin,
   writeAudit,
   agentAccessible,
@@ -46,6 +47,8 @@ export default async function adminAgentRoutes(app: FastifyInstance): Promise<vo
     if (!/^[a-z0-9][a-z0-9-]{1,63}$/.test(key)) throw errors.invalid("key 必须为小写字母、数字、连字符，2-64 位");
     assertValidInput(request);
     if (await repos.getAgentByKey(key)) throw errors.conflict("Agent key 已存在");
+    // Item 7: parsed (and rejected with 400) before the agent row is created, so a bad spec leaves nothing behind.
+    const spec = jsonObjectBody(body, "spec", { model: { provider: "mock", model: "mock-1" }, toolsets: [{ builtin: ["current_time"] }] });
     const agentId = await repos.createAgent({
       key,
       name: stringBody(body, "name", key),
@@ -54,7 +57,6 @@ export default async function adminAgentRoutes(app: FastifyInstance): Promise<vo
       createdBy: session.principal.id,
     });
     const instructions = stringBody(body, "instructions", "You are a helpful assistant.");
-    const spec = jsonBody(body, "spec", { model: { provider: "mock", model: "mock-1" }, toolsets: [{ builtin: ["current_time"] }] });
     const versionId = await repos.createAgentVersion({
       agentId,
       version: stringBody(body, "version", "1.0.0"),
@@ -110,7 +112,7 @@ export default async function adminAgentRoutes(app: FastifyInstance): Promise<vo
       agentId: agent.id,
       version: requireBodyString(body, "version"),
       instructions: stringBody(body, "instructions", "You are a helpful assistant."),
-      spec: jsonBody(body, "spec", {}),
+      spec: jsonObjectBody(body, "spec", {}),
       status: body.publish === true ? "published" : "draft",
       changelog: stringBody(body, "changelog"),
       createdBy: session.principal.id,

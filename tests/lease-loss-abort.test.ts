@@ -12,12 +12,15 @@ class StubForgeError extends Error {
     super(message);
   }
 }
-vi.mock("@forge/core", () => ({
+vi.mock("@forge/core", async () => ({
   ForgeError: StubForgeError,
+  // Item 7: the pure stored-JSON reader used by the loop for spec_json (no other core dependency).
+  storedJsonObject: (await import("../packages/core/src/stored-json")).storedJsonObject,
   config: { LEASE_TTL_SECONDS: 30, MAX_RUN_STEPS: 10, DEFAULT_MAX_COST_USD: 100, DEFAULT_MAX_CONTEXT_TOKENS: 100000, MODEL_MAX_ATTEMPTS: 1, TOOL_MAX_ATTEMPTS: 1, DEFAULT_MAX_PARALLEL_TOOLS: 2 },
   errors: {
     notFound: (m: string) => new StubForgeError("RUN-7001", m, 404),
     model: (m: string) => new StubForgeError("MDL-3001", m, 502),
+    invalid: (m: string) => new StubForgeError("CFG-8501", m, 400),
   },
   OUTPUT_REPAIR_PREFIX: "",
 }));

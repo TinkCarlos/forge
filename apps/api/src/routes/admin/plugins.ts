@@ -8,6 +8,7 @@ import {
   param,
   stringBody,
   jsonBody,
+  jsonObjectBody,
   admin,
   writeAudit,
   prepareAudit,
@@ -39,7 +40,7 @@ function planPluginInstall(body: Record<string, unknown>): PluginInstallPlan {
     plugin: { key, version: stringBody(body, "version", "1.0.0"), type: stringBody(body, "type", "mixed"), name: stringBody(body, "name", key), manifest: jsonBody(body, "manifest", {}) },
     agents: list(resources.agents).map((agent) => {
       const agentKey = requireBodyString(agent, "key");
-      return { key: agentKey, name: stringBody(agent, "name", agentKey), description: stringBody(agent, "description"), version: stringBody(agent, "version", "1.0.0"), instructions: stringBody(agent, "instructions", "You are a helpful assistant."), spec: jsonBody(agent, "spec", {}) };
+      return { key: agentKey, name: stringBody(agent, "name", agentKey), description: stringBody(agent, "description"), version: stringBody(agent, "version", "1.0.0"), instructions: stringBody(agent, "instructions", "You are a helpful assistant."), spec: jsonObjectBody(agent, "spec", {}) };
     }),
     skills: list(resources.skills).map((skill) => {
       const skillKey = requireBodyString(skill, "key");
@@ -48,7 +49,7 @@ function planPluginInstall(body: Record<string, unknown>): PluginInstallPlan {
     mcp: list(resources.mcp).map((server) => {
       const serverKey = requireBodyString(server, "key");
       const url = requireBodyString(server, "url");
-      const headers = jsonBody(server, "headers", {});
+      const headers = jsonObjectBody(server, "headers", {});
       assertOutboundUrlStatic(url); // Outbound guard (S-46): static check (scheme, IP literals, localhost).
       assertNoEnvRefs({ headers }); // AG (S-61): no `env:` header.
       return { key: serverKey, name: stringBody(server, "name", serverKey), url, headers };
@@ -56,7 +57,7 @@ function planPluginInstall(body: Record<string, unknown>): PluginInstallPlan {
     providers: list(resources.providers).map((provider) => {
       const providerKey = requireBodyString(provider, "key");
       const baseUrl = requireBodyString(provider, "baseUrl");
-      const headers = jsonBody(provider, "headers", {});
+      const headers = jsonObjectBody(provider, "headers", {});
       assertOutboundUrlStatic(baseUrl);
       assertNoEnvRefs({ headers, apiKey: provider.apiKey });
       const models = list(provider.models).map((model) => {

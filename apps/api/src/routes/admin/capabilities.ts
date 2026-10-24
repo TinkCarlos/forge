@@ -7,7 +7,7 @@ import {
   bodyOf,
   param,
   stringBody,
-  jsonBody,
+  jsonObjectBody,
   admin,
   writeAudit,
   requireBodyString,
@@ -46,12 +46,12 @@ export default async function adminCapabilityRoutes(app: FastifyInstance): Promi
     const key = requireBodyString(body, "key");
     if (await repos.getMcpServerByKey(key)) throw errors.conflict("MCP key 已存在");
     assertOutboundUrlStatic(requireBodyString(body, "url"));
-    assertNoEnvRefs({ headers: jsonBody(body, "headers", {}) }); // AG (S-61)
+    assertNoEnvRefs({ headers: jsonObjectBody(body, "headers", {}) }); // AG (S-61)
     const id = await repos.createMcpServer({
       key,
       name: stringBody(body, "name", key),
       url: requireBodyString(body, "url"),
-      headers: jsonBody(body, "headers", {}),
+      headers: jsonObjectBody(body, "headers", {}),
       transport: stringBody(body, "transport", "http"),
       createdBy: session.principal.id,
     });
@@ -84,7 +84,7 @@ export default async function adminCapabilityRoutes(app: FastifyInstance): Promi
       assertOutboundUrlStatic(String(fields.url));
     }
     if (body.headers !== undefined) {
-      fields.headers_json = jsonBody(body, "headers", {});
+      fields.headers_json = jsonObjectBody(body, "headers", {});
       assertNoEnvRefs({ headers: fields.headers_json }); // AG (S-61)
     }
     if (body.status !== undefined) fields.status = stringBody(body, "status");
@@ -195,17 +195,17 @@ export default async function adminCapabilityRoutes(app: FastifyInstance): Promi
     const body = bodyOf(request);
     const key = requireBodyString(body, "key");
     if (await repos.getToolSourceByKey(key)) throw errors.conflict("工具源 key 已存在");
-    const spec = jsonBody(body, "spec", null);
+    const spec = jsonObjectBody(body, "spec", null);
     if (!spec || typeof spec !== "object") throw errors.invalid("spec 必须是 OpenAPI JSON");
     const parsed = parseOpenApi(spec as Record<string, unknown>, stringBody(body, "baseUrl"));
     if (!parsed.baseUrl) throw errors.invalid("缺少 baseUrl 或 servers[0].url");
     assertOutboundUrlStatic(parsed.baseUrl);
-    assertNoEnvRefs({ headers: jsonBody(body, "headers", {}) }); // AG (S-61)
+    assertNoEnvRefs({ headers: jsonObjectBody(body, "headers", {}) }); // AG (S-61)
     const sourceId = await repos.createToolSource({
       key,
       name: stringBody(body, "name", key),
       baseUrl: parsed.baseUrl,
-      headers: jsonBody(body, "headers", {}),
+      headers: jsonObjectBody(body, "headers", {}),
       spec,
       createdBy: session.principal.id,
     });

@@ -5,6 +5,7 @@ import {
   ENV_REF_MESSAGE,
   isEnvRefError,
   literalHeaders,
+  type StoredJsonRef,
   errors,
   ForgeError,
   OUTBOUND_BLOCKED_CODE,
@@ -39,8 +40,8 @@ function toolNameFor(kind: string, source: string, name: string): string {
 }
 
 /** Stored headers as literals. AG (S-61): `env:` is no longer expanded; a stored `env:` value throws CFG-8504. */
-function envHeaders(raw: unknown): Record<string, string> {
-  return literalHeaders(raw);
+function envHeaders(raw: unknown, ref?: StoredJsonRef): Record<string, string> {
+  return literalHeaders(raw, ref);
 }
 
 /** Tool-call shape for a refused `env:` header (no value, no name of the variable). */
@@ -129,7 +130,7 @@ export function builtinTools(): Map<string, ResolvedTool> {
 
 export async function discoverMcpTools(server: Record<string, unknown>): Promise<Array<{ name: string; description: string; inputSchema: unknown; risk: string }>> {
   const url = String(server.url);
-  const headers = envHeaders(server.headers_json);
+  const headers = envHeaders(server.headers_json, { table: "mcp_servers", column: "headers_json", id: String(server.id) });
   let sessionId: string | null = null;
   const call = async (method: string, params: unknown, id: number | null = null): Promise<Record<string, unknown>> => {
     const response = await safeFetch(url, {
@@ -183,7 +184,7 @@ export async function callMcpTool(server: Record<string, unknown>, toolName: str
   const url = String(server.url);
   let headers: Record<string, string>;
   try {
-    headers = envHeaders(server.headers_json);
+    headers = envHeaders(server.headers_json, { table: "mcp_servers", column: "headers_json", id: String(server.id) });
   } catch (error) {
     const refused = envRefToolResult(error);
     if (refused) return refused;
@@ -307,7 +308,7 @@ export async function executeOpenApiTool(input: {
   }
   let headers: Record<string, string>;
   try {
-    headers = envHeaders(input.source.headers_json);
+    headers = envHeaders(input.source.headers_json, { table: "tool_sources", column: "headers_json", id: String(input.source.id) });
   } catch (error) {
     const refused = envRefToolResult(error);
     if (refused) return refused;

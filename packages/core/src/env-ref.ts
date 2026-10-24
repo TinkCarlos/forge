@@ -1,4 +1,5 @@
 import { ForgeError } from "./index";
+import { storedJsonObject, type StoredJsonRef } from "./stored-json";
 
 /**
  * AG (S-61): `env:NAME` values in MCP / provider / tool-source headers (and provider apiKey) used to be expanded to
@@ -38,10 +39,13 @@ export function assertNoEnvRefs(input: { headers?: unknown; apiKey?: unknown }):
   }
 }
 
-/** Stored headers as literal strings (non-strings dropped). Throws CFG-8504 on a stored `env:` value; never expands it. */
-export function literalHeaders(raw: unknown): Record<string, string> {
+/**
+ * Stored headers as literal strings (non-strings dropped). Throws CFG-8504 on a stored `env:` value; never expands it.
+ * With `ref` (a stored row), a value that is not a JSON object is {} plus one warning naming the record id (item 7).
+ */
+export function literalHeaders(raw: unknown, ref?: StoredJsonRef): Record<string, string> {
   const headers: Record<string, string> = {};
-  for (const [key, value] of Object.entries(headerObject(raw))) {
+  for (const [key, value] of Object.entries(ref ? storedJsonObject(raw, ref) : headerObject(raw))) {
     if (typeof value !== "string") continue;
     if (isEnvRef(value)) throw envRefError();
     headers[key] = value;

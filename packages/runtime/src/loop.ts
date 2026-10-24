@@ -2,6 +2,7 @@ import {
   config,
   errors,
   ForgeError,
+  storedJsonObject,
   type AgentSpec,
   type ChatMessage,
   type Principal,
@@ -70,9 +71,9 @@ async function runLoop(run: RunRow, workerId: string, lease: AbortSignal): Promi
   if (!agent) throw errors.notFound("Agent 不存在");
   const version = await repos.getAgentVersion(run.agent_version_id);
   if (!version) throw errors.notFound("Agent 版本不存在");
-  const spec = parseJsonValue<AgentSpec>(version.spec_json, {
-    model: { provider: "mock", model: "mock-1" },
-  });
+  // Item 7: a stored spec that is not a JSON object is {} plus one warning naming the version id (never the text).
+  const spec = storedJsonObject(version.spec_json, { table: "agent_versions", column: "spec_json", id: version.id }) as unknown as AgentSpec;
+  if (!spec.model?.provider || !spec.model?.model) throw errors.invalid("Agent 版本缺少模型配置（spec.model）");
   const tools = await resolveTools(spec);
   const system = await buildSystemPrompt(version.instructions, spec);
   const maxSteps = spec.limits?.maxSteps ?? config.MAX_RUN_STEPS;

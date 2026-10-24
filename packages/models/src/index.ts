@@ -78,7 +78,7 @@ export function consumeOpenAiSse(block: string, state: OpenAiStreamState, onCont
 function headersFor(provider: ProviderRow): Record<string, string> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   // AG (S-61): literal headers only; a stored `env:` header or apiKey fails with CFG-8504 and is never sent.
-  Object.assign(headers, literalHeaders(provider.headers_json));
+  Object.assign(headers, literalHeaders(provider.headers_json, { table: "llm_providers", column: "headers_json", id: provider.id }));
   if (provider.api_key_encrypted) {
     let apiKey: string;
     try {

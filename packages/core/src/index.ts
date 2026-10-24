@@ -5,6 +5,7 @@ export * from "./outbound";
 export * from "./env-ref";
 export * from "./cron";
 export * from "./ids";
+export * from "./stored-json";
 
 /** User status values written by the code (T): login / loadActivePrincipal only accept "active". */
 export const USER_STATUSES = ["active", "disabled"] as const;

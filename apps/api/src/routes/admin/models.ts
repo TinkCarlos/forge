@@ -8,6 +8,7 @@ import {
   param,
   stringBody,
   jsonBody,
+  jsonObjectBody,
   admin,
   writeAudit,
   requireBodyString,
@@ -52,14 +53,14 @@ export default async function adminModelRoutes(app: FastifyInstance): Promise<vo
     if (await repos.getProviderByKey(key)) throw errors.conflict("Provider key 已存在");
     const apiKey = stringBody(body, "apiKey");
     assertOutboundUrlStatic(requireBodyString(body, "baseUrl"));
-    assertNoEnvRefs({ headers: jsonBody(body, "headers", {}), apiKey }); // AG (S-61)
+    assertNoEnvRefs({ headers: jsonObjectBody(body, "headers", {}), apiKey }); // AG (S-61)
     const providerId = await repos.createProvider({
       key,
       name: stringBody(body, "name", key),
       protocol: stringBody(body, "protocol", "openai-compatible"),
       baseUrl: requireBodyString(body, "baseUrl"),
       apiKeyEncrypted: apiKey ? encryptSecret(apiKey, config.FORGE_MASTER_KEY) : null,
-      headers: jsonBody(body, "headers", {}),
+      headers: jsonObjectBody(body, "headers", {}),
       timeoutMs: body.timeoutMs === undefined ? 120000 : Number(body.timeoutMs), // schema: integer 1000..600000
       createdBy: session.principal.id,
     });
@@ -102,9 +103,9 @@ export default async function adminModelRoutes(app: FastifyInstance): Promise<vo
       fields.base_url = stringBody(body, "baseUrl");
       assertOutboundUrlStatic(String(fields.base_url));
     }
-    assertNoEnvRefs({ headers: body.headers !== undefined ? jsonBody(body, "headers", {}) : undefined, apiKey: body.apiKey }); // AG (S-61)
+    assertNoEnvRefs({ headers: body.headers !== undefined ? jsonObjectBody(body, "headers", {}) : undefined, apiKey: body.apiKey }); // AG (S-61)
     if (body.apiKey) fields.api_key_encrypted = encryptSecret(stringBody(body, "apiKey"), config.FORGE_MASTER_KEY);
-    if (body.headers !== undefined) fields.headers_json = jsonBody(body, "headers", {});
+    if (body.headers !== undefined) fields.headers_json = jsonObjectBody(body, "headers", {});
     if (body.timeoutMs !== undefined) fields.timeout_ms = Number(body.timeoutMs);
     if (body.status !== undefined) fields.status = stringBody(body, "status");
     await repos.updateProvider(provider.id, fields);

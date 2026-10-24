@@ -62,6 +62,25 @@ export function jsonBody(body: Record<string, unknown>, key: string, fallback: u
   return value ?? fallback;
 }
 
+/**
+ * Item 7: `spec` / `headers` from a request body: a JSON object, or JSON text that parses to one. Text that does not
+ * parse, or parses to anything but an object, is 400 CFG-8501 with details.field (no silent fallback). Missing → fallback.
+ */
+export function jsonObjectBody<T>(body: Record<string, unknown>, key: string, fallback: T): Record<string, unknown> | T {
+  const value = body[key];
+  if (value === undefined) return fallback;
+  let parsed: unknown = value;
+  if (typeof value === "string") {
+    try {
+      parsed = JSON.parse(value);
+    } catch {
+      throw errors.invalid(`${key} 不是合法的 JSON`, { field: key });
+    }
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw errors.invalid(`${key} 必须是 JSON 对象`, { field: key });
+  return parsed as Record<string, unknown>;
+}
+
 /** Session with the principal re-read from the database (one query); null when missing/expired or the user is no longer usable. */
 export async function readSession(request: FastifyRequest): Promise<Session | null> {
   return readSignedSessionCookie(request.cookies.forge_session);

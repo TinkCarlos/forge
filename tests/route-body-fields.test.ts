@@ -6,7 +6,7 @@ import Fastify from "fastify";
 // Structural guard on body FIELDS (pure, no DB / .env; @forge/core is stubbed because it parses the config on import).
 // tests/route-body-schema-guard.test.ts only checks that a body route HAS a schema; agent PATCH had one (since 44f7a55)
 // that listed only its string fields, so `apiEnabled: "yes"` was never validated and stored as 1.
-//  1. every top-level body field a handler reads (body.x, stringBody/requireBodyString/jsonBody(body, "x"), and the
+//  1. every top-level body field a handler reads (body.x, stringBody/requireBodyString/jsonBody/jsonObjectBody(body, "x"), and the
 //     schedules `input` alias) is a property of that route's body schema, and that property declares a `type`;
 //  2. every property of every body schema declares a `type` (recursively);
 //  3. additionalProperties: every body schema is closed (false) and an undeclared field is rejected (400 CFG-8501);
@@ -34,7 +34,7 @@ import { AJV_CUSTOM_OPTIONS, ROUTE_SCHEMAS, assertValidInput } from "../apps/api
 type Schema = { type?: unknown; properties?: Record<string, Schema>; items?: Schema; additionalProperties?: unknown };
 const ROOT = new URL("../apps/api/src/routes/", import.meta.url).pathname;
 const REGISTRATION = /\bapp\.(get|post|put|patch|delete)\(\s*"([^"]+)"|\bscheduleByIdRoute\(app,\s*"(GET|POST|PUT|PATCH|DELETE)",\s*"([^"]*)"/g;
-const HELPERS = "stringBody|requireBodyString|jsonBody|arrayBody|enumBody";
+const HELPERS = "stringBody|requireBodyString|jsonObjectBody|jsonBody|arrayBody|enumBody";
 /** Whole-body helpers and the fields they read (checked against their source below). */
 const WHOLE_BODY_HELPERS: Record<string, { file: string; reads: string[] }> = {
   webhookUrlOf: { file: "admin/apps.ts", reads: ["webhookUrl"] },
