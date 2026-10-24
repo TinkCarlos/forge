@@ -233,10 +233,11 @@ export function Agents() {
     >
       <div className='flex flex-wrap items-center justify-between gap-3'>
         <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)}>
-          <TabsList>
-            <TabsTrigger value='all'>全部 <Count n={counts.all} /></TabsTrigger>
-            <TabsTrigger value='draft'>有待发布草稿 <Count n={counts.draft} /></TabsTrigger>
-            <TabsTrigger value='api'>已开放 API <Count n={counts.api} /></TabsTrigger>
+          {/* FE-N04：320px（400% 缩放）下三个 Tab 放不下，允许换行，不撑出整页横滚 */}
+          <TabsList className='h-auto min-h-9 max-w-full flex-wrap'>
+            <TabsTrigger value='all' className='h-[29px]'>全部 <Count n={counts.all} /></TabsTrigger>
+            <TabsTrigger value='draft' className='h-[29px]'>有待发布草稿 <Count n={counts.draft} /></TabsTrigger>
+            <TabsTrigger value='api' className='h-[29px]'>已开放 API <Count n={counts.api} /></TabsTrigger>
           </TabsList>
         </Tabs>
         <div className='relative max-sm:w-full'>
