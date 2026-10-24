@@ -6,8 +6,8 @@ import { DEV_SECRET_DEFAULTS, parseConfig } from "@forge/core";
 const base = { FORGE_ADMIN_PASSWORD: "test-only-password-123", DATABASE_URL: "mysql://forge:x@127.0.0.1:1/forge_test" };
 const strong = {
   FORGE_MASTER_KEY: "dGVzdC1vbmx5LW1hc3Rlci1rZXktMzItYnl0ZXMtISE=",
-  SESSION_SECRET: "test-only-session-secret-unique",
-  API_KEY_PEPPER: "test-only-api-key-pepper-unique",
+  SESSION_SECRET: "test-only-session-secret-unique-32+",
+  API_KEY_PEPPER: "test-only-api-key-pepper-unique-32+",
 };
 const prod = { ...base, NODE_ENV: "production", SSO_MODE: "required" };
 

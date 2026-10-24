@@ -1,3 +1,4 @@
+import { isIP } from "node:net";
 import { z } from "zod";
 import { allowlistProblems } from "./allowlist-format";
 import { isDevLike } from "./env-mode";
@@ -20,6 +21,28 @@ export const DEV_SECRET_DEFAULTS = {
   API_KEY_PEPPER: "forge-dev-api-key-pepper-change-me",
 } as const;
 
+/** OPS-003: minimum length for SESSION_SECRET / API_KEY_PEPPER outside development/test (documented in deployment.md). */
+export const MIN_SECRET_LENGTH = 32;
+/** OPS-003: FORGE_MASTER_KEY is an AES-256-GCM key, so it must base64-decode to exactly this many bytes. */
+export const MASTER_KEY_BYTES = 32;
+/** OPS-007: admin passwords shipped in .env.example; refused when NODE_ENV is not development/test. */
+export const EXAMPLE_ADMIN_PASSWORDS: readonly string[] = ["change-me-now"];
+
+/** OPS-006: an IPv4/IPv6 literal or an RFC 1123 hostname (no scheme, port, spaces; last label not all digits). */
+export function isValidHost(value: string): boolean {
+  if (isIP(value)) return true;
+  if (value.length === 0 || value.length > 253) return false;
+  const labels = value.split(".");
+  if (labels.some((label) => !/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/.test(label))) return false;
+  return !/^[0-9]+$/.test(labels[labels.length - 1] ?? "");
+}
+
+function isMasterKey(value: string): boolean {
+  const trimmed = value.trim();
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(trimmed) || trimmed.length % 4 !== 0) return false;
+  return Buffer.from(trimmed, "base64").length === MASTER_KEY_BYTES;
+}
+
 const DATABASE_URL_REQUIRED = "DATABASE_URL is required in every environment (no default). Set it explicitly.";
 
 export type SecretName = keyof typeof DEV_SECRET_DEFAULTS;
@@ -34,8 +57,18 @@ const envSchema = z.object({
     .string()
     .optional()
     .transform((value) => value?.trim() || undefined),
-  PORT: z.coerce.number().int().positive().default(3000),
-  HOST: z.string().default("0.0.0.0"),
+  // OPS-006: 1..65535; messages name the variable only.
+  PORT: z.coerce
+    .number({ invalid_type_error: "PORT must be an integer between 1 and 65535" })
+    .int("PORT must be an integer between 1 and 65535")
+    .min(1, "PORT must be an integer between 1 and 65535")
+    .max(65535, "PORT must be an integer between 1 and 65535")
+    .default(3000),
+  // OPS-006: format check only; the default stays 0.0.0.0 (changing it is OPS-021, pending approval).
+  HOST: z
+    .string()
+    .default("0.0.0.0")
+    .refine(isValidHost, "HOST must be an IPv4/IPv6 address or a hostname (no scheme, port or spaces)"),
   FORGE_PUBLIC_URL: z.string().default("http://localhost:3000"),
   // K-21 / OPS-001: required in every environment, no default. The error names the variable only, never a connection string.
   DATABASE_URL: z
@@ -44,7 +77,11 @@ const envSchema = z.object({
     .min(1, DATABASE_URL_REQUIRED),
   REDIS_URL: z.string().optional(),
   // K-22: no schema default; resolved in parseConfig (dev defaults only for an explicit development/test NODE_ENV).
-  FORGE_MASTER_KEY: z.string().optional(),
+  // OPS-003: when set (any environment) it must be a base64 AES-256 key; otherwise encrypt/decrypt throws at runtime.
+  FORGE_MASTER_KEY: z
+    .string()
+    .optional()
+    .refine((value) => value === undefined || value === "" || isMasterKey(value), `FORGE_MASTER_KEY must be base64 for exactly ${MASTER_KEY_BYTES} bytes`),
   SESSION_SECRET: z.string().optional(),
   API_KEY_PEPPER: z.string().optional(),
   FORGE_ADMIN_EMAIL: z.string().email().default("admin@forge.local"),
@@ -172,6 +209,15 @@ function resolveSecrets(parsed: ParsedEnv, warn: (message: string) => void): Con
     const stillDefault = SECRET_NAMES.filter((name) => parsed[name] === DEV_SECRET_DEFAULTS[name]);
     if (stillDefault.length) {
       throw new Error(`Refusing development default secrets (${label}): ${stillDefault.join(", ")}. Set unique values for them in the environment.`);
+    }
+    // OPS-003: blank or too-short secrets are as bad as missing ones.
+    const tooShort = (["SESSION_SECRET", "API_KEY_PEPPER"] as const).filter((name) => (parsed[name] ?? "").trim().length < MIN_SECRET_LENGTH);
+    if (tooShort.length) {
+      throw new Error(`Secrets too short (${label}): ${tooShort.join(", ")}. Use at least ${MIN_SECRET_LENGTH} characters (e.g. openssl rand -base64 32).`);
+    }
+    // OPS-007: the admin password from .env.example must be changed before a non-development start.
+    if (EXAMPLE_ADMIN_PASSWORDS.includes(parsed.FORGE_ADMIN_PASSWORD.trim())) {
+      throw new Error(`Refusing the example FORGE_ADMIN_PASSWORD (${label}). Set a unique admin password in the environment before starting.`);
     }
     return parsed as Config;
   }

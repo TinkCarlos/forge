@@ -9,8 +9,8 @@ const DB = "mysql://forge:placeholder@127.0.0.1:1/forge_test";
 const admin = { FORGE_ADMIN_PASSWORD: "test-only-password-123" };
 const secrets = {
   FORGE_MASTER_KEY: "dGVzdC1vbmx5LW1hc3Rlci1rZXktMzItYnl0ZXMtISE=",
-  SESSION_SECRET: "test-only-session-secret-unique",
-  API_KEY_PEPPER: "test-only-api-key-pepper-unique",
+  SESSION_SECRET: "test-only-session-secret-unique-32+",
+  API_KEY_PEPPER: "test-only-api-key-pepper-unique-32+",
 };
 const SECRET_NAMES = ["FORGE_MASTER_KEY", "SESSION_SECRET", "API_KEY_PEPPER"] as const;
 
