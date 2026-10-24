@@ -6,6 +6,7 @@ import {
   errors,
   ForgeError,
   hashApiKey,
+  hashPassword,
   OUTBOUND_BLOCKED_CODE,
   safeEqual,
   safeFetch,
@@ -126,12 +127,29 @@ export async function readSignedSessionCookie(value: string | undefined): Promis
   return { ...stored, principal };
 }
 
+/** Well-formed scrypt hash of a random secret, made once on first use; only ever compared against, never matched. */
+let dummyPasswordHash: string | null = null;
+const SCRYPT_HASH = /^scrypt\$[0-9a-f]+\$[0-9a-f]+$/;
+
+/**
+ * S-32: exactly one scrypt verification per login attempt whatever the account state, so response time does not reveal
+ * an unknown email, an SSO-only user (no password_hash), a malformed stored hash, or a disabled user (getUserByEmail
+ * returns active users only). Without a usable hash the dummy is checked and the result is always false.
+ */
+function checkPassword(password: string, stored: string | null | undefined): boolean {
+  const usable = typeof stored === "string" && SCRYPT_HASH.test(stored);
+  dummyPasswordHash ??= hashPassword(randomBytes(32).toString("hex"));
+  const matches = verifyPassword(password, usable ? stored : dummyPasswordHash);
+  return usable && matches;
+}
+
 export async function loginLocal(email: string, password: string): Promise<Principal> {
   if (!config.ALLOW_LOCAL_LOGIN) throw errors.forbidden("本地登录已关闭，请使用统一 SSO");
   const user = await identityLookup(() => repos.getUserByEmail(email));
-  if (!user || !user.password_hash || !verifyPassword(password, user.password_hash)) {
+  if (!checkPassword(password, user?.password_hash)) {
     throw errors.unauthorized("邮箱或密码错误");
   }
+  if (!user) throw errors.unauthorized("邮箱或密码错误"); // unreachable (checkPassword is false without a user); narrows the type
   // A user whose department chain is disabled cannot log in either (same answer as a wrong password).
   const principal = await loadActivePrincipal(user.id);
   if (!principal) throw errors.unauthorized("邮箱或密码错误");
