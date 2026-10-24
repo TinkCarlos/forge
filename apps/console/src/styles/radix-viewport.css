@@ -1,0 +1,5 @@
+/* FE-CSP-04：Radix ScrollArea / Select 的 Viewport 原本在运行时渲染 <style> 隐藏原生滚动条，
+   /next/ 的 style-src 'self' 不允许；构建时去掉那个 <style>（vite-plugins/radix-viewport-style-static.ts），规则原样写在这里。
+   不进 @layer，和原来运行时插入的 <style> 优先级一致。 */
+[data-radix-scroll-area-viewport]{scrollbar-width:none;-ms-overflow-style:none;-webkit-overflow-scrolling:touch;}[data-radix-scroll-area-viewport]::-webkit-scrollbar{display:none}
+[data-radix-select-viewport]{scrollbar-width:none;-ms-overflow-style:none;-webkit-overflow-scrolling:touch;}[data-radix-select-viewport]::-webkit-scrollbar{display:none}

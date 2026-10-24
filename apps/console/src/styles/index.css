@@ -2,6 +2,8 @@
 @import 'tw-animate-css';
 /* FE-CSP-01：sonner 样式静态引入（/next/ 的 style-src 'self' 不允许运行时插 <style>） */
 @import 'sonner/dist/styles.css';
+/* FE-CSP-04：Radix ScrollArea / Select Viewport 的滚动条样式静态引入 */
+@import './radix-viewport.css';
 @import './theme.css';
 
 @custom-variant dark (&:is(.dark *));

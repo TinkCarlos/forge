@@ -64,6 +64,11 @@ describe('入口 JS 规则', () => {
     expect((await load()).findJsViolations(js).length).toBeGreaterThan(0)
   })
 
+  it('Radix Viewport 原版（未经 FE-CSP-04 处理）的 <style dangerouslySetInnerHTML> 会被报出来', async () => {
+    const js = 'io=I.memo(Z(function({nonce:e}){return(0,L.jsx)(`style`,{dangerouslySetInnerHTML:{__html:`[data-radix-scroll-area-viewport]{scrollbar-width:none}`},nonce:e})}))'
+    expect((await load()).findJsViolations(js)).toEqual(['React 渲染 <style dangerouslySetInnerHTML> 注入内联样式（FE-CSP-04 未生效）'])
+  })
+
   it('setAttribute("style", …) 会被报出来', async () => {
     expect((await load()).findJsViolations('el.setAttribute("style","color:red")').length).toBeGreaterThan(0)
   })

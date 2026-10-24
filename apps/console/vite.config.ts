@@ -5,6 +5,7 @@ import { tanstackRouter } from '@tanstack/router-plugin/vite'
 import { fileURLToPath, URL } from 'node:url'
 import { sonnerNoInsertCss } from './vite-plugins/sonner-no-insert-css.ts'
 import { styleSingletonAdopted } from './vite-plugins/style-singleton-adopted.ts'
+import { radixViewportStyleStatic } from './vite-plugins/radix-viewport-style-static.ts'
 import { noInlineArtifacts } from './vite-plugins/no-inline-artifacts.ts'
 import { chunkBudget, vendorChunk } from './vite-plugins/chunk-budget.ts'
 import { productionBuildGuard } from './vite-plugins/production-build-guard.ts'
@@ -18,11 +19,13 @@ export default defineConfig({
   publicDir: false,
   // FE-CSP-01：sonner 不在运行时插 <style>，样式由 src/styles/index.css 静态引入
   // FE-CSP-03：Radix 弹层的滚动锁样式改走 adoptedStyleSheets
+  // FE-CSP-04：Radix ScrollArea / Select Viewport 的 <style> 去掉，规则静态写在 src/styles/radix-viewport.css（锁版本）
   // 产物断言：dist 里出现内联脚本 / 注入式内联样式就让构建失败（vite-plugins/no-inline-artifacts.ts）
   plugins: [
     productionBuildGuard(),
     sonnerNoInsertCss(),
     styleSingletonAdopted(),
+    radixViewportStyleStatic(),
     tanstackRouter({ target: 'react', autoCodeSplitting: true }),
     react(),
     tailwindcss(),

@@ -41,6 +41,7 @@ const JS_RULES: [RegExp, string][] = [
   [/\b__insertCSS\s*\(\s*["'`]/, 'sonner __insertCSS 注入内联样式（FE-CSP-01 未生效）'],
   // 只认 style：React DOM 有一处 setAttribute(`oninput`) 的特性探测（仅在没有 oninput 的旧浏览器上执行），不算违规
   [/\.setAttribute\(\s*["'`]style["'`]/, 'setAttribute 写内联 style 属性'],
+  [/\(\s*["'`]style["'`]\s*,\s*\{\s*dangerouslySetInnerHTML\b/, 'React 渲染 <style dangerouslySetInnerHTML> 注入内联样式（FE-CSP-04 未生效）'],
 ]
 
 export function findJsViolations(js: string): string[] {
