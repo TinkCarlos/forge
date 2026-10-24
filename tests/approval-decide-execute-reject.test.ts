@@ -30,7 +30,7 @@ vi.mock("@forge/store", () => ({
   parseJsonValue: (v: unknown) => v,
   isRetryableWrite: () => false,
   repos: {
-    getApproval: async (id: string) => ({ id, run_id: RUN_ID }),
+    getApproval: async (id: string) => ({ id, run_id: RUN_ID, status: "pending" }),
     getRun: async (id: string) => ({ id, status: "waiting_approval" }),
     decideApproval: async () => true,
     expirePendingApproval: vi.fn(),

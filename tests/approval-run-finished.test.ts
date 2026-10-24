@@ -61,8 +61,10 @@ describe("decide on a finished Run (I-APR-38)", () => {
         expect(await approvalStatus(approvalId)).toBe("expired");
         expect(await audits(approvalId)).toBe(0);
         expect((await repos.getRun(runId))!.status).toBe(status);
-        // A second attempt stays 409 RUN-7005.
-        expect((await decide(approvalId, "approved")).statusCode).toBe(409);
+        // P3-02: a second attempt finds the approval already expired -> 409 CFG-8503 (approval state wins over Run state).
+        const again = await decide(approvalId, "approved");
+        expect([again.statusCode, (again.json() as { error: { code: string } }).error.code]).toEqual([409, "CFG-8503"]);
+        expect(await approvalStatus(approvalId)).toBe("expired");
       });
     }
   }
@@ -72,6 +74,21 @@ describe("decide on a finished Run (I-APR-38)", () => {
     expect((await decide(approvalId, "maybe")).statusCode).toBe(400);
     expect(await approvalStatus(approvalId)).toBe("pending");
   });
+});
+
+describe("P3-02: an approval that is no longer pending -> 409 CFG-8503 whatever the Run status", () => {
+  for (const [approval, run] of [["rejected", "succeeded"], ["approved", "failed"], ["expired", "cancelled"], ["rejected", "budget_exhausted"], ["expired", "waiting_approval"]] as const) {
+    it(`approval ${approval}, run ${run} -> CFG-8503, approval and run unchanged, no audit`, async () => {
+      const { runId, approvalId } = await approvalFor(run);
+      await execute("UPDATE approvals SET status = ? WHERE id = ?", [approval, approvalId]);
+      const res = await decide(approvalId, "approved");
+      expect(res.statusCode, res.body).toBe(409);
+      expect((res.json() as { error: { code: string; message: string } }).error).toMatchObject({ code: "CFG-8503", message: "审批已处理或已过期" });
+      expect(await approvalStatus(approvalId)).toBe(approval);
+      expect(await audits(approvalId)).toBe(0);
+      expect((await repos.getRun(runId))!.status).toBe(run);
+    });
+  }
 });
 
 describe("already decided approval (I-APR-37)", () => {

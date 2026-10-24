@@ -97,6 +97,9 @@ export default async function adminRunRoutes(app: FastifyInstance): Promise<void
     assertValidInput(request);
     const decision = body.decision as "approved" | "rejected";
     const comment = typeof body.comment === "string" ? body.comment : undefined;
+    // P3-02: an approval that is no longer pending (approved / rejected / expired) -> 409 CFG-8503 whatever the Run's
+    // status; the approval state is checked before the Run state.
+    if (approval.status !== "pending") throw errors.conflict("审批已处理或已过期");
     // I-APR-38: the Run already ended -> the approval is no longer operable (pending -> expired), 409 RUN-7005, no audit,
     // no executeRun. Checked here at the API, not in the loop.
     if (isRunFinished(run.status)) {
