@@ -12,6 +12,7 @@ reduceQuery.addEventListener('change', (e) => {
 import { QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider, createRouter } from '@tanstack/react-router'
 import { toast } from 'sonner'
+import { onReject } from '@/lib/settle'
 import { ApiError, setUnauthorizedHandler } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth-store'
 import { DirectionProvider } from './context/direction-provider'
@@ -47,7 +48,9 @@ setUnauthorizedHandler(() => {
   if (!useAuthStore.getState().session) return
   useAuthStore.getState().reset()
   toast.error('登录已过期，请重新登录')
-  void router.navigate({ to: '/sign-in', search: { redirect: router.history.location.href } })
+  router
+    .navigate({ to: '/sign-in', search: { redirect: router.history.location.href } })
+    .catch(onReject({ warn: 'auth: redirect to sign-in after 401' }))
 })
 
 declare module '@tanstack/react-router' {

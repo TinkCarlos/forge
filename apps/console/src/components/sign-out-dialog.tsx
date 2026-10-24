@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { api } from '@/lib/api'
+import { onReject } from '@/lib/settle'
 import { useAuthStore } from '@/stores/auth-store'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 
@@ -20,7 +21,7 @@ export function SignOutDialog({ open, onOpenChange }: SignOutDialogProps) {
     reset()
     setBusy(false)
     onOpenChange(false)
-    void navigate({ to: '/sign-in', replace: true })
+    navigate({ to: '/sign-in', replace: true }).catch(onReject({ toast: '已退出登录，但跳转登录页失败，请刷新页面' }))
   }
 
   return (

@@ -11,6 +11,7 @@ import {
 } from '@tanstack/react-table'
 import { ExternalLink, MoreHorizontal, Plus, Rocket, SearchIcon } from 'lucide-react'
 import { toast } from 'sonner'
+import { onReject } from '@/lib/settle'
 import { api } from '@/lib/api'
 import { useCan } from '@/hooks/use-can'
 import { versionLabel } from '@/lib/format'
@@ -78,7 +79,7 @@ export function Agents() {
     onSuccess: (_, { agent, enabled }) => {
       toast.success(enabled ? `已开放「${agent.name}」的 API` : `已关闭「${agent.name}」的 API`)
       setPending(null)
-      void qc.invalidateQueries({ queryKey: ['agents'] })
+      qc.invalidateQueries({ queryKey: ['agents'] }).catch(onReject({ warn: 'agents: refresh after API toggle' }))
     },
     onError: handleServerError,
   })
@@ -89,7 +90,7 @@ export function Agents() {
     onSuccess: (_, { agent }) => {
       if (pending?.kind === 'publish') toast.success(`已发布「${agent.name}」${versionLabel(pending.draft.version)}`)
       setPending(null)
-      void qc.invalidateQueries({ queryKey: ['agents'] })
+      qc.invalidateQueries({ queryKey: ['agents'] }).catch(onReject({ warn: 'agents: refresh after publish' }))
     },
     onError: handleServerError,
   })
@@ -101,7 +102,7 @@ export function Agents() {
       const draft = detail.versions?.find((v) => v.status === 'draft')
       if (!draft) {
         toast.warning('没有待发布的草稿，可能已被其他人发布，列表已刷新')
-        void refetch()
+        refetch().catch(onReject({ warn: 'agents: refresh after stale draft' }))
         return
       }
       setPending({ kind: 'publish', agent, draft })
@@ -251,7 +252,7 @@ export function Agents() {
           </TableHeader>
           <TableBody>
             {error ? (
-              <TableError cols={5} error={error} onRetry={() => void refetch()} />
+              <TableError cols={5} error={error} onRetry={() => refetch().catch(onReject({ toast: '重试失败，请稍后再试' }))} />
             ) : isPending ? (
               <SkeletonRows cols={5} />
             ) : visible.length === 0 ? (

@@ -3,6 +3,7 @@ import { motion } from 'motion/react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, ExternalLink, MoreHorizontal, X, Copy } from 'lucide-react'
 import { toast } from 'sonner'
+import { onReject } from '@/lib/settle'
 import { api, ApiError } from '@/lib/api'
 import { useCan } from '@/hooks/use-can'
 import { shortTime } from '@/lib/format'
@@ -85,11 +86,11 @@ export function Approvals() {
     onSuccess: (_, d) => {
       toast.success(d.decision === 'approved' ? '已批准，Run 会继续执行' : '已驳回，Run 不会执行这次调用')
       setPending(null)
-      void qc.invalidateQueries({ queryKey: ['approvals'] })
+      qc.invalidateQueries({ queryKey: ['approvals'] }).catch(onReject({ warn: 'approvals: refresh after decide' }))
     },
     onError: (err) => {
       handleServerError(err)
-      if (err instanceof ApiError && err.status === 409) void qc.invalidateQueries({ queryKey: ['approvals'] })
+      if (err instanceof ApiError && err.status === 409) qc.invalidateQueries({ queryKey: ['approvals'] }).catch(onReject({ warn: 'approvals: refresh after conflict' }))
     },
   })
 
@@ -118,7 +119,7 @@ export function Approvals() {
           </TableHeader>
           <TableBody>
             {error ? (
-              <TableError cols={COLS} error={error} onRetry={() => void refetch()} />
+              <TableError cols={COLS} error={error} onRetry={() => refetch().catch(onReject({ toast: '重试失败，请稍后再试' }))} />
             ) : isPending ? (
               <SkeletonRows cols={COLS} />
             ) : data.items.length === 0 ? (
