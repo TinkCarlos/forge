@@ -66,6 +66,9 @@ for (const [net, prefix] of [
   ["169.254.0.0", 16], // link-local, incl. cloud metadata 169.254.169.254
   ["172.16.0.0", 12], // private
   ["192.0.0.0", 24], // IETF protocol assignments
+  ["192.0.2.0", 24], // TEST-NET-1 (documentation)
+  ["198.51.100.0", 24], // TEST-NET-2 (documentation)
+  ["203.0.113.0", 24], // TEST-NET-3 (documentation)
   ["192.168.0.0", 16], // private
   ["198.18.0.0", 15], // benchmarking
   ["224.0.0.0", 4], // multicast

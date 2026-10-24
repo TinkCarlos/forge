@@ -189,11 +189,11 @@ describe("safeFetch: pinned connection, redirects (S-48 / S-49)", () => {
     let calls = 0;
     setOutboundResolver(async (host) => {
       calls += 1;
-      // first answer: a non-routable documentation address (passes the guard, never reaches the internet);
-      // any second lookup would answer loopback.
-      return calls === 1 ? v4("192.0.2.1") : v4("127.0.0.1");
+      // first answer: a public address that passes the guard (TEST-NET 192.0.2.1 is refused since P2-04b); the signal is
+      // already aborted, so no packet ever leaves the box. Any second lookup would answer loopback.
+      return calls === 1 ? v4("93.184.215.14") : v4("127.0.0.1");
     });
-    const error = await safeFetch(`http://rebind.example:${port}/`, { signal: AbortSignal.timeout(300) }).then(() => null, (e: unknown) => e);
+    const error = await safeFetch(`http://rebind.example:${port}/`, { signal: AbortSignal.abort() }).then(() => null, (e: unknown) => e);
     expect(error).not.toBeNull();
     expect(calls).toBe(1);
   });
