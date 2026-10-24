@@ -35,11 +35,13 @@ export default defineConfig({
     chunkBudget(),
   ],
   // K-33：id 规则直接引用 packages/core/src/ids.ts（console 不依赖 @forge/core 包，不改 package.json / lockfile）。
-  // 只给 @forge/core/ids 这一个入口，不暴露 @forge/core 根（那会拉进服务端配置和 node:crypto）；
+  // item 11：SSO 错误码白名单直接引用纯模块 packages/core/src/sso-error-codes.ts。
+  // 只给 @forge/core/ids、@forge/core/sso-error-codes 这两个单文件入口，不暴露 @forge/core 根（那会拉进服务端配置和 node:crypto）；
   // ids.ts 里 ulid 只被 ulidWithPrefix 用到，产物里不能出现（构建后核对 chunk 清单）。
   resolve: {
     alias: {
       '@forge/core/ids': fileURLToPath(new URL('../../packages/core/src/ids.ts', import.meta.url)),
+      '@forge/core/sso-error-codes': fileURLToPath(new URL('../../packages/core/src/sso-error-codes.ts', import.meta.url)),
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },

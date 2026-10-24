@@ -6,9 +6,11 @@ import type { Plugin } from 'vite'
  * 即使没用到也会整包打进 vendor-misc（实测）。
  *
  * 1) 只在 importer 是 packages/core/src/ids.ts 时，把 ulid 标成无副作用，没用到就被 tree-shake 掉；
- * 2) 产物守卫：任何 chunk 里出现 ulid，或出现 packages/ 下除 core/src/ids.ts 以外的模块（服务端代码），构建直接失败。
+ * 2) 产物守卫：任何 chunk 里出现 ulid，或出现 packages/ 下除放行文件以外的模块（服务端代码），构建直接失败。
+ *    放行文件只有两个：core/src/ids.ts（K-33）和 core/src/sso-error-codes.ts（item 11，无任何 import 的纯模块）。
  */
 const IDS_MODULE = /[\\/]packages[\\/]core[\\/]src[\\/]ids\.ts$/
+const ALLOWED_CORE_MODULE = /[\\/]packages[\\/]core[\\/]src[\\/](?:ids|sso-error-codes)\.ts$/
 const SERVER_MODULE = /[\\/]packages[\\/]/
 const ULID_MODULE = /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/]node_modules[\\/])?ulid[\\/]/
 
@@ -17,7 +19,7 @@ export function serverCodeInChunks(chunks: Record<string, readonly string[]>): s
   for (const [file, ids] of Object.entries(chunks)) {
     for (const id of ids) {
       const clean = id.split('?')[0].replace(/^\0/, '')
-      if (ULID_MODULE.test(clean) || (SERVER_MODULE.test(clean) && !IDS_MODULE.test(clean))) bad.push(`${file}: ${clean}`)
+      if (ULID_MODULE.test(clean) || (SERVER_MODULE.test(clean) && !ALLOWED_CORE_MODULE.test(clean))) bad.push(`${file}: ${clean}`)
     }
   }
   return bad
@@ -36,7 +38,7 @@ export function coreIdsOnly(): Plugin {
       const chunks: Record<string, string[]> = {}
       for (const [file, out] of Object.entries(bundle)) if (out.type === 'chunk') chunks[file] = Object.keys(out.modules)
       const bad = serverCodeInChunks(chunks)
-      if (bad.length) this.error(`[forge:core-ids-only] 产物里混进了服务端代码（只允许 packages/core/src/ids.ts 的常量）：\n${bad.join('\n')}`)
+      if (bad.length) this.error(`[forge:core-ids-only] 产物里混进了服务端代码（只允许 packages/core/src/ids.ts、sso-error-codes.ts 的常量）：\n${bad.join('\n')}`)
     },
   }
 }

@@ -1,5 +1,6 @@
-import { readFileSync, readdirSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
+import { SSO_ERROR_CODES, SSO_FALLBACK_CODE } from '@forge/core/sso-error-codes'
 import {
   SSO_ERROR_CODE_MESSAGES,
   SSO_ERROR_FALLBACK,
@@ -9,36 +10,22 @@ import {
   urlWithoutSsoError,
 } from './sso-error'
 
-// 后端白名单：apps/api/src/routes/auth.ts 的 SSO_ERROR_CODES。
-// 不能直接 import：auth.ts 在模块顶层就解析运行时配置（@forge/core config，缺 DATABASE_URL 等直接抛
-// "Invalid configuration"），还会拉进 fastify / @forge/store。所以这里读源码文本解析 Set 字面量，
-// 标识符（如 OUTBOUND_BLOCKED_CODE）到 packages/core/src 里解析成字面值；解析不出来就失败，不 skip。
-const APPS = new URL('../../../../../', import.meta.url)
-const CORE_SRC = new URL('../packages/core/src/', APPS)
-function backendSsoErrorCodes(): string[] {
-  const src = readFileSync(new URL('api/src/routes/auth.ts', APPS), 'utf8')
-  const m = src.match(/export const SSO_ERROR_CODES[^=]*=\s*new Set\(\[([\s\S]*?)\]\)/)
-  if (!m) throw new Error('auth.ts 里找不到 SSO_ERROR_CODES = new Set([...])')
-  const core = readdirSync(CORE_SRC).filter((f) => f.endsWith('.ts')).map((f) => readFileSync(new URL(f, CORE_SRC), 'utf8')).join('\n')
-  return m[1]
-    .split(',')
-    .map((t) => t.trim())
-    .filter(Boolean)
-    .map((t) => {
-      const lit = t.match(/^"([^"]+)"$/)
-      if (lit) return lit[1]
-      const def = core.match(new RegExp(`export const ${t}\\s*=\\s*"([^"]+)"`))
-      if (!def) throw new Error(`无法解析标识符 ${t}`)
-      return def[1]
-    })
-}
-
+// 后端白名单在纯模块 packages/core/src/sso-error-codes.ts（无任何 import），控制台经 alias
+// @forge/core/sso-error-codes 直接引用（只指向这一个文件，不暴露 @forge/core 根）。
 describe('码表与后端白名单一致', () => {
-  it('前端码表的键 == 后端 SSO_ERROR_CODES', () => {
-    const backend = backendSsoErrorCodes()
-    expect(backend).toContain('SSO-1212')
-    expect(backend.length).toBeGreaterThanOrEqual(14)
-    expect(Object.keys(SSO_ERROR_CODE_MESSAGES).sort()).toEqual([...backend].sort())
+  it('前端码表的键 == 导入的 SSO_ERROR_CODES（完全一致，不多不少）', () => {
+    expect(SSO_ERROR_CODES.has('SSO-1212')).toBe(true)
+    expect(SSO_ERROR_CODES.has(SSO_FALLBACK_CODE)).toBe(true)
+    expect(SSO_ERROR_CODES.size).toBeGreaterThanOrEqual(14)
+    expect(Object.keys(SSO_ERROR_CODE_MESSAGES).sort()).toEqual([...SSO_ERROR_CODES].sort())
+  })
+  it('sso-error.ts 从 @forge/core/sso-error-codes 引用白名单，不再自己抄', () => {
+    const src = readFileSync(new URL('./sso-error.ts', import.meta.url), 'utf8')
+    expect(src).toMatch(/from '@forge\/core\/sso-error-codes'/)
+    expect(src).not.toMatch(/from '@forge\/core'/)
+  })
+  it('后端兜底码 SSO_FALLBACK_CODE 的文案就是通用文案', () => {
+    expect(ssoErrorMessage(SSO_FALLBACK_CODE)).toBe(SSO_ERROR_FALLBACK)
   })
 })
 

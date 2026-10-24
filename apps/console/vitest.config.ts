@@ -7,6 +7,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@forge/core/ids': fileURLToPath(new URL('../../packages/core/src/ids.ts', import.meta.url)),
+      '@forge/core/sso-error-codes': fileURLToPath(new URL('../../packages/core/src/sso-error-codes.ts', import.meta.url)),
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },

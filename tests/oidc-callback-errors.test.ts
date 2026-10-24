@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
-import { ForgeError, OUTBOUND_BLOCKED_CODE } from "@forge/core";
+import { ForgeError, OUTBOUND_BLOCKED_CODE, SSO_ERROR_CODES } from "@forge/core";
 
 // P3-04: every error branch of the OIDC callback sends the browser back to /next/sign-in?ssoError=<whitelisted code>
 // (302, plus the S-30-checked return target as `redirect`), never a JSON page. The Location carries only the code:
@@ -10,7 +10,6 @@ const identity = vi.hoisted(() => ({ handleOidcCallback: vi.fn(), pendingOidcRet
 vi.mock("@forge/identity", async (importOriginal) => ({ ...(await importOriginal<object>()), ...identity }));
 
 const { buildApp } = await import("../apps/api/src/app.js");
-const { SSO_ERROR_CODES } = await import("../apps/api/src/routes/auth.js");
 
 const HTML = { accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" };
 const JSON_ONLY = { accept: "application/json" };

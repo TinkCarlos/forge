@@ -20,6 +20,9 @@
       ],
       "@forge/core/ids": [
         "../../packages/core/src/ids.ts"
+      ],
+      "@forge/core/sso-error-codes": [
+        "../../packages/core/src/sso-error-codes.ts"
       ]
     },
     "types": [

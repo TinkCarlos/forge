@@ -18,4 +18,20 @@ describe('K-33 产物守卫：不带服务端代码', () => {
       'assets/x.js': ['/r/packages/core/src/index.ts', '/r/packages/core/src/config.ts', '/r/packages/store/src/index.ts'],
     })).toHaveLength(3)
   })
+  it('item 11：额外只放行 packages/core/src/sso-error-codes.ts（纯模块）', () => {
+    expect(serverCodeInChunks({
+      'assets/sign-in.js': ['/r/packages/core/src/sso-error-codes.ts', '/r/apps/console/src/features/auth/sign-in/sso-error.ts'],
+      'assets/sidebar.js': ['C:\\r\\packages\\core\\src\\sso-error-codes.ts'],
+    })).toEqual([])
+  })
+  it('放行是按完整文件名匹配：同目录其他文件、改名的近似文件照样报出来', () => {
+    expect(serverCodeInChunks({
+      'assets/x.js': [
+        '/r/packages/core/src/outbound.ts',
+        '/r/packages/core/src/sso-error-codes.ts.bak',
+        '/r/packages/core/src/x-sso-error-codes.ts',
+        '/r/packages/identity/src/sso-error-codes.ts',
+      ],
+    })).toHaveLength(4)
+  })
 })

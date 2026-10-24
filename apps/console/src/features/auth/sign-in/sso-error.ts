@@ -1,6 +1,9 @@
+import { SSO_ERROR_CODES } from '@forge/core/sso-error-codes'
+
 // 单点登录失败时后端 302 到 /next/sign-in?ssoError=<码>（apps/api/src/routes/auth.ts 的 ssoErrorLocation）。
-// 码表的键必须和后端白名单 SSO_ERROR_CODES 完全一致（sso-error.test.ts 钉住）；后端只会带白名单里的码，
-// 不在白名单的码后端会换成 SYS-9001。
+// 白名单 SSO_ERROR_CODES 直接从纯模块 packages/core/src/sso-error-codes.ts 引用（alias @forge/core/sso-error-codes，
+// 只指向这一个文件）。码表的键必须和它完全一致（sso-error.test.ts 钉住）；后端只会带白名单里的码，
+// 不在白名单的码后端会换成 SYS-9001（SSO_FALLBACK_CODE）。
 // 只认码表里的码并映射成固定中文文案；URL 里的原值一律不渲染（未知码 / 非法值 / 非字符串都显示通用文案），
 // 显示后用 history.replaceState 把参数从地址栏去掉。
 
@@ -30,8 +33,13 @@ export const SSO_ERROR_FALLBACK = '单点登录失败，请稍后重试或联系
 
 export const SSO_ERROR_PARAM = 'ssoError'
 
+/** 必须同时在导入的白名单和码表里：白名单删掉的码即使码表还留着也按未知码处理（键对不上由测试报错）。 */
 function isKnownCode(value: unknown): value is SsoErrorCode {
-  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(SSO_ERROR_CODE_MESSAGES, value)
+  return (
+    typeof value === 'string' &&
+    SSO_ERROR_CODES.has(value) &&
+    Object.prototype.hasOwnProperty.call(SSO_ERROR_CODE_MESSAGES, value)
+  )
 }
 
 /** 路由 validateSearch 用：白名单码原样保留，其余任何值收敛成 'unknown'（原值不进路由状态），缺省 / 空串为 undefined。 */

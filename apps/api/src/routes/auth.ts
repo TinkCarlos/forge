@@ -1,5 +1,5 @@
 import { type FastifyInstance } from "fastify";
-import { config, errors, ForgeError, OUTBOUND_BLOCKED_CODE } from "@forge/core";
+import { config, errors, ForgeError, OUTBOUND_BLOCKED_CODE, SSO_ERROR_CODES, SSO_FALLBACK_CODE } from "@forge/core";
 import {
   buildOidcAuthorizeUrl,
   createSession,
@@ -28,18 +28,7 @@ const SSO_ERROR_PAGE = "/next/sign-in";
 function isOutboundBlocked(error: unknown): boolean {
   return error instanceof ForgeError && error.code === OUTBOUND_BLOCKED_CODE;
 }
-/**
- * P3-04: the only codes a browser SSO error redirect may carry (`ssoError`). Anything else (an unexpected error, a
- * code outside this list) is sent as SYS-9001. The console maps each code to fixed text; the raw value is never shown.
- * SSO-1212: the IdP answered the callback with `error=` (e.g. access_denied); its error / error_description are dropped.
- */
-export const SSO_ERROR_CODES: ReadonlySet<string> = new Set([
-  OUTBOUND_BLOCKED_CODE,
-  "SSO-1201", "SSO-1202", "SSO-1203", "SSO-1204", "SSO-1205", "SSO-1206",
-  "SSO-1207", "SSO-1208", "SSO-1209", "SSO-1210", "SSO-1211", "SSO-1212",
-  "SYS-9001",
-]);
-const SSO_FALLBACK_CODE = "SYS-9001";
+// P3-04: the browser SSO error whitelist (SSO_ERROR_CODES / SSO_FALLBACK_CODE) lives in @forge/core (sso-error-codes.ts).
 /** P3-04: an API client asks for JSON and not for HTML; a browser navigation (text/html or none) gets the redirect. */
 function wantsJson(accept: unknown): boolean {
   const value = typeof accept === "string" ? accept.toLowerCase() : "";
