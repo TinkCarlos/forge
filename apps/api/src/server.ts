@@ -1,6 +1,8 @@
 import { config, setOutboundLogger } from "@forge/core";
-import { startRuntime } from "@forge/runtime";
+import { logSafeError, startRuntime, stopRuntime } from "@forge/runtime";
+import { pool } from "@forge/store";
 import { buildApp } from "./app.js";
+import { createShutdown } from "./shutdown.js";
 
 const app = await buildApp();
 // AD: blocked outbound requests (host, resolved IPs, reason) go to the API log, never to the client.
@@ -11,9 +13,17 @@ await app.listen({ port, host: config.HOST });
 if (config.EMBEDDED_WORKER) startRuntime();
 console.log(`Forge API listening on ${config.FORGE_PUBLIC_URL} (local http://localhost:${port})`);
 
-const shutdown = async (): Promise<void> => {
-  await app.close();
-  process.exit(0);
+// P3-07: close the server, stop runtime ticks, close the DB pool, then exit (0, or 1 when a step failed / after 10 s).
+const shutdown = createShutdown({
+  close: () => app.close(),
+  stopRuntime,
+  closePool: () => pool.end(),
+  exit: (code) => process.exit(code),
+  log: (message, error) => app.log.error(error === undefined ? {} : { err: logSafeError(error) }, message),
+  timeoutMs: 10_000,
+});
+const onSignal = (signal: string): void => {
+  shutdown(signal).catch(() => process.exit(1));
 };
-process.once("SIGINT", () => void shutdown());
-process.once("SIGTERM", () => void shutdown());
+process.on("SIGINT", () => onSignal("SIGINT"));
+process.on("SIGTERM", () => onSignal("SIGTERM"));

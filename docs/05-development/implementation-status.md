@@ -80,6 +80,7 @@
 - `OIDC_*`、`SSO_TOKEN_VALIDATION_MODE`、`CONNECTOR_PRINCIPAL_*`、`AGENT_CONNECTOR_*`：统一登录/Connector。
 - `OUTBOUND_ALLOWLIST`：默认空；本地演示 MCP/OpenAPI mock 时设为 `127.0.0.1:8090`。`TOOL_ALLOW_PRIVATE_NETWORK` 已废弃，不再绕过出站校验。
 - `EMBEDDED_WORKER`：单进程开发默认 `true`；生产拆分 worker 时在 API 设为 `false`，单独运行 `apps/worker`。
+  - API 进程关停（当前实现，P3-07，`apps/api/src/server.ts` + `apps/api/src/shutdown.ts`）：收到 SIGTERM / SIGINT 后依次停止接新请求并等在途请求结束（`app.close()`）→ 停止 runtime 的 worker / scheduler 定时器 → 关闭 DB 连接池 → 退出码 0。任一步失败记日志（脱敏），后续步骤照常执行，退出码 1；总时长上限 10 秒，超时以退出码 1 强制退出。关停期间再收到信号不会重复关停。正在执行的 Run 不等待：能释放租约就释放，否则租约过期后由其他 worker 重领。独立的 `apps/worker` 进程不在本条范围内。
 - `MAX_CONCURRENT_RUNS`：单进程同时执行的 Run 数，默认 `2`。
 - `LEASE_TTL_SECONDS`：运行租约秒数，默认 `30`；worker 在租约到期前续租，过期后其他 worker 可重领。
   - 续租失败时中止执行（当前实现，P3-09）：心跳返回租约已不属于本 worker → 立即中止；心跳报错（如断库）时容忍，直到距上次成功续租满 `LEASE_TTL_SECONDS`（此后租约可能被别的 worker 重领）再中止；一次瞬时报错、下一次续租成功 → 不中止。中止时 AbortSignal 传到模型调用和工具调用（web_fetch、MCP、OpenAPI 的出站请求随之断开），被中止的那次执行不再写 step 结果、消息、工具结果和终态；`running` 的 call_model 步骤由下一个领到 Run 的 worker 记为失败并发 `model.retried`（`reason: incomplete_step`），`running` 的工具调用由它重新执行。释放租约在中止后为尽力而为。
