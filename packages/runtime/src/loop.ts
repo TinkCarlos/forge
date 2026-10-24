@@ -370,6 +370,14 @@ export function assertAgentRunnable(agent: { status?: unknown }): void {
   if (agent.status !== "active") throw new ForgeError("CFG-8503", "Agent 已停用，不能运行", 409);
 }
 
+/**
+ * Item F: an Agent installed by a plugin whose stored manifest is not a JSON object (item A) cannot be run: the same
+ * 409 CFG-8503, before any Run is written. The agent row is not changed; once the manifest is fixed the agent runs again.
+ */
+export async function assertAgentPluginUsable(agentId: string): Promise<void> {
+  if ((await repos.unusablePluginResourceIds()).agents.has(agentId)) throw new ForgeError("CFG-8503", "Agent 所属插件不可用，不能运行", 409);
+}
+
 export async function createQueuedRun(input: {
   agentId: string;
   versionId: string;
@@ -382,6 +390,7 @@ export async function createQueuedRun(input: {
 }): Promise<string> {
   const agent = await repos.getAgent(input.agentId);
   if (!agent) throw errors.notFound("Agent 不存在");
+  await assertAgentPluginUsable(agent.id); // item F: every entry (admin, /open, /integration, schedules) goes through here
   let threadId = input.threadId?.trim() || "";
   if (threadId) {
     const thread = await repos.getThread(threadId);

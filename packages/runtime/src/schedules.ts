@@ -1,7 +1,7 @@
 import { CronExpressionParser } from "cron-parser";
 import { errors, ForgeError, normalizeCron, storedJsonValue, type DataScope, type Principal, type Role } from "@forge/core";
 import { repos, type ServiceAccountRow } from "@forge/store";
-import { createQueuedRun } from "./loop.js";
+import { assertAgentPluginUsable, createQueuedRun } from "./loop.js";
 
 /** Schedule paused because its identity/Agent is unusable (service account disabled, Agent disabled/unpublished, no permission). */
 export const SCHEDULE_PAUSED_CODE = "SCD-4801";
@@ -118,6 +118,15 @@ export async function triggerSchedule(schedule: Record<string, unknown>, now = n
         return { kind: "failed", code: SCHEDULE_TRIGGER_FAILED_CODE };
       }
       throw error;
+    }
+    // Item F: the agent's plugin has an invalid manifest: skip only this occurrence and keep the schedule active, so it
+    // fires again once the manifest is fixed (no Run is queued).
+    try {
+      await assertAgentPluginUsable(agentId);
+    } catch (error) {
+      if (!(error instanceof ForgeError) || error.code !== "CFG-8503") throw error;
+      await repos.recordScheduleTriggerError(scheduleId, error.code, nextRunAt());
+      return { kind: "failed", code: error.code };
     }
     // concurrency_policy: only 'skip' (the default) is implemented; other values currently behave as before (always enqueue).
     if (String(schedule.concurrency_policy ?? "skip") === "skip" && (await repos.hasInFlightScheduleRun(scheduleId))) {
