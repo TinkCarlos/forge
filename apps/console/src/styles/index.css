@@ -52,6 +52,17 @@
   }
 }
 
+/*
+ * FE-N10：禁用的控件显示 not-allowed 光标。
+ * shadcn 的 Button/Tab 带 disabled:pointer-events-none，光标根本显示不出来，
+ * 所以这里不放进 @layer（未分层规则优先级高于 utilities），把 pointer-events 打开。
+ * 原生 :disabled 元素本身不会触发 click，打开 pointer-events 不会让它可点。
+ */
+:is(button, input, select, textarea):disabled {
+  cursor: not-allowed;
+  pointer-events: auto;
+}
+
 @utility container {
   margin-inline: auto;
   padding-inline: 2rem;
