@@ -13,39 +13,51 @@ import {
   Users,
   Wrench,
 } from 'lucide-react'
-import { type SidebarData } from '../types'
+import { LEGACY_PAGE_PERMISSIONS, ROUTE_PERMISSIONS } from '../../../lib/permissions'
+import { type NavLink, type SidebarData } from '../types'
 
-const legacy = (id: string) => `/#${id}`
+type LegacyPage = keyof typeof LEGACY_PAGE_PERMISSIONS
+type Page = keyof typeof ROUTE_PERMISSIONS
+
+/** 跳旧版控制台的入口：权限按 LEGACY_PAGE_PERMISSIONS，没有权限的入口不显示（K-29）。 */
+const legacy = (id: LegacyPage, title: string, icon: NavLink['icon']): NavLink => ({
+  title,
+  url: `/#${id}`,
+  external: true,
+  icon,
+  permission: LEGACY_PAGE_PERMISSIONS[id],
+})
+
+/** 新版页面入口：权限与路由守卫共用 ROUTE_PERMISSIONS。以后加「审计」入口用 page('/audit', ...)，自动要求 audit.view。 */
+export const page = (url: Page, title: string, icon: NavLink['icon']): NavLink => ({
+  title,
+  url,
+  icon,
+  permission: ROUTE_PERMISSIONS[url],
+})
 
 export const sidebarData: SidebarData = {
   navGroups: [
-    { title: '概览', items: [{ title: '总览', url: legacy('dashboard'), external: true, icon: LayoutDashboard }] },
+    { title: '概览', items: [legacy('dashboard', '总览', LayoutDashboard)] },
     {
       title: '构建',
       items: [
-        { title: 'Agents', url: '/agents', icon: Bot },
-        { title: '模型', url: legacy('models'), external: true, icon: Cpu },
-        { title: 'MCP 服务', url: legacy('mcp'), external: true, icon: Plug },
-        { title: 'Skills', url: legacy('skills'), external: true, icon: Sparkles },
-        { title: '工具源', url: legacy('tools'), external: true, icon: Wrench },
-        { title: '能力包', url: legacy('packages'), external: true, icon: Package },
+        page('/agents', 'Agents', Bot),
+        legacy('models', '模型', Cpu),
+        legacy('mcp', 'MCP 服务', Plug),
+        legacy('skills', 'Skills', Sparkles),
+        legacy('tools', '工具源', Wrench),
+        legacy('packages', '能力包', Package),
       ],
     },
     {
       title: '运行',
-      items: [
-        { title: '运行中心', url: legacy('runs'), external: true, icon: Activity },
-        { title: '审批中心', url: '/approvals', icon: ShieldCheck },
-        { title: '定时任务', url: legacy('schedules'), external: true, icon: CalendarClock },
-      ],
+      items: [legacy('runs', '运行中心', Activity), page('/approvals', '审批中心', ShieldCheck), legacy('schedules', '定时任务', CalendarClock)],
     },
-    { title: '开放平台', items: [{ title: '应用与密钥', url: legacy('apps'), external: true, icon: KeyRound }] },
+    { title: '开放平台', items: [legacy('apps', '应用与密钥', KeyRound)] },
     {
       title: '治理',
-      items: [
-        { title: '用户与权限', url: legacy('users'), external: true, icon: Users },
-        { title: 'SSO / Connector', url: legacy('sso'), external: true, icon: Fingerprint },
-      ],
+      items: [legacy('users', '用户与权限', Users), legacy('sso', 'SSO / Connector', Fingerprint)],
     },
   ],
 }

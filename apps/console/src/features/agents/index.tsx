@@ -11,7 +11,8 @@ import {
 } from '@tanstack/react-table'
 import { ExternalLink, MoreHorizontal, Plus, Rocket, SearchIcon } from 'lucide-react'
 import { toast } from 'sonner'
-import { api, ApiError } from '@/lib/api'
+import { api } from '@/lib/api'
+import { useCan } from '@/hooks/use-can'
 import { versionLabel } from '@/lib/format'
 import { handleServerError } from '@/lib/handle-server-error'
 import { Button } from '@/components/ui/button'
@@ -31,7 +32,7 @@ import { DataTablePagination } from '@/components/data-table'
 import { PageShell } from '@/components/layout/page-shell'
 import { rowMotion } from '@/components/motion/page'
 import { StatusBadge } from '@/components/status-badge'
-import { SkeletonRows, TableMessage } from '@/components/table-states'
+import { SkeletonRows, TableError, TableMessage } from '@/components/table-states'
 
 type Agent = {
   id: string
@@ -62,6 +63,9 @@ export function Agents() {
   const [tab, setTab] = useState<Tab>('all')
   const [query, setQuery] = useState('')
   const [pending, setPending] = useState<Pending>(null)
+  // K-29：开放/关闭 API 走 PATCH（agent.manage），发布要 agent.publish；没有权限的入口不显示
+  const canManage = useCan('agent.manage')
+  const canPublish = useCan('agent.publish')
 
   const rows = useMemo(
     () => (data ?? []).filter((a) => (tab === 'draft' ? !!a.draftVersion : tab === 'api' ? a.apiEnabled : true)),
@@ -133,21 +137,24 @@ export function Agents() {
       {
         id: 'api',
         header: '开放 API',
-        cell: ({ row: { original: a } }) => (
+        cell: ({ row: { original: a } }) =>
+          !canManage ? (
+            <StatusBadge status={a.apiEnabled ? 'enabled' : 'disabled'} label={a.apiEnabled ? '已开放' : '未开放'} tone={a.apiEnabled ? 'success' : 'neutral'} />
+          ) : (
           <Switch
             checked={a.apiEnabled}
             disabled={setApi.isPending && setApi.variables?.agent.id === a.id}
             aria-label={a.apiEnabled ? `关闭「${a.name}」的开放 API` : `开放「${a.name}」的 API`}
             onCheckedChange={(on) => (on ? setApi.mutate({ agent: a, enabled: true }) : setPending({ kind: 'close-api', agent: a }))}
           />
-        ),
+          ),
       },
       {
         id: 'actions',
         header: () => <span className='sr-only'>操作</span>,
         cell: ({ row: { original: a } }) => (
           <div className='flex items-center justify-end gap-1'>
-            {a.draftVersion && (
+            {canPublish && a.draftVersion && (
               <Button size='sm' variant='outline' onClick={() => askPublish(a)}>
                 <Rocket /> 发布 {versionLabel(a.draftVersion.version)}
               </Button>
@@ -159,14 +166,18 @@ export function Agents() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align='end' className='w-44'>
-                {a.apiEnabled ? (
-                  <DropdownMenuItem variant='destructive' onClick={() => setPending({ kind: 'close-api', agent: a })}>
-                    关闭开放 API
-                  </DropdownMenuItem>
-                ) : (
-                  <DropdownMenuItem onClick={() => setApi.mutate({ agent: a, enabled: true })}>开放 API</DropdownMenuItem>
+                {canManage && (
+                  <>
+                    {a.apiEnabled ? (
+                      <DropdownMenuItem variant='destructive' onClick={() => setPending({ kind: 'close-api', agent: a })}>
+                        关闭开放 API
+                      </DropdownMenuItem>
+                    ) : (
+                      <DropdownMenuItem onClick={() => setApi.mutate({ agent: a, enabled: true })}>开放 API</DropdownMenuItem>
+                    )}
+                    <DropdownMenuSeparator />
+                  </>
                 )}
-                <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
                   <a href='/#agents'>
                     <ExternalLink /> 在旧版中查看详情
@@ -179,7 +190,7 @@ export function Agents() {
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [setApi.isPending, setApi.variables]
+    [setApi.isPending, setApi.variables, canManage, canPublish]
   )
 
   const table = useReactTable({
@@ -202,11 +213,13 @@ export function Agents() {
       title='Agents'
       description='管理 Agent 的发布版本和开放 API。'
       actions={
-        <Button asChild>
-          <a href='/#agents'>
-            <Plus /> 新建 Agent
-          </a>
-        </Button>
+        canManage ? (
+          <Button asChild>
+            <a href='/#agents'>
+              <Plus /> 新建 Agent
+            </a>
+          </Button>
+        ) : undefined
       }
     >
       <div className='flex flex-wrap items-center justify-between gap-3'>
@@ -238,7 +251,7 @@ export function Agents() {
           </TableHeader>
           <TableBody>
             {error ? (
-              <TableMessage cols={5} kind='error' title={error.message} code={(error as ApiError).code} onRetry={() => void refetch()} />
+              <TableError cols={5} error={error} onRetry={() => void refetch()} />
             ) : isPending ? (
               <SkeletonRows cols={5} />
             ) : visible.length === 0 ? (
@@ -249,8 +262,8 @@ export function Agents() {
                   cols={5}
                   kind='empty'
                   title='还没有 Agent'
-                  hint='新建 Agent 目前仍在旧版控制台操作，默认使用离线 Mock 模型即可运行。'
-                  action={<Button variant='outline' size='sm' className='mt-2' asChild><a href='/#agents'>去旧版新建</a></Button>}
+                  hint={canManage ? '新建 Agent 目前仍在旧版控制台操作，默认使用离线 Mock 模型即可运行。' : '有 Agent 后会显示在这里。'}
+                  action={canManage ? <Button variant='outline' size='sm' className='mt-2' asChild><a href='/#agents'>去旧版新建</a></Button> : undefined}
                 />
               )
             ) : (

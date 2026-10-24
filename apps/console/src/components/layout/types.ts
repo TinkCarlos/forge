@@ -1,9 +1,12 @@
 import { type LinkProps } from '@tanstack/react-router'
+import { type Permission } from '@/lib/permissions'
 
 type BaseNavItem = {
   title: string
   badge?: string
   icon?: React.ElementType
+  /** K-29：没有这项权限时侧栏不显示该入口（与后端该页面列表接口要求的权限一致）。 */
+  permission?: Permission
 }
 
 /** external：还没迁到新版的页面，跳回旧控制台（整页跳转）。 */

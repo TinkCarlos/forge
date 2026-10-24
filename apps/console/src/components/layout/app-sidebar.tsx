@@ -4,6 +4,8 @@ import { Link } from '@tanstack/react-router'
 import { Hammer } from 'lucide-react'
 import { useLayout } from '@/context/layout-provider'
 import { approvalsCountQuery } from '@/features/approvals/api'
+import { useCan, usePermissions } from '@/hooks/use-can'
+import { filterNavGroups } from '@/lib/permissions'
 import {
   Sidebar,
   SidebarContent,
@@ -20,18 +22,20 @@ import { NavUser } from './nav-user'
 
 export function AppSidebar() {
   const { collapsible, variant } = useLayout()
-  const { data: pending } = useQuery(approvalsCountQuery)
+  const perms = usePermissions()
+  // 没有 approval.view 时不轮询待审批数，否则每 30 秒一个 403
+  const { data: pending } = useQuery({ ...approvalsCountQuery, enabled: useCan('approval.view') })
 
   // 待审批数量挂在「审批中心」上
   const groups = useMemo(
     () =>
-      sidebarData.navGroups.map((group) => ({
+      filterNavGroups(sidebarData.navGroups, perms).map((group) => ({
         ...group,
         items: group.items.map((item) =>
           item.url === '/approvals' && pending ? { ...item, badge: pending > 99 ? '99+' : String(pending) } : item
         ),
       })),
-    [pending]
+    [pending, perms]
   )
 
   return (

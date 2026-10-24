@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, ExternalLink, MoreHorizontal, X, Copy } from 'lucide-react'
 import { toast } from 'sonner'
 import { api, ApiError } from '@/lib/api'
+import { useCan } from '@/hooks/use-can'
 import { shortTime } from '@/lib/format'
 import { handleServerError } from '@/lib/handle-server-error'
 import { Button } from '@/components/ui/button'
@@ -22,7 +23,7 @@ import { ConfirmDialog } from '@/components/confirm-dialog'
 import { PageShell } from '@/components/layout/page-shell'
 import { rowMotion } from '@/components/motion/page'
 import { StatusBadge } from '@/components/status-badge'
-import { SkeletonRows, TableMessage } from '@/components/table-states'
+import { SkeletonRows, TableError, TableMessage } from '@/components/table-states'
 import { type Approval, approvalsQuery } from './api'
 
 type Decision = { approval: Approval; decision: 'approved' | 'rejected' } | null
@@ -75,6 +76,8 @@ export function Approvals() {
   const { data, error, isPending, refetch } = useQuery(approvalsQuery(page, SIZE))
   const [pending, setPending] = useState<Decision>(null)
   const [comment, setComment] = useState('')
+  // K-29：没有 approval.decide（如 auditor）时只读，不显示批准/驳回
+  const canDecide = useCan('approval.decide')
 
   const decide = useMutation({
     mutationFn: (d: NonNullable<Decision>) =>
@@ -115,7 +118,7 @@ export function Approvals() {
           </TableHeader>
           <TableBody>
             {error ? (
-              <TableMessage cols={COLS} kind='error' title={error.message} code={(error as ApiError).code} onRetry={() => void refetch()} />
+              <TableError cols={COLS} error={error} onRetry={() => void refetch()} />
             ) : isPending ? (
               <SkeletonRows cols={COLS} />
             ) : data.items.length === 0 ? (
@@ -141,9 +144,11 @@ export function Approvals() {
                     <TableCell data-label='过期时间' className='tabular-nums' title={expires.title}>{expires.text}</TableCell>
                     <TableCell data-actions>
                       <div className='flex items-center justify-end gap-1'>
-                        <Button size='sm' variant='outline' onClick={() => open(a, 'approved')}>
-                          <Check /> 批准
-                        </Button>
+                        {canDecide && (
+                          <Button size='sm' variant='outline' onClick={() => open(a, 'approved')}>
+                            <Check /> 批准
+                          </Button>
+                        )}
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant='ghost' size='icon' className='size-8 data-[state=open]:bg-muted' aria-label={`审批 ${a.id.slice(0, 8)} 更多操作`}>
@@ -151,10 +156,14 @@ export function Approvals() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align='end' className='w-44'>
-                            <DropdownMenuItem variant='destructive' onClick={() => open(a, 'rejected')}>
-                              <X /> 驳回
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
+                            {canDecide && (
+                              <>
+                                <DropdownMenuItem variant='destructive' onClick={() => open(a, 'rejected')}>
+                                  <X /> 驳回
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                              </>
+                            )}
                             <DropdownMenuItem asChild>
                               <a href='/#runs'><ExternalLink /> 在旧版中查看 Run</a>
                             </DropdownMenuItem>

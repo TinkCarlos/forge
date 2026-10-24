@@ -65,7 +65,7 @@ export function UserAuthForm({ className, redirectTo }: { className?: string; re
                 animate={{ opacity: 1, height: 'auto', x: [0, -6, 6, -3, 3, 0] }}
                 exit={{ opacity: 0, height: 0 }}
                 transition={{ duration: 0.3 }}
-                className='text-sm text-destructive'
+                className='text-sm text-destructive-text'
               >
                 {error.message}
                 {error.code ? `（${error.code}）` : ''}

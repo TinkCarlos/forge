@@ -1,6 +1,8 @@
 import { motion } from 'motion/react'
 import { AlertTriangle, Inbox, RotateCw } from 'lucide-react'
+import { isForbidden } from '@/lib/permissions'
 import { Button } from '@/components/ui/button'
+import { BackButton } from '@/components/back-button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { TableCell, TableRow } from '@/components/ui/table'
 
@@ -59,5 +61,15 @@ export function TableMessage({
         </motion.div>
       </TableCell>
     </TableRow>
+  )
+}
+
+/** 列表加载失败。403 时提示没有权限、只给「返回」（K-29），其他错误给「重试」。 */
+export function TableError({ cols, error, onRetry }: { cols: number; error: Error; onRetry: () => void }) {
+  const code = (error as { code?: string }).code
+  return isForbidden(error) ? (
+    <TableMessage cols={cols} kind='error' title='没有权限查看' hint='当前账号的角色没有这项权限。如需开通，请联系管理员。' code={code} action={<BackButton size='sm' className='mt-2' />} />
+  ) : (
+    <TableMessage cols={cols} kind='error' title={error.message} code={code} onRetry={onRetry} />
   )
 }
