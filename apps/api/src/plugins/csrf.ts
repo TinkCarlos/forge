@@ -3,6 +3,7 @@ import { errors } from "@forge/core";
 import { readStoredSession } from "./http-helpers.js";
 
 const ADMIN_API_PREFIX = "/admin/api";
+const AUTH_PREFIX = "/auth/";
 
 /** Percent-decoded path of the raw URL (no query). Undecodable input is kept raw: it cannot match a route anyway. */
 function decodedPath(rawUrl: string): string {
@@ -19,6 +20,12 @@ function decodedPath(rawUrl: string): string {
  * `request.url` keeps the raw encoding. Decide on the matched route template (and, as a backstop, the decoded path),
  * never on the raw URL prefix.
  */
+/** Item B: a request for an /auth route (matched template, or the decoded path as a backstop, like isAdminApiRequest). */
+export function isAuthRequest(request: Pick<FastifyRequest, "url" | "routeOptions">): boolean {
+  const route = request.routeOptions?.url ?? "";
+  return route.startsWith(AUTH_PREFIX) || decodedPath(request.url).startsWith(AUTH_PREFIX);
+}
+
 export function isAdminApiRequest(request: Pick<FastifyRequest, "url" | "routeOptions">): boolean {
   const route = request.routeOptions?.url ?? "";
   return route.startsWith(ADMIN_API_PREFIX) || decodedPath(request.url).startsWith(ADMIN_API_PREFIX);

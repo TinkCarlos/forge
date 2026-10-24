@@ -49,7 +49,7 @@ GET /admin/v1/session
 
 | 项 | 约定 |
 | --- | --- |
-| 内容类型 | `application/json; charset=utf-8`；上传 `multipart/form-data`（当前实现，item 8：只有显式声明为上传的路由接受 multipart，目前没有这样的路由；其余 `/admin/api/*` 的 POST/PUT/PATCH/DELETE 带 multipart 一律 `415 OPN-4505「不支持的 Content-Type」`，在 CSRF/鉴权之前拒绝，不写库） |
+| 内容类型 | `application/json; charset=utf-8`；上传 `multipart/form-data`（当前实现，item 8：只有显式声明为上传的路由接受 multipart，目前没有这样的路由；其余 `/admin/api/*` 以及 `/auth/*`（登录、登出，item B）的 POST/PUT/PATCH/DELETE 带 multipart 一律 `415 OPN-4505「不支持的 Content-Type」`，在 CSRF/鉴权之前拒绝，不写库） |
 | ID | 当前实现（K-33）：3 位小写前缀 + `_` + ULID 前 22 位（大写 Crockford），共 26 位，例如 `agt_01M5PK6G1GPZ3APBN3QNXR`；seed 数据是 26 位纯 ULID。正则与前缀列表由 `@forge/core`（`packages/core/src/ids.ts`）导出：`ID_PATTERN_SOURCE` / `ID_PATTERN`、`ID_PREFIXES`；路径参数 `:id` 都是这种 ID，`:key`（仅 `/open/v1/agents/:key`、`/runs`、`/invoke`）是 Agent key（slug），见 `PATH_PARAM_KINDS` |
 | 时间 | ISO 8601 UTC |
 | 分页 | 新的管理端列表用 `?page=&pageSize=`（`page` 从 1 开始；`pageSize` 默认 20，最大 100，超过 100 按 100 处理，不报错）；响应 `{ items, page, pageSize, total }`。历史例外：`/admin/api/runs` 和 `/admin/api/audit` 仍只支持 `?limit=`，响应只有 `{ items }`；`limit` 必须是正整数（只含数字），runs 最大 200、audit 最大 500，不传时分别为 50、100；`abc`、`1.5`、`-1`、`0`、空串、`1e2` 或超过最大值都返回 `400 CFG-8501`（不截断）。`cursor` / `nextCursor` 只用于开放平台接口（见 open-platform.md） |
