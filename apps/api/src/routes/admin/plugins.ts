@@ -105,12 +105,13 @@ export default async function adminPluginRoutes(app: FastifyInstance): Promise<v
     return { id: pluginId, created };
   });
 
-  app.post("/admin/api/plugins/:id/uninstall", async (request) => {
+  app.post("/admin/api/plugins/:id/uninstall", { schema: ROUTE_SCHEMAS.noBody, attachValidation: true }, async (request) => {
     const session = await admin(request, "plugin.uninstall");
     await assertOrgWritable(session.principal, null, PLATFORM_WRITE_MESSAGE); // P0-03 / U-15: platform-wide resource (no department column)
     // #68 / I-PLG-04: unknown id -> 404 (no audit). Department scoping waits for an owner-department column.
     const plugin = await repos.getPlugin(param(request, "id"));
     if (!plugin) throw errors.notFound("插件不存在");
+    assertValidInput(request);
     // Delete-class audit: the department is taken before the change and passed explicitly, never re-resolved from a
     // row that may be gone. Plugins are platform-level (no department column) -> explicit null.
     // P2: the audit entry is validated before uninstalling (guard failure -> nothing uninstalled).

@@ -156,7 +156,8 @@ export default async function adminScheduleRoutes(app: FastifyInstance): Promise
     return { ok: true };
   }, { schema: ROUTE_SCHEMAS.schedulePatch });
 
-  scheduleByIdRoute(app, "POST", "/enable", "schedule.manage", async ({ session, schedule }) => {
+  scheduleByIdRoute(app, "POST", "/enable", "schedule.manage", async ({ request, session, schedule }) => {
+    assertValidInput(request);
     if (schedule.service_account_id) {
       const account = await repos.getServiceAccount(String(schedule.service_account_id));
       if (!account || account.status !== "active") throw new ForgeError("SCD-4801", "服务账号已停用，不能启用定时任务", 409);
@@ -170,15 +171,17 @@ export default async function adminScheduleRoutes(app: FastifyInstance): Promise
     await repos.updateSchedule(String(schedule.id), { status: "active", next_run_at: next, ...(cron !== storedCron ? { cron } : {}) });
     await writeAudit(session, "schedule.enable", "schedule", String(schedule.id), { nextRunAt: next });
     return { ok: true };
-  });
+  }, { schema: ROUTE_SCHEMAS.noBody });
 
-  scheduleByIdRoute(app, "POST", "/disable", "schedule.manage", async ({ session, schedule }) => {
+  scheduleByIdRoute(app, "POST", "/disable", "schedule.manage", async ({ request, session, schedule }) => {
+    assertValidInput(request);
     await repos.updateSchedule(String(schedule.id), { status: "disabled", next_run_at: null });
     await writeAudit(session, "schedule.disable", "schedule", String(schedule.id));
     return { ok: true };
-  });
+  }, { schema: ROUTE_SCHEMAS.noBody });
 
-  scheduleByIdRoute(app, "POST", "/run", "schedule.run", async ({ session, schedule }) => {
+  scheduleByIdRoute(app, "POST", "/run", "schedule.run", async ({ request, session, schedule }) => {
+    assertValidInput(request);
     const agent = await repos.getAgent(String(schedule.agent_id));
     if (!agent?.published_version_id) throw errors.invalid("Agent 尚未发布");
     // Manual "run now" executes as the schedule's identity (bound service account, or the legacy service identity),
@@ -198,5 +201,5 @@ export default async function adminScheduleRoutes(app: FastifyInstance): Promise
     });
     await writeAudit(session, "schedule.run", "schedule", String(schedule.id), { runId, runAs: { type: principal.type, id: principal.id } });
     return { runId, trigger: "schedule" };
-  });
+  }, { schema: ROUTE_SCHEMAS.noBody });
 }

@@ -93,11 +93,12 @@ export default async function adminCapabilityRoutes(app: FastifyInstance): Promi
     return { ok: true };
   });
 
-  app.post("/admin/api/mcp/:id/refresh", async (request) => {
+  app.post("/admin/api/mcp/:id/refresh", { schema: ROUTE_SCHEMAS.noBody, attachValidation: true }, async (request) => {
     const session = await admin(request, "mcp.manage");
     await assertOrgWritable(session.principal, null, PLATFORM_WRITE_MESSAGE); // P0-03 / U-15: platform-wide resource (no department column)
     const server = await repos.getMcpServer(param(request, "id"));
     if (!server) throw errors.notFound("MCP 不存在");
+    assertValidInput(request);
     const tools = await discoverMcpTools(server);
     await repos.replaceMcpTools(String(server.id), tools);
     await repos.updateMcpServer(String(server.id), { last_error: null, status: "active" });

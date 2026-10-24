@@ -46,7 +46,7 @@ const connectorToken = () =>
   new SignJWT({ principalType: "user", application: "rsc", environment: "test", roles: [], subject: `it-rsc-sub-${suffix}` })
     .setProtectedHeader({ alg: "RS256" }).setIssuer(issuer).setAudience(audience).setIssuedAt().setExpirationTime("5m").sign(privateKey);
 
-type JsonSchema = { type?: string | string[]; properties?: Record<string, JsonSchema>; maxLength?: number; maxItems?: number; items?: JsonSchema };
+type JsonSchema = { type?: string | string[]; properties?: Record<string, JsonSchema>; maxLength?: number; maxItems?: number; items?: JsonSchema; additionalProperties?: unknown };
 
 /**
  * Per schema route: path params and body fields that reference existing rows (real ids, so the 404 lookups that run
@@ -88,7 +88,21 @@ const FIXTURES: Record<string, () => Fixture> = {
   "/open/v1/agents/:key/runs": () => ({ params: { key: ids.agentKey! }, auth: "open" }),
   "/open/v1/agents/:key/invoke": () => ({ params: { key: ids.agentKey! }, auth: "open" }),
   "/auth/local/login": () => ({ auth: "none" }),
+  // P1: action routes without a body (empty schema; closed except the external cancels).
+  "/auth/logout": () => ({ auth: "none" }),
+  "/admin/api/runs/:id/cancel": () => ({ params: { id: ids.run! } }),
+  "/admin/api/webhook-deliveries/:id/replay": () => ({ params: { id: ids.delivery! } }),
+  "/admin/api/mcp/:id/refresh": () => ({ params: { id: ids.mcp! } }),
+  "/admin/api/providers/:id/test": () => ({ params: { id: ids.provider! } }),
+  "/admin/api/plugins/:id/uninstall": () => ({ params: { id: ids.plugin! } }),
+  "/admin/api/schedules/:id/enable": () => ({ params: { id: ids.schedule! } }),
+  "/admin/api/schedules/:id/disable": () => ({ params: { id: ids.schedule! } }),
+  "/admin/api/schedules/:id/run": () => ({ params: { id: ids.schedule! } }),
+  "/integration/v1/runs/:id/cancel": () => ({ params: { id: ids.run! }, auth: "connector" }),
+  "/open/v1/runs/:id/cancel": () => ({ params: { id: ids.run! }, auth: "open" }),
 };
+/** External routes whose body schema is deliberately open (architect P1); an empty open schema has no invalid body. */
+const EXTERNAL_OPEN = new Set(["/integration/v1/runs", "/integration/v1/runs/:id/cancel", "/open/v1/agents/:key/runs", "/open/v1/agents/:key/invoke", "/open/v1/runs/:id/cancel"]);
 
 /** A value every schema rejects for this property: over maxLength / maxItems, else the wrong JSON type. */
 function invalidValue(schema: JsonSchema): unknown {
@@ -101,6 +115,8 @@ function invalidValue(schema: JsonSchema): unknown {
 }
 
 function invalidObject(schema: JsonSchema): Record<string, unknown> {
+  // An empty closed schema (action routes) has no field to break: one undeclared field is the invalid body.
+  if (!Object.keys(schema.properties ?? {}).length && schema.additionalProperties === false) return { __undeclared: 1 };
   return Object.fromEntries(Object.entries(schema.properties ?? {}).map(([key, prop]) => [key, invalidValue(prop)]));
 }
 
@@ -144,6 +160,8 @@ beforeAll(async () => {
   ids.mcp = await repos.createMcpServer({ key: `it-rsc-${suffix}`, name: "IT rsc", url: "https://mcp.example.com/mcp", headers: {}, createdBy: ADMIN_ID });
   ids.skill = await repos.createSkill({ key: `it-rsc-${suffix}`, name: "IT rsc", description: "", content: "# x", publish: true, createdBy: ADMIN_ID });
   ids.provider = await repos.createProvider({ key: `it-rsc-${suffix}`, name: "IT rsc", protocol: "openai-compatible", baseUrl: "https://llm.example.com/v1", apiKeyEncrypted: null, headers: {}, createdBy: ADMIN_ID });
+  ids.delivery = (await repos.enqueueWebhook({ appId: ids.app, eventId: `it-rsc-${suffix}`, eventType: "run.completed", payload: {} }))!;
+  ids.plugin = await repos.createPlugin({ key: `it-rsc-plg-${suffix}`, version: "1.0.0", type: "mixed", name: "IT rsc plugin", manifest: {}, resources: {}, createdBy: ADMIN_ID });
   ids.model = await repos.createModel({ providerId: ids.provider, key: `it-rsc-${suffix}`, displayName: "IT rsc", capabilities: ["text"] });
 });
 
@@ -159,9 +177,11 @@ afterAll(async () => {
   }
   if (ids.account) await execute("DELETE FROM service_accounts WHERE id = ?", [ids.account]);
   if (ids.app) {
+    await execute("DELETE FROM webhook_deliveries WHERE app_id = ?", [ids.app]);
     await execute("DELETE FROM api_keys WHERE app_id = ?", [ids.app]);
     await execute("DELETE FROM api_apps WHERE id = ?", [ids.app]);
   }
+  if (ids.plugin) await execute("DELETE FROM plugins WHERE id = ?", [ids.plugin]);
   if (ids.model) await execute("DELETE FROM llm_models WHERE id = ?", [ids.model]);
   if (ids.provider) await execute("DELETE FROM llm_providers WHERE id = ?", [ids.provider]);
   if (ids.mcp) await execute("DELETE FROM mcp_servers WHERE id = ?", [ids.mcp]);
@@ -188,12 +208,12 @@ function schemaRoutes(): Array<{ method: string; url: string; part: "body" | "qu
 }
 
 type SchemaRoute = ReturnType<typeof schemaRoutes>[number];
-async function send(route: SchemaRoute, who: "authorised" | "forbidden", idOverride?: string) {
+async function send(route: SchemaRoute, who: "authorised" | "forbidden", idOverride?: string, bodyOverride?: Record<string, unknown>) {
   const fixture = FIXTURES[route.url];
   expect(fixture, `no FIXTURES entry for ${route.method} ${route.url}`).toBeDefined();
   const { params = {}, keep = {}, auth = "session" } = fixture!();
   const url = route.url.replace(/:(\w+)/g, (_, name: string) => idOverride ?? params[name] ?? `missing-${name}`);
-  const invalid = { ...invalidObject(route.schema), ...keep };
+  const invalid = bodyOverride ? { ...bodyOverride, ...keep } : { ...invalidObject(route.schema), ...keep };
   const target = auth === "connector" ? connectorApp : app;
   const h: Record<string, string> =
     auth === "open" ? { authorization: `Bearer ${openKey}` }
@@ -208,19 +228,37 @@ async function send(route: SchemaRoute, who: "authorised" | "forbidden", idOverr
 describe("every route with a body / querystring schema rejects invalid input with 400 (attachValidation backstop)", () => {
   it("the collector sees the schema routes (guards the hook itself)", () => {
     const keys = schemaRoutes().map((r) => `${r.method} ${r.url} ${r.part}`);
-    expect(keys.length).toBeGreaterThanOrEqual(33);
+    expect(keys.length).toBeGreaterThanOrEqual(44);
     expect(keys).toContain("POST /admin/api/agents body");
     expect(keys).toContain("GET /admin/api/runs querystring");
   });
 
   it("each one answers 400 CFG-8501 to an invalid request from an authorised caller", async () => {
     const results: Array<{ route: string; status: number; code?: string }> = [];
-    for (const route of schemaRoutes()) {
+    // The external empty schemas (integration / open run cancel) are open by ruling, so no body is invalid there.
+    for (const route of schemaRoutes().filter((r) => !(EXTERNAL_OPEN.has(r.url) && !Object.keys(r.schema.properties ?? {}).length))) {
       const res = await send(route, "authorised");
       const body = res.json() as { error?: { code?: string } };
       results.push({ route: `${route.method} ${route.url} ${route.part}`, status: res.statusCode, code: body.error?.code });
     }
     expect(results.filter((r) => r.status !== 400 || r.code !== "CFG-8501")).toEqual([]);
+  });
+
+  it("P1: each admin / console body route rejects an otherwise valid body with one undeclared field: 400 CFG-8501 field=__undeclared", async () => {
+    // Required fields get a valid value so the only error left is the undeclared field (rejected, not stripped).
+    const REQUIRED_VALID: Record<string, unknown> = { email: `it-rsc-x-${suffix}@forge.local`, decision: "approved" };
+    const routes = schemaRoutes().filter((r) => r.part === "body" && !EXTERNAL_OPEN.has(r.url));
+    expect(routes.length).toBe(37);
+    const wrong: string[] = [];
+    for (const route of routes) {
+      const required = ((route.schema as { required?: string[] }).required ?? []).map((k) => [k, REQUIRED_VALID[k]]);
+      // POST /admin/api/agents checks `key` (presence and format) before the schema, so it gets a valid one.
+      const before = route.url === "/admin/api/agents" ? { key: `it-rsc-x-${suffix}` } : {};
+      const res = await send(route, "authorised", undefined, { ...Object.fromEntries(required), ...before, __undeclared: 1 });
+      const error = (res.json() as { error?: { code?: string; details?: { field?: string } } }).error;
+      if (res.statusCode !== 400 || error?.code !== "CFG-8501" || error.details?.field !== "__undeclared") wrong.push(`${route.method} ${route.url}: ${res.statusCode} ${error?.code ?? ""} ${error?.details?.field ?? ""}`);
+    }
+    expect(wrong).toEqual([]);
   });
 
   it("F1: 403 before 400 - a session without the permission gets 403 POL-2001 for the same invalid body", async () => {

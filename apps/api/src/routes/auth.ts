@@ -63,7 +63,8 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
     return sessionPayload(session);
   });
 
-  app.post("/auth/logout", async (request, reply) => {
+  app.post("/auth/logout", { schema: ROUTE_SCHEMAS.noBody, attachValidation: true }, async (request, reply) => {
+    assertValidInput(request); // P1: no body or {} only; a field -> 400, the session is kept
     const session = readStoredSession(request);
     if (session) destroySession(session.token);
     reply.clearCookie("forge_session", { path: "/" });

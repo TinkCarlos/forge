@@ -132,11 +132,12 @@ export default async function adminModelRoutes(app: FastifyInstance): Promise<vo
     return { ok: true };
   });
 
-  app.post("/admin/api/providers/:id/test", async (request) => {
+  app.post("/admin/api/providers/:id/test", { schema: ROUTE_SCHEMAS.noBody, attachValidation: true }, async (request) => {
     const session = await admin(request, "model.manage");
     await assertOrgWritable(session.principal, null, PLATFORM_WRITE_MESSAGE); // P0-03 / U-15: platform-wide resource (no department column)
     const provider = await repos.getProviderById(param(request, "id"));
     if (!provider) throw errors.notFound("Provider 不存在");
+    assertValidInput(request);
     const models = await repos.listModels(provider.id);
     const model = models[0];
     if (!model) throw errors.invalid("Provider 还没有模型");

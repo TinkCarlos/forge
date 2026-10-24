@@ -46,12 +46,13 @@ export default async function adminAppRoutes(app: FastifyInstance): Promise<void
     };
   });
 
-  app.post("/admin/api/webhook-deliveries/:id/replay", async (request) => {
+  app.post("/admin/api/webhook-deliveries/:id/replay", { schema: ROUTE_SCHEMAS.noBody, attachValidation: true }, async (request) => {
     const session = await admin(request, "apikey.manage");
     const delivery = await repos.getWebhookDelivery(param(request, "id"));
     if (!delivery) throw errors.notFound("投递记录不存在");
     const owner = await repos.getApiApp(String(delivery.app_id));
     await assertOrgWritable(session.principal, owner ? (owner.owner_org_unit_id as string | null) : null);
+    assertValidInput(request);
     const replayed = await repos.replayWebhookDelivery(String(delivery.id));
     if (!replayed) throw errors.conflict("投递记录无法重放");
     await writeAudit(session, "webhook.replay", "webhook_delivery", String(delivery.id), { eventId: delivery.event_id });

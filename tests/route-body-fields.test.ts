@@ -9,10 +9,14 @@ import Fastify from "fastify";
 //  1. every top-level body field a handler reads (body.x, stringBody/requireBodyString/jsonBody(body, "x"), and the
 //     schedules `input` alias) is a property of that route's body schema, and that property declares a `type`;
 //  2. every property of every body schema declares a `type` (recursively);
-//  3. additionalProperties: body schemas leave it unset (undeclared fields pass validation and are never read, by 1),
-//     or set it to false, in which case Fastify's ajv (removeAdditional, kept on in app.ts) strips undeclared fields
-//     before the handler: never rejected, never read. Pinned below on a bare Fastify with the app's ajv options.
+//  3. additionalProperties: every body schema is closed (false) and an undeclared field is rejected (400 CFG-8501);
+//     the main guard and the behaviour test are tests/body-additional-properties.test.ts, the real-route check is
+//     tests/route-schema-coverage.test.ts. Kept here: "unset or false" (no permissive sub-schema).
 //  4. the body object itself is only used through those accessors (no whole-body pass-through the scan cannot see).
+// Coverage of 1 / 4 (static, so a backstop to the closed schemas, not the primary guard): files under
+// apps/api/src/routes/**, top-level fields only, reads written as body.x / body?.x / the helpers listed below /
+// the schedules `input` alias / the whole-body helpers in WHOLE_BODY_HELPERS. Not covered: nested field reads,
+// reads through other aliases or destructuring outside these patterns (those fail 4 instead), packages/** code.
 const { ForgeError } = vi.hoisted(() => ({
   ForgeError: class ForgeError extends Error {
     constructor(public readonly code: string, message: string, public readonly httpStatus = 400, public readonly details?: unknown) {
@@ -145,26 +149,6 @@ describe("additionalProperties on write body schemas", () => {
     expect(bodySchemas.filter(([, s]) => s.body.additionalProperties !== undefined && s.body.additionalProperties !== false).map(([n]) => n)).toEqual([]);
   });
 
-  it("behaviour with the app's ajv options: unset -> undeclared field passes untouched; false -> stripped, not rejected", async () => {
-    const app = Fastify({ ajv: { customOptions: AJV_CUSTOM_OPTIONS } });
-    const seen: Record<string, unknown> = {};
-    for (const [url, additionalProperties] of [["/open", undefined], ["/closed", false]] as const) {
-      const body = { type: "object", properties: { name: { type: "string", maxLength: 8 } }, ...(additionalProperties === false ? { additionalProperties } : {}) };
-      app.post(url, { schema: { body }, attachValidation: true }, async (request) => {
-        assertValidInput(request);
-        seen[url] = request.body;
-        return { ok: true };
-      });
-    }
-    await app.ready();
-    for (const url of ["/open", "/closed"]) {
-      const res = await app.inject({ method: "POST", url, payload: { name: "a", extra: "yes" } });
-      expect([url, res.statusCode]).toEqual([url, 200]);
-    }
-    expect(seen).toEqual({ "/open": { name: "a", extra: "yes" }, "/closed": { name: "a" } });
-    await app.close();
-  });
-
   it("agent PATCH: apiEnabled must be a boolean (schema-level)", async () => {
     const app = Fastify({ ajv: { customOptions: AJV_CUSTOM_OPTIONS } });
     app.setErrorHandler((e: Error & { httpStatus?: number; details?: unknown }, _req, reply) => reply.status(e.httpStatus ?? 500).send({ details: e.details }));
@@ -173,7 +157,7 @@ describe("additionalProperties on write body schemas", () => {
       return { ok: true };
     });
     await app.ready();
-    for (const apiEnabled of ["yes", "true", 1, 0, null, {}, []]) {
+    for (const apiEnabled of ["yes", "true", "false", 1, 0, null, {}, []]) {
       const res = await app.inject({ method: "PATCH", url: "/a", payload: { apiEnabled } });
       expect([JSON.stringify(apiEnabled), res.statusCode]).toEqual([JSON.stringify(apiEnabled), 400]);
     }

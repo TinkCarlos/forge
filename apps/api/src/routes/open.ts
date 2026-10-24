@@ -200,10 +200,11 @@ export default async function openRoutes(app: FastifyInstance): Promise<void> {
     await streamRun(request, reply, run.id);
   });
 
-  app.post("/open/v1/runs/:id/cancel", async (request) => {
+  app.post("/open/v1/runs/:id/cancel", { schema: ROUTE_SCHEMAS.externalNoBody, attachValidation: true }, async (request) => {
     const context = await openApp(request, "runs:cancel");
     const run = await repos.getRun(param(request, "id"));
     if (!run || run.app_id !== String(context.app.id)) throw errors.notFound("Run 不存在");
+    assertValidInput(request);
     await cancelRun(run.id);
     await repos.audit({ actorType: "app", actorId: String(context.app.id), action: "open.run.cancel", resourceType: "run", resourceId: run.id });
     // Report the real status (queued/waiting_approval -> cancelled; running stays running until the worker stops).

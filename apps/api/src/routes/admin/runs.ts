@@ -62,10 +62,11 @@ export default async function adminRunRoutes(app: FastifyInstance): Promise<void
     await streamRun(request, reply, run!.id);
   });
 
-  app.post("/admin/api/runs/:id/cancel", async (request) => {
+  app.post("/admin/api/runs/:id/cancel", { schema: ROUTE_SCHEMAS.noBody, attachValidation: true }, async (request) => {
     const session = await admin(request, "run.cancel");
     const run = await repos.getRun(param(request, "id"));
     await assertRunAccess(session.principal, run);
+    assertValidInput(request);
     await cancelRun(run!.id);
     await writeAudit(session, "run.cancel", "run", run!.id);
     return { ok: true };

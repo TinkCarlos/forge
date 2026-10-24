@@ -81,7 +81,7 @@ describe("unowned Agent writes (I-AGT-13)", () => {
   });
 
   it("builder can still run the unowned Agent (not 403)", async () => {
-    const res = await app.inject({ method: "POST", url: `/admin/api/agents/${unowned}/run`, headers: H.builder!, payload: { input: { text: "hi" }, wait: false } });
+    const res = await app.inject({ method: "POST", url: `/admin/api/agents/${unowned}/run`, headers: H.builder!, payload: { input: { text: "hi" } } });
     expect(res.statusCode, res.body).not.toBe(403);
     expect(res.statusCode).toBeLessThan(300);
   });

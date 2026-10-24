@@ -132,7 +132,8 @@ describe("T-A..T-E: department transfer (ruling 2)", () => {
   it("T-D: PATCH that changes only the role (or passes the same orgUnitId) writes one user.update and no transfer_out", async () => {
     const pa = await headersFor({ role: "platform_admin", orgUnitId: ROOT, dataScope: "all" });
     const before = await query<{ n: number }>("SELECT COUNT(*) AS n FROM audit_logs WHERE resource_id = ? AND action = 'user.org_transfer_out'", [ids.user]);
-    for (const payload of [{ displayName: "IT aw 2" }, { displayName: "IT aw 3", orgUnitId: A }]) {
+    // P1: the body schema is closed, so the no-op payloads carry only declared fields (displayName is not one).
+    for (const payload of [{}, { orgUnitId: A }]) {
       const res = await app.inject({ method: "PATCH", url: `/admin/api/users/${ids.user}`, headers: pa.headers, payload });
       expect(res.statusCode).toBe(200);
     }

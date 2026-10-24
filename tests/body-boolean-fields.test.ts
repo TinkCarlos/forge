@@ -44,9 +44,9 @@ afterAll(async () => {
 });
 
 describe("boolean body fields are booleans", () => {
-  it("agent PATCH apiEnabled: 'yes' / 'true' / 1 / null -> 400 field apiEnabled, unchanged; false / true stored", async () => {
+  it("agent PATCH apiEnabled: 'yes' / 'true' / 'false' / 1 / null -> 400 field apiEnabled, unchanged; false / true stored", async () => {
     await execute("UPDATE agents SET api_enabled = 0 WHERE id = ?", [agentId]);
-    for (const value of ["yes", "true", 1, null]) {
+    for (const value of ["yes", "true", "false", 1, null]) {
       const res = await app.inject({ method: "PATCH", url: `/admin/api/agents/${agentId}`, headers, payload: { apiEnabled: value } });
       expect([JSON.stringify(value), res.statusCode]).toEqual([JSON.stringify(value), 400]);
       expect(field(res)).toMatchObject({ code: "CFG-8501", details: { field: "apiEnabled" } });
@@ -56,6 +56,29 @@ describe("boolean body fields are booleans", () => {
     expect(await apiEnabled()).toBe(1);
     expect((await app.inject({ method: "PATCH", url: `/admin/api/agents/${agentId}`, headers, payload: { apiEnabled: false } })).statusCode).toBe(200);
     expect(await apiEnabled()).toBe(0);
+  });
+
+  it("P1: agent PATCH with an undeclared field -> 400 CFG-8501 field=<name>, nothing stored (rejected, not stripped)", async () => {
+    await execute("UPDATE agents SET api_enabled = 0 WHERE id = ?", [agentId]);
+    const before = await one<{ name: string }>("SELECT name FROM agents WHERE id = ?", [agentId]);
+    const res = await app.inject({ method: "PATCH", url: `/admin/api/agents/${agentId}`, headers, payload: { name: "renamed", apiEnabled: true, enabled: true } });
+    expect([res.statusCode, field(res)]).toMatchObject([400, { code: "CFG-8501", details: { field: "enabled" } }]);
+    expect(await one<{ name: string }>("SELECT name FROM agents WHERE id = ?", [agentId])).toEqual(before);
+    expect(await apiEnabled()).toBe(0);
+  });
+
+  it("P1: action route with an empty closed schema (schedule /disable): no body -> 200, {} -> 200, a field -> 400", async () => {
+    const id = await repos.createSchedule({
+      key: `it-bbf-act-${suffix}`, name: "IT bbf act", agentId, orgUnitId: ROOT, subjectType: "service", subjectId: accountId, serviceAccountId: accountId,
+      cron: "0 9 * * *", timezone: "Asia/Shanghai", input: { text: "x" }, status: "disabled", nextRunAt: null, createdBy: ADMIN_ID,
+    });
+    const url = `/admin/api/schedules/${id}/disable`;
+    const noBody = await app.inject({ method: "POST", url, headers });
+    expect(noBody.statusCode, noBody.body).toBe(200);
+    const empty = await app.inject({ method: "POST", url, headers, payload: {} });
+    expect(empty.statusCode, empty.body).toBe(200);
+    const extra = await app.inject({ method: "POST", url, headers, payload: { force: true } });
+    expect([extra.statusCode, field(extra)]).toMatchObject([400, { code: "CFG-8501", details: { field: "force" } }]);
   });
 
   it("agent create publish: 'yes' -> 400 field publish; spec must be object or JSON text", async () => {

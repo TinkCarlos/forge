@@ -83,12 +83,13 @@ export default async function integrationRoutes(app: FastifyInstance): Promise<v
     return { runId: run!.id, status: run!.status, output: presentRunOutput(run!.output_json), error: run!.error_code ? { code: run!.error_code, message: run!.error_message } : null, usage: run!.usage_json };
   });
 
-  app.post("/integration/v1/runs/:id/cancel", async (request) => {
+  app.post("/integration/v1/runs/:id/cancel", { schema: ROUTE_SCHEMAS.externalNoBody, attachValidation: true }, async (request) => {
     const principal = await connectorUser(request);
     // P0-05 / I-INT-15: same as above with run.cancel; the scope check (assertRunAccess) stays.
     assertPermission(principal, "run.cancel");
     const run = await repos.getRun(param(request, "id"));
     await assertRunAccess(principal, run);
+    assertValidInput(request);
     await cancelRun(run!.id);
     await repos.audit({ actorType: "user", actorId: principal.id, action: "integration.run.cancel", resourceType: "run", resourceId: run!.id });
     return { ok: true };

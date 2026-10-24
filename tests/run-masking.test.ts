@@ -180,13 +180,16 @@ describe("audit details are masked before they are written", () => {
     expect(JSON.stringify(stored!.input_json)).toContain(SECRET);
   });
 
-  it("role_mapping.upsert: only declared fields in audit, no plaintext", async () => {
+  it("role_mapping.upsert: an undeclared secret field is rejected (400, nothing audited); declared fields audited", async () => {
     const res = await app.inject({ method: "POST", url: "/admin/api/role-mappings", headers, payload: { agentRoleCode: roleCode, agentRoleName: "IT mask", localRole: "user", clientSecret: SECRET, note: `Bearer ${SECRET}` } });
-    expect(res.statusCode).toBe(200);
+    // P1: the body schema is closed, so clientSecret / note are rejected instead of being read or audited.
+    expect([res.statusCode, (res.json() as { error?: { code?: string; details?: unknown } }).error]).toMatchObject([400, { code: "CFG-8501", details: { field: "clientSecret" } }]);
+    const rejected = await query<{ n: number }>("SELECT COUNT(*) AS n FROM audit_logs WHERE action = 'role_mapping.upsert' AND JSON_SEARCH(details_json, 'one', ?) IS NOT NULL", [roleCode]);
+    expect(Number(rejected[0]!.n)).toBe(0);
+    const ok = await app.inject({ method: "POST", url: "/admin/api/role-mappings", headers, payload: { agentRoleCode: roleCode, agentRoleName: "IT mask", localRole: "user" } });
+    expect(ok.statusCode).toBe(200);
     const details = (await latestAudit("role_mapping.upsert", null)) as Record<string, unknown>;
     assertNoPlaintext(details);
-    // Only the declared fields are recorded (undeclared body fields such as clientSecret / note are neither read nor
-    // written to the audit row); still masked, no plaintext anywhere.
     expect(details).toEqual({ agentRoleCode: roleCode, agentRoleName: "IT mask", localRole: "user" });
   });
 });
