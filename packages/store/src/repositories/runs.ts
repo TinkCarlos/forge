@@ -1,6 +1,19 @@
 import { ulidWithPrefix } from "@forge/core";
+import type { ResultSetHeader } from "mysql2/promise";
 import { execute, isRetryableWrite, json, one, query, transaction } from "../db.js";
+import { activeFence, fenceOwnerFor, LeaseLostError } from "../lease-fence.js";
 import type { ApprovalRow, ClaimedRun, MessageRow, RunRow, RunStepRow, ToolCallRow } from "../types.js";
+
+// P3-09 lease fence (see lease-fence.ts): inside withRunLease(runId, owner) the run-scoped writes below carry the
+// lease holder condition runs.claimed_by = owner. Inserts become INSERT ... SELECT ... FROM runs WHERE id = ? AND
+// claimed_by = ?; updates of a child row (tool call, step) add CHILD_FENCE (fenced only when the row belongs to the
+// scope's Run). 0 affected rows: the lease is re-checked and a lost lease throws LeaseLostError (the write is dropped).
+const CHILD_FENCE = (table: string) => `EXISTS (SELECT 1 FROM runs fence_run WHERE fence_run.id = ${table}.run_id AND (fence_run.id <> ? OR fence_run.claimed_by = ?))`;
+
+async function assertLeaseOwned(runId: string, owner: string): Promise<void> {
+  const row = await one<{ held: number }>("SELECT 1 AS held FROM runs WHERE id = ? AND claimed_by = ?", [runId, owner]);
+  if (!row) throw new LeaseLostError();
+}
 
 export const runsRepo = {
   // Runs / messages / tools / approvals / events
@@ -156,17 +169,30 @@ export const runsRepo = {
     if (fields.completedAt !== undefined) { sets.push("completed_at = ?"); params.push(fields.completedAt); }
     if (!sets.length) return;
     params.push(id);
-    await execute(`UPDATE runs SET ${sets.join(", ")} WHERE id = ?`, params);
+    const owner = fenceOwnerFor(id);
+    if (owner === null) {
+      await execute(`UPDATE runs SET ${sets.join(", ")} WHERE id = ?`, params);
+      return;
+    }
+    const result = await execute(`UPDATE runs SET ${sets.join(", ")} WHERE id = ? AND claimed_by = ?`, [...params, owner]);
+    if (result.affectedRows === 0) await assertLeaseOwned(id, owner);
   },
   async requestCancel(id: string): Promise<void> {
     await execute("UPDATE runs SET cancel_requested = 1 WHERE id = ?", [id]);
   },
   async addMessage(input: { threadId: string; runId: string; seq: number; role: string; content: unknown }): Promise<string> {
     const id = ulidWithPrefix("msg");
-    await execute(
-      "INSERT INTO messages (id, thread_id, run_id, seq, role, content_json) VALUES (?, ?, ?, ?, ?, ?)",
-      [id, input.threadId, input.runId, input.seq, input.role, json(input.content)],
+    const values = [id, input.threadId, input.runId, input.seq, input.role, json(input.content)];
+    const owner = fenceOwnerFor(input.runId);
+    if (owner === null) {
+      await execute("INSERT INTO messages (id, thread_id, run_id, seq, role, content_json) VALUES (?, ?, ?, ?, ?, ?)", values);
+      return id;
+    }
+    const result = await execute(
+      "INSERT INTO messages (id, thread_id, run_id, seq, role, content_json) SELECT ?, ?, ?, ?, ?, ? FROM runs WHERE id = ? AND claimed_by = ?",
+      [...values, input.runId, owner],
     );
+    if (result.affectedRows === 0) throw new LeaseLostError();
     return id;
   },
   async listMessages(runId: string): Promise<MessageRow[]> {
@@ -185,11 +211,18 @@ export const runsRepo = {
       if (existing) return existing.id;
     }
     const id = ulidWithPrefix("tcl");
+    const values = [id, input.runId, input.toolKey, json(input.args), input.risk, input.status ?? "running", input.approvalId ?? null, input.idempotencyKey ?? null, input.attempt ?? 1];
+    const owner = fenceOwnerFor(input.runId);
     try {
-      await execute(
-        "INSERT INTO tool_calls (id, run_id, tool_key, args_json, risk_level, status, approval_id, idempotency_key, attempt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [id, input.runId, input.toolKey, json(input.args), input.risk, input.status ?? "running", input.approvalId ?? null, input.idempotencyKey ?? null, input.attempt ?? 1],
+      if (owner === null) {
+        await execute("INSERT INTO tool_calls (id, run_id, tool_key, args_json, risk_level, status, approval_id, idempotency_key, attempt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", values);
+        return id;
+      }
+      const result = await execute(
+        "INSERT INTO tool_calls (id, run_id, tool_key, args_json, risk_level, status, approval_id, idempotency_key, attempt) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ? FROM runs WHERE id = ? AND claimed_by = ?",
+        [...values, input.runId, owner],
       );
+      if (result.affectedRows === 0) throw new LeaseLostError();
       return id;
     } catch (error) {
       const errno = (error as { errno?: number }).errno;
@@ -211,7 +244,13 @@ export const runsRepo = {
     if (fields.attempt !== undefined) { sets.push("attempt = ?"); params.push(fields.attempt); }
     if (!sets.length) return;
     params.push(id);
-    await execute(`UPDATE tool_calls SET ${sets.join(", ")} WHERE id = ?`, params);
+    const fence = activeFence();
+    if (fence === null) {
+      await execute(`UPDATE tool_calls SET ${sets.join(", ")} WHERE id = ?`, params);
+      return;
+    }
+    const result = await execute(`UPDATE tool_calls SET ${sets.join(", ")} WHERE id = ? AND ${CHILD_FENCE("tool_calls")}`, [...params, fence.runId, fence.owner]);
+    if (result.affectedRows === 0) await assertLeaseOwned(fence.runId, fence.owner);
   },
   async getToolCall(id: string): Promise<ToolCallRow | null> {
     return one<ToolCallRow>("SELECT * FROM tool_calls WHERE id = ?", [id]);
@@ -221,11 +260,21 @@ export const runsRepo = {
   },
   async addApproval(input: { runId: string; toolCallId: string; risk: string; timeoutSeconds: number }): Promise<string> {
     const id = ulidWithPrefix("apr");
-    await execute(
-      "INSERT INTO approvals (id, run_id, tool_call_id, risk_level, expires_at) VALUES (?, ?, ?, ?, DATE_ADD(CURRENT_TIMESTAMP(3), INTERVAL ? SECOND))",
-      [id, input.runId, input.toolCallId, input.risk, input.timeoutSeconds],
-    );
-    await execute("UPDATE tool_calls SET status = 'pending_approval', approval_id = ? WHERE id = ?", [id, input.toolCallId]);
+    const values = [id, input.runId, input.toolCallId, input.risk, input.timeoutSeconds];
+    const owner = fenceOwnerFor(input.runId);
+    if (owner === null) {
+      await execute("INSERT INTO approvals (id, run_id, tool_call_id, risk_level, expires_at) VALUES (?, ?, ?, ?, DATE_ADD(CURRENT_TIMESTAMP(3), INTERVAL ? SECOND))", values);
+      await execute("UPDATE tool_calls SET status = 'pending_approval', approval_id = ? WHERE id = ?", [id, input.toolCallId]);
+      return id;
+    }
+    await transaction(async (conn) => {
+      const [inserted] = await conn.execute(
+        "INSERT INTO approvals (id, run_id, tool_call_id, risk_level, expires_at) SELECT ?, ?, ?, ?, DATE_ADD(CURRENT_TIMESTAMP(3), INTERVAL ? SECOND) FROM runs WHERE id = ? AND claimed_by = ?",
+        [...values, input.runId, owner],
+      );
+      if ((inserted as ResultSetHeader).affectedRows === 0) throw new LeaseLostError();
+      await conn.execute("UPDATE tool_calls SET status = 'pending_approval', approval_id = ? WHERE id = ?", [id, input.toolCallId]);
+    });
     return id;
   },
   async getApproval(id: string): Promise<ApprovalRow | null> {
@@ -313,7 +362,11 @@ export const runsRepo = {
     );
   },
   async timeoutApprovals(runId: string): Promise<number> {
-    const result = await execute("UPDATE approvals SET status = 'expired', decided_at = CURRENT_TIMESTAMP(3) WHERE run_id = ? AND status = 'pending' AND expires_at < CURRENT_TIMESTAMP(3)", [runId]);
+    const owner = fenceOwnerFor(runId);
+    const sql = "UPDATE approvals SET status = 'expired', decided_at = CURRENT_TIMESTAMP(3) WHERE run_id = ? AND status = 'pending' AND expires_at < CURRENT_TIMESTAMP(3)";
+    if (owner === null) return (await execute(sql, [runId])).affectedRows;
+    const result = await execute(`${sql} AND ${CHILD_FENCE("approvals")}`, [runId, runId, owner]);
+    if (result.affectedRows === 0) await assertLeaseOwned(runId, owner);
     return result.affectedRows;
   },
   async addRunStep(input: { runId: string; type: string; status?: string; summary?: unknown; toolCallId?: string | null }): Promise<string> {
@@ -324,10 +377,20 @@ export const runsRepo = {
           const seq = Number((rows as Array<{ maxSeq: number }>)[0]?.maxSeq ?? 0) + 1;
           const id = ulidWithPrefix("stp");
           const status = input.status ?? "running";
-          await conn.execute(
-            "INSERT INTO run_steps (id, run_id, seq, type, status, tool_call_id, summary_json, ended_at) VALUES (?, ?, ?, ?, ?, ?, ?, IF(? IN ('succeeded','failed'), UTC_TIMESTAMP(3), NULL))",
-            [id, input.runId, seq, input.type, status, input.toolCallId ?? null, json(input.summary ?? null), status],
+          const values = [id, input.runId, seq, input.type, status, input.toolCallId ?? null, json(input.summary ?? null), status];
+          const owner = fenceOwnerFor(input.runId);
+          if (owner === null) {
+            await conn.execute(
+              "INSERT INTO run_steps (id, run_id, seq, type, status, tool_call_id, summary_json, ended_at) VALUES (?, ?, ?, ?, ?, ?, ?, IF(? IN ('succeeded','failed'), UTC_TIMESTAMP(3), NULL))",
+              values,
+            );
+            return id;
+          }
+          const [inserted] = await conn.execute(
+            "INSERT INTO run_steps (id, run_id, seq, type, status, tool_call_id, summary_json, ended_at) SELECT ?, ?, ?, ?, ?, ?, ?, IF(? IN ('succeeded','failed'), UTC_TIMESTAMP(3), NULL) FROM runs WHERE id = ? AND claimed_by = ?",
+            [...values, input.runId, owner],
           );
+          if ((inserted as ResultSetHeader).affectedRows === 0) throw new LeaseLostError();
           return id;
         });
       } catch (error) {
@@ -337,19 +400,25 @@ export const runsRepo = {
     throw new Error("failed to allocate run step");
   },
   async finishRunStep(id: string, fields: { status: string; errorCode?: string | null; summary?: unknown; inputTokens?: number; outputTokens?: number; costUsd?: number }): Promise<void> {
-    await execute(
-      "UPDATE run_steps SET status = ?, error_code = ?, summary_json = COALESCE(?, summary_json), input_tokens = ?, output_tokens = ?, cost_usd = ?, ended_at = UTC_TIMESTAMP(3) WHERE id = ?",
-      [fields.status, fields.errorCode ?? null, fields.summary === undefined ? null : json(fields.summary), fields.inputTokens ?? 0, fields.outputTokens ?? 0, fields.costUsd ?? 0, id],
-    );
+    const sql = "UPDATE run_steps SET status = ?, error_code = ?, summary_json = COALESCE(?, summary_json), input_tokens = ?, output_tokens = ?, cost_usd = ?, ended_at = UTC_TIMESTAMP(3) WHERE id = ?";
+    const params = [fields.status, fields.errorCode ?? null, fields.summary === undefined ? null : json(fields.summary), fields.inputTokens ?? 0, fields.outputTokens ?? 0, fields.costUsd ?? 0, id];
+    const fence = activeFence();
+    if (fence === null) {
+      await execute(sql, params);
+      return;
+    }
+    const result = await execute(`${sql} AND ${CHILD_FENCE("run_steps")}`, [...params, fence.runId, fence.owner]);
+    if (result.affectedRows === 0) await assertLeaseOwned(fence.runId, fence.owner);
   },
   async listRunSteps(runId: string): Promise<RunStepRow[]> {
     return query<RunStepRow>("SELECT * FROM run_steps WHERE run_id = ? ORDER BY seq", [runId]);
   },
   async failRunningSteps(runId: string, type: string, errorCode: string): Promise<number> {
-    const result = await execute(
-      "UPDATE run_steps SET status = 'failed', error_code = ?, ended_at = UTC_TIMESTAMP(3) WHERE run_id = ? AND type = ? AND status = 'running'",
-      [errorCode, runId, type],
-    );
+    const sql = "UPDATE run_steps SET status = 'failed', error_code = ?, ended_at = UTC_TIMESTAMP(3) WHERE run_id = ? AND type = ? AND status = 'running'";
+    const owner = fenceOwnerFor(runId);
+    if (owner === null) return (await execute(sql, [errorCode, runId, type])).affectedRows;
+    const result = await execute(`${sql} AND ${CHILD_FENCE("run_steps")}`, [errorCode, runId, type, runId, owner]);
+    if (result.affectedRows === 0) await assertLeaseOwned(runId, owner);
     return result.affectedRows;
   },
   async addEvent(runId: string, type: string, data: unknown): Promise<number> {
@@ -359,7 +428,16 @@ export const runsRepo = {
           const [rows] = await conn.execute("SELECT COALESCE(MAX(seq),0) AS maxSeq FROM run_events WHERE run_id = ? FOR UPDATE", [runId]);
           const maxSeq = Number((rows as Array<{ maxSeq: number }>)[0]?.maxSeq ?? 0);
           const seq = maxSeq + 1;
-          await conn.execute("INSERT INTO run_events (run_id, seq, type, data_json) VALUES (?, ?, ?, ?)", [runId, seq, type, json(data)]);
+          const owner = fenceOwnerFor(runId);
+          if (owner === null) {
+            await conn.execute("INSERT INTO run_events (run_id, seq, type, data_json) VALUES (?, ?, ?, ?)", [runId, seq, type, json(data)]);
+            return seq;
+          }
+          const [inserted] = await conn.execute(
+            "INSERT INTO run_events (run_id, seq, type, data_json) SELECT ?, ?, ?, ? FROM runs WHERE id = ? AND claimed_by = ?",
+            [runId, seq, type, json(data), runId, owner],
+          );
+          if ((inserted as ResultSetHeader).affectedRows === 0) throw new LeaseLostError();
           return seq;
         });
       } catch (error) {

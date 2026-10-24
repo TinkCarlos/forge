@@ -1,6 +1,6 @@
 import { config, ForgeError, type AgentSpec } from "@forge/core";
 import type { ResolvedTool } from "@forge/capabilities";
-import { parseJsonValue, repos, type RunRow, type ToolCallRow } from "@forge/store";
+import { LeaseLostError, parseJsonValue, repos, type RunRow, type ToolCallRow } from "@forge/store";
 import { emit } from "./events.js";
 import { appendMessage } from "./messages.js";
 
@@ -58,12 +58,7 @@ export async function mapLimit<T>(items: readonly T[], limit: number, fn: (item:
 }
 
 /** P3-09: thrown when the worker lost the Run's lease mid-execution; the caller writes nothing more for that Run. */
-export class LeaseLostError extends Error {
-  constructor() {
-    super("run lease lost");
-    this.name = "LeaseLostError";
-  }
-}
+export { LeaseLostError };
 /** P3-09: stop here (write nothing) once the lease signal fired. */
 export function assertLeaseHeld(signal: AbortSignal | undefined): void {
   if (signal?.aborted) throw new LeaseLostError();

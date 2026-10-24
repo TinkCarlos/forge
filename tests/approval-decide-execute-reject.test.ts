@@ -26,7 +26,8 @@ vi.mock("@forge/governance", () => ({
   assertRunAccess: vi.fn(), buildArgsPreview: vi.fn(), canAccessRun: async () => true, maskArgsDeep: (v: unknown) => v, runFilterFor: vi.fn(),
 }));
 const RUN_ID = "run_EXEC_REJECT";
-vi.mock("@forge/store", () => ({
+vi.mock("@forge/store", async () => ({
+  ...(await import("../packages/store/src/lease-fence")),
   parseJsonValue: (v: unknown) => v,
   isRetryableWrite: () => false,
   repos: {

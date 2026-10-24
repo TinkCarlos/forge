@@ -1,6 +1,7 @@
 export { compressContext, estimateTokens } from "./context.js";
 export { emit } from "./events.js";
 export { claimNext, claimRun, currentWorkerId, leaseEligible } from "./lease.js";
+export { leaseTiming } from "./lease-timing.js";
 export { clampWaitSeconds, invokeStatusCode, waitForRun } from "./invoke.js";
 export { AGENT_STATUSES, assertAgentRunnable, cancelRun, createQueuedRun, RUN_FINISHED_CODE, executeRun, isRunFinished, finalize, runClaimed } from "./loop.js";
 export { createDeltaBuffer, decideAfterModelError, modelCandidates } from "./model-loop.js";

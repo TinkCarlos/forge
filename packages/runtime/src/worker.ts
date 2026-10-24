@@ -1,5 +1,6 @@
 import { config } from "@forge/core";
 import { claimNext, currentWorkerId } from "./lease.js";
+import { leaseTiming } from "./lease-timing.js";
 import { runClaimed } from "./loop.js";
 import { tickSchedules } from "./schedules.js";
 import { describeTickError, guardTick, type GuardedTick } from "./tick-guard.js";
@@ -26,6 +27,7 @@ async function claimRuns(workerId: string): Promise<void> {
 
 export function startRuntime(): void {
   if (workerTimer) return;
+  leaseTiming(config.LEASE_TTL_SECONDS); // P3-09: a TTL leaving no heartbeat tolerance fails at startup
   const workerId = currentWorkerId();
   // K-20 / OPS-010: all ticks share guardTick (catch + log + exponential backoff 1s..30s, reset on success).
   const webhookTick: GuardedTick = guardTick("webhook", () => deliverDueWebhooks());

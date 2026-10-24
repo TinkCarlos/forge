@@ -3,8 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // P3-09 (pure: no DB, no .env). When the heartbeat cannot keep the lease, the worker aborts the execution in hand:
 // the AbortSignal reaches the model call and the tool call, and the aborted execution writes nothing (no step result,
 // no message, no tool result, no finalize). Policy: the DB answering "not yours" (heartbeat false) aborts at once; a
-// heartbeat that errors (DB down) aborts once the last confirmed renewal is LEASE_TTL_SECONDS old (the lease may then
-// be reclaimed); a transient error followed by a successful renewal does not abort.
+// heartbeat that errors (DB down) aborts once LEASE_TTL_SECONDS - heartbeat interval has passed since the last
+// confirmed renewal (architect ruling 1: before another worker can reclaim the lease); a transient error followed by
+// a successful renewal does not abort. Every write of the execution runs inside the lease fence (store withRunLease).
 class StubForgeError extends Error {
   retryable = false;
   constructor(public readonly code: string, message: string, public readonly httpStatus = 400) {
@@ -41,7 +42,10 @@ const repos = {
   heartbeatRun: vi.fn(),
   releaseRunLease: vi.fn(async () => undefined),
 };
-vi.mock("@forge/store", () => ({ parseJsonValue: (v: unknown, d: unknown) => v ?? d, repos }));
+vi.mock("@forge/store", async () => {
+  const fence = await import("../packages/store/src/lease-fence");
+  return { parseJsonValue: (v: unknown, d: unknown) => v ?? d, repos, LeaseLostError: fence.LeaseLostError, withRunLease: fence.withRunLease, leaseScope: fence.leaseScope };
+});
 const appendMessage = vi.fn(async () => "msg_1");
 vi.mock("../packages/runtime/src/messages", () => ({ appendMessage, messageOf: (r: unknown) => r }));
 const emit = vi.fn(async () => undefined);
@@ -50,6 +54,9 @@ vi.mock("../packages/runtime/src/webhook", () => ({ enqueueRunWebhook: vi.fn(), 
 vi.mock("../packages/runtime/src/lease", () => ({ claimRun: vi.fn(), currentWorkerId: () => "w1" }));
 
 const { runClaimed } = await import("../packages/runtime/src/loop");
+const { leaseTiming } = await import("../packages/runtime/src/lease-timing");
+const { config } = await import("@forge/core");
+const { LeaseLostError, leaseScope } = await import("../packages/store/src/lease-fence");
 
 /** A call that only ends when its signal aborts (like a slow upstream). */
 function hangUntilAborted(signal: AbortSignal | undefined): Promise<never> {
@@ -90,14 +97,15 @@ describe("P3-09 heartbeat lease loss aborts the execution", () => {
     expect(repos.releaseRunLease).toHaveBeenCalledWith(RUN.id, "w1");
   });
 
-  it("heartbeat erroring (DB down) aborts only once the lease TTL has passed since the last renewal", async () => {
+  it("heartbeat erroring (DB down) aborts once TTL - heartbeat interval (30s - 10s) has passed since the last renewal", async () => {
     repos.heartbeatRun.mockRejectedValue(new Error("ECONNREFUSED"));
     let signal: AbortSignal | undefined;
     callModel.mockImplementation((input: { signal?: AbortSignal }) => { signal = input.signal; return hangUntilAborted(signal); });
     const done = runClaimed(claimed(), "w1");
-    await flush(25_000);
+    await flush(19_000);
     expect(signal?.aborted).toBe(false);
-    await flush(10_000);
+    await flush(2_000);
+    expect(signal?.aborted).toBe(true);
     await done;
     expect(signal?.aborted).toBe(true);
     expectNothingWritten();
@@ -144,5 +152,57 @@ describe("P3-09 release after a lease loss", () => {
     await flush(30_000);
     await expect(done).resolves.toBeUndefined();
     expectNothingWritten();
+  });
+});
+
+describe("P3-09 heartbeat tolerance = LEASE_TTL_SECONDS - heartbeat interval (> 0)", () => {
+  it("TTL 30s -> heartbeat every 10s, tolerance 20s; TTL 2s -> 1s / 1s", () => {
+    expect(leaseTiming(30)).toEqual({ intervalMs: 10_000, toleranceMs: 20_000 });
+    expect(leaseTiming(2)).toEqual({ intervalMs: 1_000, toleranceMs: 1_000 });
+  });
+  it("TTL that leaves no tolerance (1s, heartbeat interval floor 1s) throws naming LEASE_TTL_SECONDS", () => {
+    expect(() => leaseTiming(1)).toThrow(/LEASE_TTL_SECONDS/);
+  });
+  it("runClaimed with such a TTL throws before writing anything; startRuntime fails at startup", async () => {
+    const original = config.LEASE_TTL_SECONDS;
+    (config as { LEASE_TTL_SECONDS: number }).LEASE_TTL_SECONDS = 1;
+    try {
+      await expect(runClaimed(claimed(), "w1")).rejects.toThrow(/LEASE_TTL_SECONDS/);
+      expect(emit).not.toHaveBeenCalled();
+      expect(repos.heartbeatRun).not.toHaveBeenCalled();
+      const { startRuntime, stopRuntime } = await import("../packages/runtime/src/worker");
+      try {
+        expect(() => startRuntime()).toThrow(/LEASE_TTL_SECONDS/);
+      } finally {
+        stopRuntime();
+      }
+    } finally {
+      (config as { LEASE_TTL_SECONDS: number }).LEASE_TTL_SECONDS = original;
+    }
+  });
+});
+
+describe("P3-09 writes run inside the lease fence", () => {
+  it("each write sees the lease scope (this Run, this worker)", async () => {
+    repos.heartbeatRun.mockResolvedValue(true);
+    const scopes: unknown[] = [];
+    repos.addRunStep.mockImplementation(async () => { scopes.push(leaseScope()); return "stp_1"; });
+    callModel.mockResolvedValue({ content: "ok", toolCalls: [], usage: { inputTokens: 1, outputTokens: 1, costUsd: 0 } });
+    await runClaimed(claimed(), "w1");
+    expect(scopes.length).toBeGreaterThan(0);
+    for (const scope of scopes) expect(scope).toEqual({ runId: RUN.id, owner: "w1" });
+    expect(leaseScope()).toBeUndefined();
+    repos.addRunStep.mockImplementation(async () => "stp_1");
+  });
+
+  it("a fenced write rejected (another worker owns the lease) stops the execution: no failed finalize, release still runs", async () => {
+    repos.heartbeatRun.mockResolvedValue(true);
+    callModel.mockResolvedValue({ content: "ok", toolCalls: [], usage: { inputTokens: 1, outputTokens: 1, costUsd: 0 } });
+    repos.updateRun.mockRejectedValueOnce(new LeaseLostError());
+    await expect(runClaimed(claimed(), "w1")).resolves.toBeUndefined();
+    expect(repos.updateRun).toHaveBeenCalledTimes(1);
+    expect(appendMessage).not.toHaveBeenCalled();
+    expect(emit).not.toHaveBeenCalledWith(expect.anything(), expect.stringMatching(/^run\.(completed|failed)$/), expect.anything());
+    expect(repos.releaseRunLease).toHaveBeenCalledWith(RUN.id, "w1");
   });
 });

@@ -8,10 +8,11 @@ import {
 } from "@forge/core";
 import { resolveTools } from "@forge/capabilities";
 import { callModel, type LlmResult, type LlmUsage } from "@forge/models";
-import { parseJsonValue, repos, type ClaimedRun, type RunRow } from "@forge/store";
+import { parseJsonValue, repos, withRunLease, type ClaimedRun, type RunRow } from "@forge/store";
 import { buildSystemPrompt, compressContext } from "./context.js";
 import { emit } from "./events.js";
 import { claimRun, currentWorkerId } from "./lease.js";
+import { leaseTiming } from "./lease-timing.js";
 import { appendMessage, messageOf } from "./messages.js";
 import { createDeltaBuffer, decideAfterModelError, modelCandidates } from "./model-loop.js";
 import { repairCount, repairMessage, validateOutput } from "./output.js";
@@ -275,40 +276,59 @@ async function runLoop(run: RunRow, workerId: string, lease: AbortSignal): Promi
 
 export async function runClaimed(claimed: ClaimedRun, workerId = currentWorkerId()): Promise<void> {
   const run = claimed.run;
-  if (claimed.previousStatus === "queued") {
-    await emit(run.id, "run.started", { agentId: run.agent_id, agentVersionId: run.agent_version_id });
-  } else if (claimed.previousStatus === "running" || claimed.previousStatus === "waiting_approval") {
-    await emit(run.id, "run.resumed", { workerId, previousStatus: claimed.previousStatus });
-  }
   // P3-09: losing the lease aborts the execution in hand (model and tool calls get the signal) and nothing more is
   // written for this Run. The DB saying the lease is not ours (heartbeat false) aborts at once. A heartbeat that errors
-  // (DB unreachable) is tolerated until the last confirmed renewal is LEASE_TTL_SECONDS old, when another worker may
-  // reclaim the Run; a transient error followed by a successful renewal does not abort.
+  // (DB unreachable) is tolerated until LEASE_TTL_SECONDS - heartbeat interval has passed since the last confirmed
+  // renewal (before another worker can reclaim the Run); a transient error followed by a successful renewal does not
+  // abort. Every write runs inside the store lease fence (runs.claimed_by = workerId): once another worker holds the
+  // lease a write affects 0 rows, is dropped and throws LeaseLostError. Execution semantics are at least once: a tool
+  // call already sent (external side effect) is not undone; the next owner may run it again.
+  const { intervalMs, toleranceMs } = leaseTiming(config.LEASE_TTL_SECONDS);
+  await withRunLease(run.id, workerId, async () => {
+    if (claimed.previousStatus === "queued") {
+      await emit(run.id, "run.started", { agentId: run.agent_id, agentVersionId: run.agent_version_id });
+    } else if (claimed.previousStatus === "running" || claimed.previousStatus === "waiting_approval") {
+      await emit(run.id, "run.resumed", { workerId, previousStatus: claimed.previousStatus });
+    }
+  });
   const lease = new AbortController();
-  const ttlMs = config.LEASE_TTL_SECONDS * 1000;
   let confirmedAt = Date.now();
+  let inFlight = false;
   const timer = setInterval(() => {
     if (lease.signal.aborted) return;
-    if (Date.now() - confirmedAt >= ttlMs) {
-      lease.abort();
+    const overdue = () => Date.now() - confirmedAt >= toleranceMs;
+    if (inFlight) {
+      // The previous heartbeat hangs (DB unresponsive): same tolerance as an erroring one.
+      if (overdue()) lease.abort();
       return;
     }
+    inFlight = true;
     void repos.heartbeatRun(run.id, workerId, config.LEASE_TTL_SECONDS).then((ok) => {
       if (ok) confirmedAt = Date.now();
       else lease.abort();
     }).catch(() => {
-      if (Date.now() - confirmedAt >= ttlMs) lease.abort();
+      if (overdue()) lease.abort();
+    }).finally(() => {
+      inFlight = false;
     });
-  }, Math.max(1000, Math.floor(ttlMs / 3)));
+  }, intervalMs);
   try {
-    await runLoop(run, workerId, lease.signal);
-  } catch (error) {
-    if (lease.signal.aborted || error instanceof LeaseLostError) return;
-    const forgeError = error instanceof ForgeError ? error : new ForgeError("SYS-9001", String(error), 500);
-    const fresh = await repos.getRun(run.id);
-    if (fresh && !TERMINAL.includes(fresh.status)) {
-      await finalize(fresh, "failed", null, forgeError.code, forgeError.message);
-    }
+    await withRunLease(run.id, workerId, async () => {
+      try {
+        await runLoop(run, workerId, lease.signal);
+      } catch (error) {
+        if (lease.signal.aborted || error instanceof LeaseLostError) return;
+        const forgeError = error instanceof ForgeError ? error : new ForgeError("SYS-9001", String(error), 500);
+        const fresh = await repos.getRun(run.id);
+        if (fresh && !TERMINAL.includes(fresh.status)) {
+          await finalize(fresh, "failed", null, forgeError.code, forgeError.message).catch((failure: unknown) => {
+            if (!(failure instanceof LeaseLostError)) throw failure;
+          });
+        }
+      }
+    }).catch((error: unknown) => {
+      if (!(error instanceof LeaseLostError)) throw error;
+    });
   } finally {
     clearInterval(timer);
     // After a lease loss the DB may still be unreachable: the release is best effort (the lease expires anyway).
