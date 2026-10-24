@@ -17,6 +17,9 @@
     "paths": {
       "@/*": [
         "./src/*"
+      ],
+      "@forge/core/ids": [
+        "../../packages/core/src/ids.ts"
       ]
     },
     "types": [

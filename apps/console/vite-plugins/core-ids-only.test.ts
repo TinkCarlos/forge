@@ -1,0 +1,21 @@
+import { describe, expect, it } from 'vitest'
+import { serverCodeInChunks } from './core-ids-only'
+
+describe('K-33 产物守卫：不带服务端代码', () => {
+  it('只有 packages/core/src/ids.ts 和普通依赖时通过', () => {
+    expect(serverCodeInChunks({
+      'assets/sidebar.js': ['/r/packages/core/src/ids.ts', '/r/apps/console/src/lib/entity-id.ts'],
+      'assets/vendor-misc.js': ['/r/node_modules/.pnpm/clsx@2.1.1/node_modules/clsx/dist/clsx.mjs'],
+    })).toEqual([])
+  })
+  it('ulid（pnpm 布局或扁平布局）进了 chunk 就报出来', () => {
+    expect(serverCodeInChunks({
+      'assets/vendor-misc.js': ['/r/node_modules/.pnpm/ulid@2.4.0/node_modules/ulid/dist/index.esm.js', '/r/node_modules/ulid/dist/index.esm.js'],
+    })).toHaveLength(2)
+  })
+  it('packages/ 下其他模块（core 根、config、store）进了 chunk 就报出来', () => {
+    expect(serverCodeInChunks({
+      'assets/x.js': ['/r/packages/core/src/index.ts', '/r/packages/core/src/config.ts', '/r/packages/store/src/index.ts'],
+    })).toHaveLength(3)
+  })
+})

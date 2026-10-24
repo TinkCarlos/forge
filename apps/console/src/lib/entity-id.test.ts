@@ -47,3 +47,32 @@ describe('P2 新控制台 id 校验 + 路径段', () => {
     expect(bad).toEqual([])
   })
 })
+
+/**
+ * K-33：id 规则只有一份，在 packages/core/src/ids.ts。新控制台直接引用（vite / vitest alias + tsconfig paths
+ * 把 @forge/core/ids 指到源码，不改 package.json / lockfile）；旧版 public/app.js 不经过打包，只能抄一份，
+ * 这里钉住它和 ID_PATTERN_SOURCE 一字不差。
+ */
+describe('K-33 id 规则引用 @forge/core', () => {
+  const core = () => import('@forge/core/ids') as Promise<{ ID_PATTERN: RegExp; ID_PATTERN_SOURCE: string }>
+
+  it('entity-id 用的就是 @forge/core 的 ID_PATTERN（同一个对象），源串等于 ID_PATTERN_SOURCE', async () => {
+    const { ID_PATTERN, ID_PATTERN_SOURCE } = await core()
+    const m = (await import('./entity-id')) as unknown as { ENTITY_ID_PATTERN: RegExp; ENTITY_ID_PATTERN_SOURCE: string }
+    expect(m.ENTITY_ID_PATTERN).toBe(ID_PATTERN)
+    expect(m.ENTITY_ID_PATTERN_SOURCE).toBe(ID_PATTERN_SOURCE)
+  })
+
+  it('entity-id.ts 里不再有自己抄的正则', () => {
+    const src = readFileSync(new URL('./entity-id.ts', import.meta.url), 'utf8')
+    expect(src).not.toMatch(/0-9A-HJKMNP-TV-Z/)
+    expect(src).toMatch(/from '@forge\/core\/ids'/)
+  })
+
+  it('旧版 public/app.js 的 isEntityId 正则源串与 ID_PATTERN_SOURCE 一字不差，且只有这一处', async () => {
+    const { ID_PATTERN_SOURCE } = await core()
+    const legacy = readFileSync(new URL('../../public/app.js', import.meta.url), 'utf8')
+    const literals = [...legacy.matchAll(/\/(\^\(\?:\[0-9A-HJKMNP-TV-Z\][^/]*)\/\.test\(/g)].map((m) => m[1])
+    expect(literals).toEqual([ID_PATTERN_SOURCE])
+  })
+})
