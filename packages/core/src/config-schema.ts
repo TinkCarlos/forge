@@ -81,7 +81,7 @@ const envSchema = z.object({
     .transform((value) => value?.trim() || undefined),
   // OPS-006: 1..65535; messages name the variable only.
   PORT: z.coerce
-    .number({ invalid_type_error: "PORT must be an integer between 1 and 65535" })
+    .number({ error: "PORT must be an integer between 1 and 65535" })
     .int("PORT must be an integer between 1 and 65535")
     .min(1, "PORT must be an integer between 1 and 65535")
     .max(65535, "PORT must be an integer between 1 and 65535")
@@ -94,7 +94,7 @@ const envSchema = z.object({
   FORGE_PUBLIC_URL: z.string().default("http://localhost:3000"),
   // K-21 / OPS-001: required in every environment, no default. The error names the variable only, never a connection string.
   DATABASE_URL: z
-    .string({ required_error: DATABASE_URL_REQUIRED })
+    .string({ error: DATABASE_URL_REQUIRED })
     .trim()
     .min(1, DATABASE_URL_REQUIRED),
   REDIS_URL: z.string().optional(),
@@ -108,7 +108,7 @@ const envSchema = z.object({
   API_KEY_PEPPER: z.string().optional(),
   FORGE_ADMIN_EMAIL: z.string().email().default("admin@forge.local"),
   FORGE_ADMIN_PASSWORD: z
-    .string({ required_error: "未设置 FORGE_ADMIN_PASSWORD，请在 .env 中配置应急管理员密码（至少 8 位）" })
+    .string({ error: "未设置 FORGE_ADMIN_PASSWORD，请在 .env 中配置应急管理员密码（至少 8 位）" })
     .min(8, "FORGE_ADMIN_PASSWORD 至少 8 位"),
   FORGE_ADMIN_NAME: z.string().default("Platform Admin"),
   ALLOW_LOCAL_LOGIN: z
