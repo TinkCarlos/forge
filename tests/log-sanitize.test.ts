@@ -11,7 +11,7 @@ describe("K-26: sanitizeUrlForLog", () => {
     for (const key of SENSITIVE_QUERY_KEYS) {
       expect(sanitizeUrlForLog(`/p?a=1&${key}=s3cr3t&b=2`)).toBe(`/p?a=1&${key}=${R}&b=2`);
     }
-    expect(SENSITIVE_QUERY_KEYS.size).toBe(12);
+    expect(SENSITIVE_QUERY_KEYS.size).toBe(14); // 12 from K-26 + error_description / error_uri (P2-06)
   });
   it("is case-insensitive", () => {
     expect(sanitizeUrlForLog("/cb?Code=abc&STATE=xyz&Access_Token=t")).toBe(`/cb?Code=${R}&STATE=${R}&Access_Token=${R}`);
@@ -82,5 +82,17 @@ describe("K-26: end to end through a Fastify logger (app.inject, no network, no 
     expect(all).not.toMatch(/SECRET[1-4]/);
     expect(all).toContain(`/ok?token=${R}&API_KEY=${R}&x=1`);
     expect(all).toContain(`Route GET:/nope?client_secret=${R}&code=${R} not found`);
+  });
+});
+
+describe("P2-06: OIDC error_description / error_uri are redacted", () => {
+  it("redacts both, any case, repeated keys, long values", () => {
+    const out = sanitizeUrlForLog(`/auth/oidc/callback?error=access_denied&error_description=%3Cscript%3Ealert(1)%3C%2Fscript%3E&Error_Description=${"A".repeat(500)}&error_uri=https%3A%2F%2Fevil.example%2Fx`);
+    expect(out).toContain("error=access_denied");
+    expect(out).not.toContain("%3Cscript"); // the key name error_description itself contains "script"
+    expect(out).not.toContain("alert(1)");
+    expect(out).not.toContain("AAAA");
+    expect(out).not.toContain("evil.example");
+    expect(out.match(/\[REDACTED\]/g)).toHaveLength(3);
   });
 });

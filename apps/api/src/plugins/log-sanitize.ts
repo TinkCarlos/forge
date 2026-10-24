@@ -21,6 +21,9 @@ export const SENSITIVE_QUERY_KEYS: ReadonlySet<string> = new Set([
   "password",
   "code",
   "state",
+  // P2-06: OIDC error callbacks carry provider-controlled free text and a URL (may hold markup, PII or a long payload).
+  "error_description",
+  "error_uri",
 ]);
 
 const MAX_LOGGED_URL_LENGTH = 2048;
