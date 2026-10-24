@@ -1,6 +1,6 @@
 import { type FastifyInstance, type FastifyRequest } from "fastify";
 import { errors, ForgeError, type Principal } from "@forge/core";
-import { assertRunAccess, visibleAgentOrgIds } from "@forge/governance";
+import { assertPermission, assertRunAccess, visibleAgentOrgIds } from "@forge/governance";
 import { principalForConnector, verifyConnectorPrincipal } from "@forge/identity";
 import { assertAgentRunnable, cancelRun, createQueuedRun } from "@forge/runtime";
 import { repos } from "@forge/store";
@@ -38,6 +38,9 @@ export default async function integrationRoutes(app: FastifyInstance): Promise<v
 
   app.post("/integration/v1/runs", async (request, reply) => {
     const principal = await connectorUser(request);
+    // P0-04 / I-INT-11: the caller is always a Connector principal mapped to a Forge user, so the user's functional
+    // permission applies (403 POL-2001) before the scope check below (agentAccessible, unchanged).
+    assertPermission(principal, "agent.run");
     const body = bodyOf(request);
     const agent = await repos.getAgentByKey(requireBodyString(body, "agentKey"));
     // I-INT-17: outside the mapped user's scope -> the same 404 as a missing Agent (checked before status).
@@ -73,6 +76,8 @@ export default async function integrationRoutes(app: FastifyInstance): Promise<v
 
   app.post("/integration/v1/runs/:id/cancel", async (request) => {
     const principal = await connectorUser(request);
+    // P0-05 / I-INT-15: same as above with run.cancel; the scope check (assertRunAccess) stays.
+    assertPermission(principal, "run.cancel");
     const run = await repos.getRun(param(request, "id"));
     await assertRunAccess(principal, run);
     await cancelRun(run!.id);
