@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { exportSPKI, generateKeyPair, SignJWT } from "jose";
+import { query } from "@forge/store";
 import { buildApp } from "../apps/api/src/app.js";
 
 let app: FastifyInstance;
@@ -35,8 +36,8 @@ describe("buildApp({ config }) override: connector verification without env vars
   let privateKey: CryptoKey;
   let otherPrivateKey: CryptoKey;
 
-  const sign = (key: CryptoKey, claims: Record<string, unknown>) =>
-    new SignJWT(claims).setProtectedHeader({ alg: "RS256" }).setIssuer(issuer).setAudience(audience).setIssuedAt().setExpirationTime("5m").sign(key);
+  const sign = (key: CryptoKey, claims: Record<string, unknown>, claimed: { iss?: string; aud?: string } = {}) =>
+    new SignJWT(claims).setProtectedHeader({ alg: "RS256" }).setIssuer(claimed.iss ?? issuer).setAudience(claimed.aud ?? audience).setIssuedAt().setExpirationTime("5m").sign(key);
   const callAgents = (token: string) => connectorApp.inject({ method: "GET", url: "/integration/v1/agents", headers: { authorization: `Bearer ${token}` } });
   const baseClaims = { principalType: "user", application: "inject-test", environment: "test", roles: [] };
 
@@ -73,6 +74,19 @@ describe("buildApp({ config }) override: connector verification without env vars
     const res = await callAgents(await sign(privateKey, { ...baseClaims, subject: "someone", environment: "prod" }));
     expect(res.statusCode).toBe(401);
     expect(res.json().error.code).toBe("CON-4705");
+  });
+
+  // P3-19 / F-A1: right key, wrong audience or issuer -> 401 CON-4707, nothing written (users, audit, runs).
+  it.each([
+    ["wrong audience", { aud: "forge-qa-wrong-aud" }],
+    ["wrong issuer", { iss: "forge-qa-wrong-iss" }],
+  ] as const)("%s -> 401 CON-4707, DB unchanged", async (_label, claimed) => {
+    const counts = async () => (await query<{ n: number }>("SELECT (SELECT COUNT(*) FROM users) + (SELECT COUNT(*) FROM audit_logs) + (SELECT COUNT(*) FROM runs) AS n"))[0]?.n;
+    const before = await counts();
+    const res = await callAgents(await sign(privateKey, { ...baseClaims, subject: "someone" }, claimed));
+    expect(res.statusCode).toBe(401);
+    expect(res.json().error.code).toBe("CON-4707");
+    expect(await counts()).toBe(before);
   });
 
   it("token signed by a different key is rejected with 401 CON-4707", async () => {
