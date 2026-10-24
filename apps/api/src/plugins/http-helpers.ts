@@ -8,7 +8,7 @@ import {
   ROLE_PERMISSIONS,
   type Principal,
 } from "@forge/core";
-import { assertPermission, maskArgsDeep, visibleAgentOrgIds } from "@forge/governance";
+import { assertOrgWritable, assertPermission, maskArgsDeep, visibleAgentOrgIds } from "@forge/governance";
 import { sessionCookieOptions } from "./session-cookie.js";
 import { oidcConfigured, readSignedSessionCookie, readStoredSessionCookie, sessionCookieValue, type Session, type StoredSession } from "@forge/identity";
 import {
@@ -121,10 +121,12 @@ export async function agentAccessible(principal: Principal, agent: AgentRow | nu
 
 /**
  * Write paths only (I-AGT-13): call after agentAccessible. An Agent without an owner department is readable / runnable
- * by everyone in scope, but only platform_admin may change it (PATCH, new version, publish); others 403 POL-2001.
+ * by everyone in scope, but only a dataScope=all principal may change it (PATCH, new version, publish); others 403 POL-2001.
  */
-export function assertAgentWritable(principal: Principal, agent: AgentRow): void {
-  if (!agent.owner_org_unit_id && principal.role !== "platform_admin") throw errors.forbidden("无主 Agent 仅平台管理员可修改");
+export async function assertAgentWritable(principal: Principal, agent: AgentRow): Promise<void> {
+  // P3-17: same rule as P0-03 platform resources (assertOrgWritable with no department -> only an effective
+  // dataScope=all covers it), not the role name.
+  if (!agent.owner_org_unit_id) await assertOrgWritable(principal, null, "无主 Agent 仅数据范围为全部（all）的管理员可修改");
 }
 
 /**

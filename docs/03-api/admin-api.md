@@ -183,7 +183,7 @@ Agent 状态与运行（当前实现，I-AGT-11 / 11b / 11c）：
 - `PATCH /admin/api/agents/{id}` 的 `status` 只接受 `active` 和 `disabled`，其他值（包括大小写不同、空串、非字符串）返回 `400 CFG-8501`，不修改。
 - Agent 的 `status` 不是 `active` 时，`POST /admin/api/agents/{id}/run`、开放平台 `POST /open/v1/agents/{key}/runs` 和 `/invoke`、`POST /integration/v1/runs` 都返回 `409 CFG-8503「Agent 已停用，不能运行」`，不建 Run、不写审计。判定在可见性之后：看不到的 Agent 仍是 404。
 - Integration 入口的 Agent 范围（I-INT-17）：`GET /integration/v1/agents` 与 `POST /integration/v1/runs` 复用 `agentAccessible`，按映射用户所在部门及其子部门（加上无主 Agent）判定；范围外的 Agent 不出现在列表里，建 Run 返回与不存在相同的 `404`，不建 Run。列表也不再列出已停用的 Agent。Integration 不检查 `api_enabled`：该开关只管开放平台的 App Key 入口（`/open/v1/*`）；integration 走 Connector JWT 加用户映射，权限按映射用户的身份（角色、dataScope）和所在部门子树判断。
-- 无主 Agent（`owner_org_unit_id` 为空，I-AGT-13）：`PATCH /admin/api/agents/{id}`、`POST /admin/api/agents/{id}/versions`、`POST /admin/api/agents/{id}/publish` 只有 platform_admin 能执行，其他角色返回 `403 POL-2001`，不写库、不写审计；读取、运行、建定时任务不受影响。
+- 无主 Agent（`owner_org_unit_id` 为空，I-AGT-13）：`PATCH /admin/api/agents/{id}`、`POST /admin/api/agents/{id}/versions`、`POST /admin/api/agents/{id}/publish` 只有数据范围为全部（`dataScope=all`）的调用者能执行（P3-17，与 P0-03 平台级资源同一口径，按 dataScope 而不是角色名判断），其他调用者返回 `403 POL-2001`，不写库、不写审计；读取、运行、建定时任务不受影响。
 
 ## 4. 能力包与安装
 

@@ -6,8 +6,8 @@ import { execute, query, repos } from "@forge/store";
 import { buildApp } from "../apps/api/src/app.js";
 import { cleanupRealSessions, realSession, sessionHeaders } from "./helpers/real-session.js";
 
-// I-AGT-13: an Agent without owner_org_unit_id may only be written (PATCH, new version, publish) by platform_admin;
-// others get 403 POL-2001 with nothing written and no audit. Reading and running it stay open as before.
+// I-AGT-13 / P3-17: an Agent without owner_org_unit_id may only be written (PATCH, new version, publish) by a
+// dataScope=all principal (same rule as P0-03 platform resources, not the role name); others get 403 POL-2001 with nothing written and no audit. Reading and running it stay open as before.
 const suffix = `${Date.now().toString(36)}${randomBytes(3).toString("hex")}`;
 const ADMIN_ID = "01J00000000000000000000001";
 const ROOT = "01J00000000000000000000000";
@@ -33,6 +33,11 @@ beforeAll(async () => {
     const s = await realSession({ role, orgUnitId: ROOT, dataScope: role === "platform_admin" ? "all" : "org" });
     H[role] = sessionHeaders(s, sessionCookieValue(s));
   }
+  // P3-17: the rule follows dataScope (as P0-03 platform resources), not the role name.
+  for (const [name, role, dataScope] of [["org_admin_all", "org_admin", "all"], ["platform_admin_org", "platform_admin", "org"]] as const) {
+    const s = await realSession({ role, orgUnitId: ROOT, dataScope });
+    H[name] = sessionHeaders(s, sessionCookieValue(s));
+  }
   unowned = await repos.createAgent({ key: `it-uaw-none-${suffix}`, name: "IT unowned", ownerOrgUnitId: null, createdBy: ADMIN_ID });
   unownedVersion = await repos.createAgentVersion({ agentId: unowned, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID });
   await repos.publishAgentVersion(unowned, unownedVersion);
@@ -55,7 +60,7 @@ afterAll(async () => {
 });
 
 describe("unowned Agent writes (I-AGT-13)", () => {
-  for (const role of ["org_admin", "builder"]) {
+  for (const role of ["org_admin", "builder", "platform_admin_org"]) {
     for (const w of writes("UNOWNED", "VERSION")) {
       it(`${role} ${w.name} on unowned -> 403 POL-2001, nothing written, no audit`, async () => {
         const target = writes(unowned, unownedVersion).find((x) => x.name === w.name)!;
@@ -93,6 +98,15 @@ describe("unowned Agent writes (I-AGT-13)", () => {
     expect(created.statusCode, created.body).toBe(200);
     const versionId = (created.json() as { versionId: string }).versionId;
     expect((await app.inject({ method: "POST", url: `/admin/api/agents/${unowned}/publish`, headers: H.platform_admin!, payload: { versionId } })).statusCode).toBe(200);
+  });
+
+  it("P3-17: org_admin with dataScope=all can PATCH, create a version and publish the unowned Agent", async () => {
+    const [patch, version] = writes(unowned, unownedVersion);
+    expect((await app.inject({ method: patch!.method, url: patch!.url, headers: H.org_admin_all!, payload: { name: "renamed by all-scope" } })).statusCode).toBe(200);
+    const created = await app.inject({ method: version!.method, url: version!.url, headers: H.org_admin_all!, payload: { version: "3.0.0" } });
+    expect(created.statusCode, created.body).toBe(200);
+    const versionId = (created.json() as { versionId: string }).versionId;
+    expect((await app.inject({ method: "POST", url: `/admin/api/agents/${unowned}/publish`, headers: H.org_admin_all!, payload: { versionId } })).statusCode).toBe(200);
   });
 
   it("owned Agent in the caller's department is still writable by builder", async () => {
