@@ -7,9 +7,9 @@ import {
   type Role,
   USER_STATUSES,
 } from "@forge/core";
-import { assertCanGrant, assertCanManageUser, grantDefaultDataScope, loadVisibleUserOr404, maskArgsDeep, userFilterFor } from "@forge/governance";
+import { assertCanGrant, assertCanManageUser, auditFilterFor, grantDefaultDataScope, loadVisibleUserOr404, maskArgsDeep, userFilterFor } from "@forge/governance";
 import { oidcConfigured } from "@forge/identity";
-import { repos, type UserRow } from "@forge/store";
+import { repos, userUpdateAuditEntries, type UserRow } from "@forge/store";
 import {
   bodyOf,
   param,
@@ -88,7 +88,11 @@ export default async function adminIdentityRoutes(app: FastifyInstance): Promise
     assertCanGrant(session.principal, role, dataScope);
     const status = enumBody(body, "status", USER_STATUSES);
     await repos.updateUser(target.id, { role, dataScope, status });
-    await writeAudit(session, "user.update", "user", target.id, { role, dataScope: stringBody(body, "dataScope"), ...(status !== undefined ? { status } : {}) });
+    // I-SCOPE plan A: main row in the (new) department; a real department change also writes user.org_transfer_out
+    // in the old one. Today this route never moves a user, so before === after; the rule is kept for future moves.
+    const after = await repos.getUserById(target.id);
+    const entries = userUpdateAuditEntries(target.org_unit_id ?? null, after?.org_unit_id ?? null, { role, dataScope: stringBody(body, "dataScope"), ...(status !== undefined ? { status } : {}) });
+    for (const entry of entries) await writeAudit(session, entry.action, "user", target.id, entry.details, { orgUnitId: entry.orgUnitId });
     return { ok: true };
   });
 
@@ -116,8 +120,9 @@ export default async function adminIdentityRoutes(app: FastifyInstance): Promise
   });
 
   app.get("/admin/api/audit", async (request) => {
-    await admin(request, "audit.view");
-    return { items: await repos.listAudit(Number((request.query as Record<string, unknown>).limit ?? 100)) };
+    const session = await admin(request, "audit.view");
+    // I-SCOPE-13/14: rows filtered by the caller's dataScope (auditFilterFor); NULL-department rows only for dataScope all.
+    return { items: await repos.listAudit(await auditFilterFor(session.principal), Number((request.query as Record<string, unknown>).limit ?? 100)) };
   });
 
   app.get("/admin/api/sso", async (request) => {

@@ -8,6 +8,7 @@ import { auditRepo } from "./repositories/audit.js";
 
 export * from "./db.js";
 export * from "./types.js";
+export { AUDIT_ORG_SOURCES, AUDIT_PLATFORM_RESOURCES, buildAuditListQuery, userUpdateAuditEntries, type AuditListScope, type UserUpdateAuditEntry } from "./repositories/audit-scope-sql.js";
 
 export const repos = {
   ...identityRepo,

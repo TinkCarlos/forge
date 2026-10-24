@@ -478,8 +478,10 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   resource_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin NULL,
   details_json JSON NULL,
   created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  org_unit_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin NULL,
   KEY idx_audit_resource (resource_type, resource_id, created_at),
-  KEY idx_audit_actor (actor_type, actor_id, created_at)
+  KEY idx_audit_actor (actor_type, actor_id, created_at),
+  KEY idx_audit_org (org_unit_id, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS settings (

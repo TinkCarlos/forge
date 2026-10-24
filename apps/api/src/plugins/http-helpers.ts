@@ -88,8 +88,10 @@ export async function writeAudit(
   resourceType: string,
   resourceId: string | null,
   details?: unknown,
+  opts: { orgUnitId?: string | null } = {},
 ): Promise<void> {
-  await repos.audit({ actorType: "user", actorId: session.principal.id, action, resourceType, resourceId, details });
+  // I-SCOPE plan A: the row records the resource's department (resolved in repos.audit unless opts.orgUnitId is given).
+  await repos.audit({ actorType: "user", actorId: session.principal.id, action, resourceType, resourceId, details, ...(opts.orgUnitId !== undefined ? { orgUnitId: opts.orgUnitId } : {}) });
 }
 
 export async function agentAccessible(principal: Principal, agent: AgentRow | null): Promise<boolean> {

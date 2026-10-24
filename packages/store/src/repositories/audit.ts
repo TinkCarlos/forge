@@ -1,16 +1,38 @@
 import { ulidWithPrefix } from "@forge/core";
 import { execute, json, one, query } from "../db.js";
+import { AUDIT_ORG_SOURCES, buildAuditListQuery, type AuditListScope } from "./audit-scope-sql.js";
+
+/** I-SCOPE plan A: the resource's own department at write time (NULL for platform-level resources or on lookup failure). */
+async function resolveAuditOrgUnit(resourceType: string, resourceId: string | null | undefined): Promise<string | null> {
+  const sql = AUDIT_ORG_SOURCES[resourceType];
+  if (!sql || !resourceId) return null;
+  try {
+    const row = await one<{ org_unit_id: string | null }>(sql, [resourceId]);
+    return row?.org_unit_id ?? null;
+  } catch {
+    // Never lose the audit row: an unresolved department only narrows visibility (dataScope all still sees it).
+    return null;
+  }
+}
 
 export const auditRepo = {
   // Audit / stats / settings
-  async audit(input: { actorType: string; actorId?: string | null; action: string; resourceType: string; resourceId?: string | null; details?: unknown }): Promise<void> {
+  /**
+   * Writes one audit row. orgUnitId = the resource's department: pass it when known (including an explicit null);
+   * when omitted it is resolved from resourceType/resourceId (AUDIT_ORG_SOURCES), never from the actor.
+   */
+  async audit(input: { actorType: string; actorId?: string | null; action: string; resourceType: string; resourceId?: string | null; details?: unknown; orgUnitId?: string | null }): Promise<void> {
+    const orgUnitId = input.orgUnitId !== undefined ? input.orgUnitId : await resolveAuditOrgUnit(input.resourceType, input.resourceId);
     await execute(
-      "INSERT INTO audit_logs (id, actor_type, actor_id, action, resource_type, resource_id, details_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      [ulidWithPrefix("aud"), input.actorType, input.actorId ?? null, input.action, input.resourceType, input.resourceId ?? null, json(input.details ?? {})],
+      "INSERT INTO audit_logs (id, actor_type, actor_id, action, resource_type, resource_id, org_unit_id, details_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      [ulidWithPrefix("aud"), input.actorType, input.actorId ?? null, input.action, input.resourceType, input.resourceId ?? null, orgUnitId, json(input.details ?? {})],
     );
   },
-  async listAudit(limit = 100): Promise<Record<string, unknown>[]> {
-    return query("SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT ?", [Math.min(limit, 500)]);
+  /** I-SCOPE-13/14: the scope is mandatory (permissions.md 4.5, no unfiltered list). Build it with governance auditFilterFor. */
+  async listAudit(scope: AuditListScope, limit = 100): Promise<Record<string, unknown>[]> {
+    const built = buildAuditListQuery(scope, limit);
+    if (!built) return [];
+    return query(built.sql, built.params);
   },
   async stats(): Promise<Record<string, unknown>> {
     const runs = await query<{ status: string; count: number }>("SELECT status, COUNT(*) AS count FROM runs GROUP BY status");

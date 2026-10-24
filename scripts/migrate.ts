@@ -41,6 +41,21 @@ async function applyWebhookErrorCode(conn: Connection): Promise<void> {
   }
 }
 
+/**
+ * 006 (I-SCOPE-13/14 plan A): audit_logs.org_unit_id = the resource's department at write time, plus a list index.
+ * Non-destructive: nullable column at the end of the table (ALGORITHM=INSTANT, no table rebuild); the index is built
+ * online (INPLACE, LOCK=NONE). Existing rows are not backfilled and stay NULL (visible to dataScope all only).
+ * Rollback (destructive, needs confirmation): DROP KEY idx_audit_org, DROP COLUMN org_unit_id, delete the 006 row.
+ */
+async function applyAuditOrgUnit(conn: Connection): Promise<void> {
+  if (!(await hasColumn(conn, "audit_logs", "org_unit_id"))) {
+    await conn.query("ALTER TABLE audit_logs ADD COLUMN org_unit_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin NULL, ALGORITHM=INSTANT");
+  }
+  if (!(await hasIndex(conn, "audit_logs", "idx_audit_org"))) {
+    await conn.query("ALTER TABLE audit_logs ADD KEY idx_audit_org (org_unit_id, created_at), ALGORITHM=INPLACE, LOCK=NONE");
+  }
+}
+
 async function applyRuntimeLease(conn: Connection): Promise<void> {
   if (!(await hasColumn(conn, "runs", "claimed_by"))) {
     await conn.query("ALTER TABLE runs ADD COLUMN claimed_by VARCHAR(128) NULL");
@@ -194,6 +209,14 @@ try {
     console.log("Migration 005_webhook_error_code applied");
   } else {
     console.log("Migration 005_webhook_error_code already applied");
+  }
+
+  if (!applied.has("006_audit_org_unit")) {
+    await applyAuditOrgUnit(connection);
+    await connection.query("INSERT INTO schema_migrations (version) VALUES (?)", ["006_audit_org_unit"]);
+    console.log("Migration 006_audit_org_unit applied");
+  } else {
+    console.log("Migration 006_audit_org_unit already applied");
   }
 } finally {
   await connection.end();
