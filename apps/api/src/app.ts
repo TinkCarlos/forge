@@ -8,6 +8,7 @@ import type { ConnectorConfig } from "@forge/identity";
 import { auditUserAgent, runWithAuditContext } from "@forge/store";
 import { frameworkErrorHandler, installErrorHandler } from "./plugins/errors.js";
 import { installCsrfHook } from "./plugins/csrf.js";
+import { installAdminMultipartGuard } from "./plugins/multipart-guard.js";
 import { installSecurityHeaders } from "./plugins/security-headers.js";
 import { installSanitizedNotFoundHandler, requestLogSerializers } from "./plugins/log-sanitize.js";
 import { AJV_CUSTOM_OPTIONS } from "./plugins/input-schema.js";
@@ -86,6 +87,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   });
 
   installErrorHandler(app);
+  installAdminMultipartGuard(app); // item 8: before CSRF / auth
   installCsrfHook(app);
   installSanitizedNotFoundHandler(app);
 
