@@ -102,18 +102,20 @@
 | POST | `/agents/{agentKey}/invoke` | 创建并等待结果（最长 120s） | `runs:create`, `runs:read` |
 | GET | `/runs/{runId}` | 查询 Run | `runs:read` |
 | GET | `/runs/{runId}/result` | 获取最终结果 | `runs:read` |
-| GET | `/runs/{runId}/messages` | 获取会话消息 | `runs:read` |
+| GET | `/runs/{runId}/messages` | **未实现（请求返回 404）**；获取会话消息 | `runs:read` |
 | GET | `/runs/{runId}/events` | SSE 事件流 | `runs:read` |
 | POST | `/runs/{runId}/cancel` | 取消 Run | `runs:cancel` |
-| POST | `/runs/{runId}/messages` | 插话（P1） | `runs:message` |
-| POST | `/files` | 上传文件 | `files:write` |
-| GET | `/files/{fileId}` | 文件元数据与签名下载地址 | `files:write` |
-| DELETE | `/files/{fileId}` | 删除未被引用的文件 | `files:write` |
-| GET | `/artifacts/{artifactId}` | Artifact 下载地址 | `runs:read` |
-| POST | `/threads` | 创建 Thread（P1） | `threads:write` |
-| GET | `/threads/{threadId}` | Thread 详情（P1） | `threads:read` |
-| GET | `/threads/{threadId}/messages` | Thread 消息（P1） | `threads:read` |
+| POST | `/runs/{runId}/messages` | **未实现（请求返回 404）**；插话（P1） | `runs:message` |
+| POST | `/files` | **未实现（请求返回 404）**；上传文件 | `files:write` |
+| GET | `/files/{fileId}` | **未实现（请求返回 404）**；文件元数据与签名下载地址 | `files:write` |
+| DELETE | `/files/{fileId}` | **未实现（请求返回 404）**；删除未被引用的文件 | `files:write` |
+| GET | `/artifacts/{artifactId}` | **未实现（请求返回 404）**；Artifact 下载地址 | `runs:read` |
+| POST | `/threads` | **未实现（请求返回 404）**；创建 Thread（P1） | `threads:write` |
+| GET | `/threads/{threadId}` | **未实现（请求返回 404）**；Thread 详情（P1） | `threads:read` |
+| GET | `/threads/{threadId}/messages` | **未实现（请求返回 404）**；Thread 消息（P1） | `threads:read` |
 | GET | `/openapi.json` | OpenAPI 3.1 规范（免认证，不含密钥） | — |
+
+> 标「未实现（请求返回 404）」的路由当前没有注册，请求统一返回 `404 RUN-7001「资源不存在」`（方法不对同样是 404，不返回 405）；第 9、11、12 节的对应小节同样标注。
 
 ## 6. Agent 目录
 
@@ -274,7 +276,7 @@ Idempotency-Key: 4b1c6f0e-...
 }
 ```
 
-### `GET /open/v1/runs/{runId}/messages`
+### `GET /open/v1/runs/{runId}/messages`（未实现（请求返回 404））
 
 返回面向调用方的消息（系统指令与内部工具原文不返回）：
 
@@ -361,9 +363,10 @@ data: {"type":"run.completed","seq":15,"runId":"...","data":{"status":"succeeded
 - 已结束（`succeeded`、`failed`、`cancelled`、`budget_exhausted`）：`409 RUN-7005「Run 已结束，不能取消」`，`details.status` 为当前状态；和管理端、Connector 入口一致（#79 / I-RUN-06）。当前实现成功时返回 `200 { "ok": true, "status": "<取消后的实际状态>" }`（`queued`/`waiting_approval` 立即变为 `cancelled`；`running` 在 worker 停下前仍是 `running`），不再返回 `cancelling`。
 - 可取消状态：`queued`、`running`、`waiting_approval`。
 - 取消不保证外部副作用回滚；文档明确提示调用方使用幂等写接口。
-- 响应 `202` + Run 对象；最终状态以查询为准。
+- 成功返回 `200 { ok, status }`（见上）；`running` 的最终状态以查询 Run 为准。
+- 不存在或不属于本应用的 Run：`404 RUN-7001「Run 不存在」`，不写审计。
 
-### `POST /open/v1/runs/{runId}/messages`（P1）
+### `POST /open/v1/runs/{runId}/messages`（P1，未实现（请求返回 404））
 
 ```json
 { "text": "补充：重点看第 7 条" }
@@ -374,7 +377,7 @@ data: {"type":"run.completed","seq":15,"runId":"...","data":{"status":"succeeded
 
 ## 12. 文件与 Artifact
 
-### `POST /open/v1/files`
+### `POST /open/v1/files`（未实现（请求返回 404））
 
 `multipart/form-data`，字段 `file`；可选 `purpose`（`input`/`attachment`）。
 
@@ -393,15 +396,15 @@ data: {"type":"run.completed","seq":15,"runId":"...","data":{"status":"succeeded
 - 文件属于应用；只能被同一应用的 Run 引用。
 - 未被引用的文件默认 7 天过期；被引用后随 Run 数据保留策略处理。
 
-### `GET /open/v1/files/{fileId}`
+### `GET /open/v1/files/{fileId}`（未实现（请求返回 404））
 
 返回元数据与 `downloadUrl`（签名，5 分钟有效）。不返回永久公开 URL。
 
-### `DELETE /open/v1/files/{fileId}`
+### `DELETE /open/v1/files/{fileId}`（未实现（请求返回 404））
 
 仅未被 Run 引用时允许；已引用返回 `409`。
 
-### `GET /open/v1/artifacts/{artifactId}`
+### `GET /open/v1/artifacts/{artifactId}`（未实现（请求返回 404））
 
 返回元数据与签名下载地址；Artifact 只能由有权读取对应 Run 的应用访问。
 
