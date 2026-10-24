@@ -1,6 +1,6 @@
 import type { FastifyRequest } from "fastify";
 import { CronExpressionParser } from "cron-parser";
-import { errors } from "@forge/core";
+import { errors, type Role } from "@forge/core";
 
 /**
  * Route input schemas (K-23 / K-24 / I-USR-02 / I-APR-34 / I-RUN-02 / S-25), as Fastify route schemas: plain JSON
@@ -18,6 +18,10 @@ import { errors } from "@forge/core";
 /** Same options in apps/api/src/app.ts and the unit test: no type coercion ("42" stays a string, 42 is not a string). */
 export const AJV_CUSTOM_OPTIONS = { coerceTypes: false } as const;
 
+/** Every Role (literal, so pure unit tests that mock @forge/core still load; the type check below keeps it exhaustive). */
+const LOCAL_ROLES = ["platform_admin", "org_admin", "builder", "operator", "auditor", "user"] as const satisfies readonly Role[];
+const LOCAL_ROLES_EXHAUSTIVE: [Exclude<Role, (typeof LOCAL_ROLES)[number]>] extends [never] ? true : false = true;
+void LOCAL_ROLES_EXHAUSTIVE;
 const str = (maxLength: number) => ({ type: "string", maxLength }) as const;
 const ID_MAX = 64; // ids are CHAR(26); 64 keeps an unknown long id a 404 rather than a new 400
 
@@ -114,7 +118,8 @@ export const ROUTE_SCHEMAS = {
   // users: role 32, data_scope 16, status 16 (orgUnitId is ignored by the route)
   userPatch: { body: obj({ role: str(32), dataScope: str(16), status: str(16), orgUnitId: str(ID_MAX) }) },
   // oidc_role_mappings: agent_role_code 100, agent_role_name 100, local_role 32
-  roleMappingUpsert: { body: obj({ agentRoleCode: str(100), agentRoleName: str(100), localRole: str(32) }) },
+  // P2: localRole must be a known role (enum); mapRoles also ignores legacy rows with an unknown local_role.
+  roleMappingUpsert: { body: obj({ agentRoleCode: str(100), agentRoleName: str(100), localRole: { type: "string", maxLength: 32, enum: LOCAL_ROLES } }) },
   // mcp_servers: key 64, name 128, transport 16, url 2048, status 16
   mcpCreate: { body: obj({ key: str(64), name: str(128), url: str(2048), headers: jsonObject(65_536), transport: str(16) }) },
   mcpPatch: { body: obj({ name: str(128), url: str(2048), headers: jsonObject(65_536), status: str(16) }) },

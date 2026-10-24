@@ -326,7 +326,11 @@ function extractRoles(payload: JWTPayload): Array<{ code: string; name: string }
   return result;
 }
 
-async function mapRoles(roles: Array<{ code: string; name: string }>): Promise<Role | null> {
+/**
+ * Highest-priority local role among the mapped IdP roles. P2 (QA 714b3f3): a mapping whose local_role is not a known
+ * role (legacy / hand-edited row) is ignored; before, its priority index -1 beat every valid mapping. Exported for tests.
+ */
+export async function mapRoles(roles: Array<{ code: string; name: string }>): Promise<Role | null> {
   const mappings = await repos.listRoleMappings();
   const priority: Role[] = ["platform_admin", "org_admin", "builder", "operator", "auditor", "user"];
   let best: Role | null = null;
@@ -338,6 +342,7 @@ async function mapRoles(roles: Array<{ code: string; name: string }>): Promise<R
     });
     if (!mapping) continue;
     const local = String(mapping.local_role) as Role;
+    if (!priority.includes(local)) continue;
     if (!best || priority.indexOf(local) < priority.indexOf(best)) best = local;
   }
   if (!best && config.SSO_ROLE_MAPPING_REQUIRED) return null;
