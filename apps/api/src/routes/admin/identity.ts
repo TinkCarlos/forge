@@ -71,7 +71,7 @@ export default async function adminIdentityRoutes(app: FastifyInstance): Promise
       displayName: stringBody(body, "displayName", email),
       role,
       dataScope,
-      // Always the caller's own department; body.orgUnitId is ignored.
+      // Always the caller's own department (orgUnitId is not a declared body field: 400 CFG-8501).
       orgUnitId: session.principal.orgUnitId,
       passwordHash: stringBody(body, "password") ? hashPassword(stringBody(body, "password")) : null,
       status,
@@ -80,7 +80,8 @@ export default async function adminIdentityRoutes(app: FastifyInstance): Promise
     return { id };
   });
 
-  // Updates role / dataScope / status only; body.orgUnitId is ignored (a user cannot be moved to another department here).
+  // Updates role / dataScope / status only; orgUnitId is not a declared body field (400 CFG-8501), so a user cannot be
+  // moved to another department here. repos.updateUser keeps org_unit_id support for a future transfer route.
   app.patch("/admin/api/users/:id", { schema: ROUTE_SCHEMAS.userPatch, attachValidation: true }, async (request) => {
     const session = await admin(request, "user.manage");
     const body = bodyOf(request);

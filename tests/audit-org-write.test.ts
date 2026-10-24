@@ -129,13 +129,13 @@ describe("T-A..T-E: department transfer (ruling 2)", () => {
     expect(seenB).toContain(`it.${tag}.user.update`);
     expect(seenB).not.toContain(`it.${tag}.user.org_transfer_out`);
   });
-  it("T-D: PATCH that changes only the role (or passes the same orgUnitId) writes one user.update and no transfer_out", async () => {
+  it("T-D: PATCH that changes only the role writes one user.update and no transfer_out (orgUnitId is rejected)", async () => {
     const pa = await headersFor({ role: "platform_admin", orgUnitId: ROOT, dataScope: "all" });
     const before = await query<{ n: number }>("SELECT COUNT(*) AS n FROM audit_logs WHERE resource_id = ? AND action = 'user.org_transfer_out'", [ids.user]);
     // P1: the body schema is closed, so the no-op payloads carry only declared fields (displayName is not one).
-    for (const payload of [{}, { orgUnitId: A }]) {
+    for (const [payload, status] of [[{}, 200], [{ orgUnitId: A }, 400], [{}, 200]] as const) {
       const res = await app.inject({ method: "PATCH", url: `/admin/api/users/${ids.user}`, headers: pa.headers, payload });
-      expect(res.statusCode).toBe(200);
+      expect(res.statusCode).toBe(status);
     }
     const updates = await query<{ org_unit_id: string }>("SELECT org_unit_id FROM audit_logs WHERE resource_id = ? AND action = 'user.update'", [ids.user]);
     expect(updates.map((r) => r.org_unit_id)).toEqual([A, A]);

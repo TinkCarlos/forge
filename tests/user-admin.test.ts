@@ -48,7 +48,7 @@ const create = async (payload: Record<string, unknown>, headers = orgAdminHeader
   if (res.statusCode === 200) createdUsers.push((res.json() as { id: string }).id);
   return res;
 };
-const errorOf = (res: { json: () => unknown }) => (res.json() as { error: { code: string; message: string } }).error;
+const errorOf = (res: { json: () => unknown }) => (res.json() as { error: { code: string; message: string; details?: { field?: string } } }).error;
 
 beforeAll(async () => {
   app = await buildApp({ logger: false });
@@ -158,10 +158,18 @@ describe("PATCH /admin/api/users/:id by org_admin", () => {
     expect((await row(userA)).data_scope).toBe("self");
   });
 
-  it("orgUnitId in the body cannot move a user to another department", async () => {
-    const res = await patch(userA, { role: "user", orgUnitId: ORG_B });
-    expect([200, 400, 403]).toContain(res.statusCode);
+  // Item 6: orgUnitId is no longer a declared field of PATCH /users/{id} (it was accepted and silently ignored).
+  it("orgUnitId in the body -> 400 CFG-8501, user not moved, nothing audited", async () => {
+    const audits = async () => Number((await query<{ n: number }>("SELECT COUNT(*) AS n FROM audit_logs WHERE resource_id = ?", [userA]))[0]!.n);
+    const before = await audits();
+    for (const orgUnitId of [ORG_B, ORG_A]) {
+      const res = await patch(userA, { role: "user", orgUnitId });
+      expect(res.statusCode).toBe(400);
+      expect(errorOf(res).code).toBe("CFG-8501");
+      expect(errorOf(res).details?.field).toBe("orgUnitId");
+    }
     expect((await row(userA)).org_unit_id).toBe(ORG_A);
+    expect(await audits()).toBe(before);
   });
 
   it("status change inside scope works and is audited", async () => {
@@ -183,8 +191,18 @@ describe("POST /admin/api/users by org_admin", () => {
     expect(await repos.getUserByEmail(email)).toBeNull();
   });
 
+  // Item 6: orgUnitId is no longer a declared field of POST /users (it was accepted and silently ignored).
+  it("orgUnitId in the body -> 400 CFG-8501, no user created", async () => {
+    const email = `it-ua-new-org-${suffix}@forge.local`;
+    const res = await create({ email, role: "user", orgUnitId: ORG_A });
+    expect(res.statusCode).toBe(400);
+    expect(errorOf(res).code).toBe("CFG-8501");
+    expect(errorOf(res).details?.field).toBe("orgUnitId");
+    expect(await repos.getUserByEmail(email)).toBeNull();
+  });
+
   it("auditor without dataScope -> created with the caller's scope, in the caller's department", async () => {
-    const res = await create({ email: `it-ua-new-aud-${suffix}@forge.local`, role: "auditor", orgUnitId: ORG_B });
+    const res = await create({ email: `it-ua-new-aud-${suffix}@forge.local`, role: "auditor" });
     expect(res.statusCode).toBe(200);
     const created = await row((res.json() as { id: string }).id);
     expect(created.data_scope).toBe("org");

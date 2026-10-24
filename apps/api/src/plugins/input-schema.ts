@@ -102,7 +102,7 @@ export const ROUTE_SCHEMAS = {
         dataScope: str(16),
         status: str(16),
         password: str(256),
-        orgUnitId: str(ID_MAX),
+        // No orgUnitId (item 6): a new user always lands in the caller's department; sending it is 400 CFG-8501.
       },
     }),
   },
@@ -131,8 +131,8 @@ export const ROUTE_SCHEMAS = {
   // service_accounts: key 64, name 128, description 1024, role 32, data_scope 32, status 16
   serviceAccountCreate: { body: body(obj({ key: str(64), name: str(128), description: str(1024), role: str(32), dataScope: str(32) })) },
   serviceAccountPatch: { body: body(obj({ name: str(128), description: str(1024), role: str(32), dataScope: str(32), status: str(16) })) },
-  // users: role 32, data_scope 16, status 16 (orgUnitId is ignored by the route)
-  userPatch: { body: body(obj({ role: str(32), dataScope: str(16), status: str(16), orgUnitId: str(ID_MAX) })) },
+  // users: role 32, data_scope 16, status 16. No orgUnitId (item 6): this route cannot move a user; sending it is 400.
+  userPatch: { body: body(obj({ role: str(32), dataScope: str(16), status: str(16) })) },
   // oidc_role_mappings: agent_role_code 100, agent_role_name 100, local_role 32
   // P2: localRole must be a known role (enum); mapRoles also ignores legacy rows with an unknown local_role.
   roleMappingUpsert: { body: body(obj({ agentRoleCode: str(100), agentRoleName: str(100), localRole: { type: "string", maxLength: 32, enum: LOCAL_ROLES } })) },

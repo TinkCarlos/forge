@@ -68,6 +68,7 @@
 | 数据权限策略表 | 角色 + `users.data_scope` | 未使用 `data_policies` 表；P1 支持自定义范围 |
 | 文件/OCR/Artifact | 未实现 | P1 |
 | 知识库/评测/通知 | 未实现 | P1 |
+| 用户换部门、改显示名 | `PATCH /admin/api/users/{id}` 只管启停与角色/数据范围；`orgUnitId`、`displayName` 传了即 400 | 待办：单独的换部门接口（Repository 的 `org_unit_id` 更新与 `user.org_transfer_out` 审计已就绪）与显示名修改 |
 | `.forgepkg` 签名包 | JSON 声明式安装 | P1 增加 zip/manifest/checksum/签名 |
 | Helm/离线包/HA | Compose/本地运行 | P1 |
 

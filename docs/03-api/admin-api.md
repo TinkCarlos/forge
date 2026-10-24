@@ -636,7 +636,7 @@ POST /admin/v1/schedules
 | DELETE | `/org-units/{id}` | 删除（需为空） | `org.manage` |
 | GET | `/users` | 用户列表（组织、状态、`q`） | `org.view` |
 | POST | `/users` | 邀请/创建本地用户 | `org.manage` |
-| PATCH | `/users/{id}` | 启停、组织、显示名 | `org.manage` |
+| PATCH | `/users/{id}` | 启停（及角色、数据范围） | `org.manage` |
 | GET | `/groups` / `POST` | 组列表/创建 | `org.view` / `org.manage` |
 | PUT | `/groups/{id}/members` | 设置成员 | `org.manage` |
 | GET | `/roles` | 角色列表（含内置） | `role.view` |
@@ -695,7 +695,7 @@ kb.view kb.manage eval.view eval.manage
   - `dataScope` 比自身宽（`self` < `org` < `all`）→ `403 POL-2001「不能授予超出自身的数据范围」`。
   - 不传 `dataScope` 时取角色默认值，但不超过调用者自身的范围（例如 org 范围的 org_admin 授予 `auditor`，默认 `all` 会变成 `org`）。platform_admin 不受此上限影响。
 - `dataScope` 只能是 `all`、`org`、`self`，其他值 → `400 CFG-8501`（对所有调用者，包括 platform_admin）；空字符串视为未传。
-- `POST /users` 新用户的部门固定为调用者所在部门；`PATCH /users/{id}` 只改 `role`、`dataScope`、`status`。请求体里的 `orgUnitId` 两个接口都忽略，不能把用户移到其他部门。
+- `POST /users` 新用户的部门固定为调用者所在部门；`PATCH /users/{id}` 这条路由只管启停（`status`），以及 `role`、`dataScope`，不改部门、不改显示名。两个接口都不再接受 `orgUnitId`，传了 → `400 CFG-8501`（`details.field = "orgUnitId"`），不写库、不写审计（之前是接受后静默忽略）。用户换部门、改显示名尚未实现，见 `docs/05-development/implementation-status.md` 第 3 节（换部门时写 `user.org_transfer_out` 审计的规则已保留）。
 - 审计：`user.update` 的 details 为 `{ role, dataScope, status? }`（传了 `status` 才记）。
 
 服务账号（当前实现）：`/admin/api/service-accounts` 列表、详情和修改的数据范围和定时任务相同：`dataScope = all` 看全部，否则看本部门及其所有下级部门的服务账号；范围外与不存在都返回 `404「服务账号不存在」`。
