@@ -25,6 +25,15 @@ export function installErrorHandler(app: FastifyInstance): void {
       });
       return;
     }
+    // P1-10 / S-25: a unique-key collision is a client conflict. The driver error (code, index, value, SQL) goes
+    // to the log only; the response says nothing about tables, indexes or values.
+    if (isDuplicateKey(error)) {
+      request.log.warn({ err: error, dbCode: "ER_DUP_ENTRY" }, "unique key conflict -> 409");
+      reply.status(409).send({
+        error: { code: "CFG-8503", message: "资源已存在（唯一字段重复）", requestId: reqId(request), details: null, retryable: false },
+      });
+      return;
+    }
     request.log.error(error);
     reply.status(500).send({
       error: { code: "SYS-9001", message: "内部错误", requestId: reqId(request), retryable: false },
@@ -57,4 +66,12 @@ function bodyParseError(error: unknown): { status: number; code: string; message
   // Older Fastify JSON parser: a SyntaxError carrying statusCode 400.
   if (e.name === "SyntaxError" && e.statusCode === 400) return { status: 400, code: "CFG-8501", message: "请求体不是合法的 JSON" };
   return null;
+}
+
+/** mysql2 duplicate-key error (ER_DUP_ENTRY / errno 1062), also when wrapped once in `cause`. */
+export function isDuplicateKey(error: unknown): boolean {
+  for (let e = error as { code?: unknown; errno?: unknown; cause?: unknown } | undefined, depth = 0; e && depth < 3; e = e.cause as typeof e, depth++) {
+    if (e.code === "ER_DUP_ENTRY" || e.errno === 1062) return true;
+  }
+  return false;
 }
