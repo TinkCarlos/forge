@@ -1,5 +1,6 @@
 import { createHmac } from "node:crypto";
 import { assertOutboundAllowed, config, decryptSecret, ForgeError, OUTBOUND_BLOCKED_CODE, safeFetch } from "@forge/core";
+import { maskArgsDeep } from "@forge/governance";
 import { parseJsonValue, repos, type RunRow } from "@forge/store";
 import { describeTickError } from "./tick-guard.js";
 
@@ -45,7 +46,8 @@ export async function enqueueRunWebhook(run: RunRow, status: string): Promise<vo
     appId: run.app_id,
     eventId: event.eventId,
     eventType: event.eventType,
-    payload: event.payload,
+    // P1: stored masked with the run-output mask (maskArgsDeep), so webhook_deliveries holds no clear-text credential.
+    payload: maskArgsDeep(event.payload),
   });
 }
 
@@ -70,7 +72,8 @@ async function deliverOne(row: Record<string, unknown>, fetchImpl: typeof fetch)
       return;
     }
   }
-  const body = JSON.stringify(parseJsonValue(row.payload_json, {}));
+  // P1: the sent body (and so the signature) goes through the same mask; rows queued before the fix are masked here.
+  const body = JSON.stringify(maskArgsDeep(parseJsonValue(row.payload_json, {})));
   let responseStatus: number | null = null;
   let errorMessage: string | null = null;
   let errorCode: string | null = null;
