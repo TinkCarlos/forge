@@ -79,7 +79,8 @@ for (const [net, prefix] of [
   ["64:ff9b::", 96], // NAT64
   ["64:ff9b:1::", 48], // local NAT64
   ["100::", 64], // discard
-  ["2002::", 16], // 6to4 (embeds an IPv4 address)
+  ["2002::", 16], // 6to4 (embeds an IPv4 address): refused as a whole range, like NAT64
+  // Teredo 2001:0::/32 is checked by its embedded server / client IPv4 (teredoEmbeddedIpv4), not as a range.
   ["fc00::", 7], // unique local (fd00::/8 included)
   ["fe80::", 10], // link-local
   ["fec0::", 10], // site-local (deprecated)
@@ -106,12 +107,47 @@ reasonList("link_local", [["169.254.0.0", 16, "ipv4"], ["fe80::", 10, "ipv6"]]);
 reasonList("cgnat", [["100.64.0.0", 10, "ipv4"]]);
 reasonList("multicast", [["224.0.0.0", 4, "ipv4"], ["ff00::", 8, "ipv6"]]);
 
+/** The 8 16-bit words of an IPv6 address (accepts "::" and a dotted IPv4 tail), or null when it does not parse. */
+function ipv6Words(address: string): number[] | null {
+  let text = address;
+  const tail: number[] = [];
+  const dotted = /(\d+\.\d+\.\d+\.\d+)$/.exec(text);
+  if (dotted) {
+    if (isIP(dotted[1]!) !== 4) return null;
+    const o = dotted[1]!.split(".").map(Number);
+    tail.push((o[0]! << 8) | o[1]!, (o[2]! << 8) | o[3]!);
+    text = text.slice(0, -dotted[1]!.length);
+    if (!text.endsWith("::")) text = text.replace(/:$/, "");
+  }
+  const halves = text.split("::");
+  if (halves.length > 2) return null;
+  const part = (h: string | undefined) => (h ? h.split(":").filter((x) => x !== "").map((x) => parseInt(x, 16)) : []);
+  const head = part(halves[0]);
+  const rest = part(halves[1]);
+  const words = halves.length === 2 ? [...head, ...new Array(8 - tail.length - head.length - rest.length).fill(0), ...rest, ...tail] : [...head, ...tail];
+  return words.length === 8 && words.every((w) => Number.isInteger(w) && w >= 0 && w <= 0xffff) ? words : null;
+}
+
+const v4FromWords = (hi: number, lo: number): string => [hi >> 8, hi & 0xff, lo >> 8, lo & 0xff].join(".");
+
+/**
+ * P2-04a: Teredo (2001:0::/32) embeds the server IPv4 (words 2-3) and the client IPv4 XOR 0xffffffff (words 6-7).
+ * Both are checked against the IPv4 rules. (6to4 2002::/16 and NAT64 64:ff9b::/96 are refused as whole ranges.)
+ */
+function teredoEmbeddedIpv4(address: string): string[] {
+  const w = ipv6Words(address);
+  if (!w || w[0] !== 0x2001 || w[1] !== 0) return [];
+  return [v4FromWords(w[2]!, w[3]!), v4FromWords(w[6]! ^ 0xffff, w[7]! ^ 0xffff)];
+}
+const teredoBlocked = (address: string): boolean => teredoEmbeddedIpv4(address).some((v4) => blockList4.check(v4, "ipv4"));
+
 /** Log reason for a blocked address (first matching category; anything else blocked is "reserved"). */
 export function classifyBlockedAddress(address: string): OutboundBlockReason {
   const bare = address.replace(/^\[|\]$/g, "").split("%")[0]!;
   const family = isIP(bare);
   if (!family) return "invalid_address";
   const type = family === 4 ? "ipv4" : "ipv6";
+  if (type === "ipv6" && teredoBlocked(bare)) return "ipv4_embedded";
   for (const [reason, list] of reasonLists) {
     // An IPv4 address must not be matched against IPv6-only rules (see the note on blockList4/6).
     if (list.check(bare, type)) {
@@ -127,7 +163,7 @@ export function isBlockedAddress(address: string): boolean {
   const bare = address.replace(/^\[|\]$/g, "").split("%")[0]!;
   const family = isIP(bare);
   if (family === 4) return blockList4.check(bare, "ipv4");
-  if (family === 6) return blockList6.check(bare, "ipv6");
+  if (family === 6) return blockList6.check(bare, "ipv6") || teredoBlocked(bare);
   return true; // not an IP at all: refuse rather than guess
 }
 
