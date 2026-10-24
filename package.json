@@ -32,7 +32,7 @@
     "typecheck:console": "pnpm --filter @forge/console typecheck",
     "lint": "eslint apps/api apps/worker packages && pnpm --filter @forge/console lint",
     "test:console": "pnpm --filter @forge/console test",
-    "ci": "pnpm typecheck && pnpm typecheck:console && pnpm lint && pnpm test && pnpm test:console && pnpm build:console"
+    "verify": "pnpm typecheck && pnpm typecheck:console && pnpm lint && pnpm test && pnpm test:console && pnpm build:console"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",
