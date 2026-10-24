@@ -1,4 +1,6 @@
-import { useLayoutEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { Loader2 } from 'lucide-react'
+import { createConfirmLatch } from '@/lib/confirm-latch'
 import { cn } from '@/lib/utils'
 import {
   AlertDialog,
@@ -44,6 +46,14 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
     ...actions
   } = props
   const returnTo = useReturnFocus(actions.open)
+  // K-31：同步闩锁挡住机器速度的连点/连按 Enter，只触发一次
+  const loadingRef = useRef(!!isLoading)
+  loadingRef.current = !!isLoading
+  const [latch] = useState(() => createConfirmLatch(() => loadingRef.current))
+  useEffect(() => latch.settle(!!isLoading), [latch, isLoading])
+  useEffect(() => {
+    if (!actions.open) latch.settle(false)
+  }, [latch, actions.open])
   return (
     <AlertDialog {...actions}>
       <AlertDialogContent
@@ -71,11 +81,14 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
           <Button
             type={form ? 'submit' : 'button'}
             form={form}
-            onClick={handleConfirm}
+            onClick={(e) => {
+              if (disabled || isLoading || !latch.fire(() => handleConfirm?.())) e.preventDefault()
+            }}
             variant={destructive ? 'destructive' : 'default'}
             disabled={disabled || isLoading}
             aria-busy={isLoading}
           >
+            {isLoading && <Loader2 aria-hidden className='animate-spin' data-testid='confirm-spinner' />}
             {confirmText ?? '确认'}
           </Button>
         </AlertDialogFooter>
