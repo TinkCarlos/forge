@@ -7,6 +7,7 @@ import { sonnerNoInsertCss } from './vite-plugins/sonner-no-insert-css.ts'
 import { styleSingletonAdopted } from './vite-plugins/style-singleton-adopted.ts'
 import { noInlineArtifacts } from './vite-plugins/no-inline-artifacts.ts'
 import { chunkBudget, vendorChunk } from './vite-plugins/chunk-budget.ts'
+import { productionBuildGuard } from './vite-plugins/production-build-guard.ts'
 
 const api = process.env.FORGE_API_URL ?? 'http://127.0.0.1:3100'
 
@@ -19,6 +20,7 @@ export default defineConfig({
   // FE-CSP-03：Radix 弹层的滚动锁样式改走 adoptedStyleSheets
   // 产物断言：dist 里出现内联脚本 / 注入式内联样式就让构建失败（vite-plugins/no-inline-artifacts.ts）
   plugins: [
+    productionBuildGuard(),
     sonnerNoInsertCss(),
     styleSingletonAdopted(),
     tanstackRouter({ target: 'react', autoCodeSplitting: true }),

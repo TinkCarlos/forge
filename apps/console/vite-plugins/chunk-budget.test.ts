@@ -31,6 +31,18 @@ describe('vendorChunk 分组', () => {
     [pnpm('lucide-react'), 'vendor-misc'],
     [pnpm('react-remove-scroll'), 'vendor-misc'],
     ['C:\\repo\\node_modules\\@radix-ui\\react-popover\\dist\\index.mjs', 'vendor-radix'],
+    // 干净 frozen install 的真实路径形态：.pnpm/<名@版本_peer>/node_modules/<包>，路径里到处是 "react"，
+    // 只能按最后一个 node_modules/ 后的包名分组；vendor-react 只收 react / react-dom / scheduler
+    ['/w/node_modules/.pnpm/@radix-ui+react-scroll-area@1.4.0_@types+react-dom@19.3.0_@types+react@19.3.0__@types+r_c71009d6/node_modules/@radix-ui/react-scroll-area/dist/index.mjs', 'vendor-radix'],
+    ['/w/node_modules/.pnpm/react-remove-scroll@2.7.1_@types+react@19.3.0_react@19.3.0/node_modules/react-remove-scroll/dist/es2015/Combination.js', 'vendor-misc'],
+    ['/w/node_modules/.pnpm/react-style-singleton@2.2.3_@types+react@19.3.0_react@19.3.0/node_modules/react-style-singleton/dist/es2015/singleton.js', 'vendor-misc'],
+    ['/w/node_modules/.pnpm/@floating-ui+react-dom@2.1.6_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/@floating-ui/react-dom/dist/floating-ui.react-dom.mjs', 'vendor-misc'],
+    ['/w/node_modules/.pnpm/use-sync-external-store@1.6.0_react@19.3.0/node_modules/use-sync-external-store/shim/index.js', 'vendor-misc'],
+    ['/w/node_modules/.pnpm/@tanstack+react-query@5.90.0_react@19.3.0/node_modules/@tanstack/react-query/build/modern/index.js', 'vendor-tanstack'],
+    ['/w/node_modules/.pnpm/react-dom@19.3.0_react@19.3.0/node_modules/react-dom/cjs/react-dom-client.production.js', 'vendor-react'],
+    ['/w/node_modules/.pnpm/react@19.3.0/node_modules/react/cjs/react-jsx-runtime.production.js', 'vendor-react'],
+    ['/w/node_modules/.pnpm/scheduler@0.27.0/node_modules/scheduler/cjs/scheduler.production.js', 'vendor-react'],
+    ['/w/node_modules/.pnpm/react-dom@19.3.0_react@19.3.0/node_modules/react-dom/cjs/react-dom-client.production.js?commonjs-es-import', 'vendor-react'],
   ])('%s → %s', async (id, chunk) => {
     expect((await load()).vendorChunk(id)).toBe(chunk)
   })
