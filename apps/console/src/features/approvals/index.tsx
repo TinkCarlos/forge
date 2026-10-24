@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { motion } from 'motion/react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, ExternalLink, MoreHorizontal, X, Copy } from 'lucide-react'
@@ -7,6 +7,7 @@ import { onReject } from '@/lib/settle'
 import { api, ApiError } from '@/lib/api'
 import { useCan } from '@/hooks/use-can'
 import { shortTime } from '@/lib/format'
+import { clampPage, pageCount, showPager } from '@/lib/pagination'
 import { handleDialogServerError } from '@/lib/handle-server-error'
 import { Button } from '@/components/ui/button'
 import {
@@ -82,7 +83,7 @@ function RunId({ id }: { id: string }) {
 export function Approvals() {
   const qc = useQueryClient()
   const [page, setPage] = useState(1)
-  const { data, error, isPending, refetch } = useQuery(approvalsQuery(page, SIZE))
+  const { data, error, isPending, isPlaceholderData, refetch } = useQuery(approvalsQuery(page, SIZE))
   const [pending, setPending] = useState<Decision>(null)
   const [comment, setComment] = useState('')
   // K-29：没有 approval.decide（如 auditor）时只读，不显示批准/驳回
@@ -108,7 +109,12 @@ export function Approvals() {
   }
 
   const total = data?.total ?? 0
-  const pages = Math.max(1, Math.ceil(total / SIZE))
+  const pages = pageCount(total, SIZE)
+  // K-30：处理掉当前页最后一条后，当前页超出总页数 → 回到最后一页（而不是停在空页上）
+  const clamped = data && !isPlaceholderData ? clampPage(page, total, SIZE) : page
+  useEffect(() => {
+    if (clamped !== page) setPage(clamped)
+  }, [clamped, page])
   const tool = (a: Approval) => a.tool_name || '工具'
 
   return (
@@ -128,7 +134,7 @@ export function Approvals() {
           <TableBody>
             {error ? (
               <TableError cols={COLS} error={error} onRetry={() => refetch().catch(onReject({ toast: '重试失败，请稍后再试' }))} />
-            ) : isPending ? (
+            ) : isPending || clamped !== page ? (
               <SkeletonRows cols={APPROVAL_SKELETON} />
             ) : data.items.length === 0 ? (
               <TableMessage cols={COLS} kind='empty' title='没有待审批的调用' hint='Agent 调用高风险工具时会暂停，等你在这里批准或驳回。' />
@@ -188,7 +194,7 @@ export function Approvals() {
         </Table>
       </div>
 
-      {total > SIZE && (
+      {showPager(total, page) && (
         <div className='flex items-center justify-between text-sm text-muted-foreground'>
           <span>共 {total} 条</span>
           <div className='flex items-center gap-2'>
