@@ -127,8 +127,8 @@ export function Agents() {
         accessorFn: (a) => `${a.name} ${a.key}`,
         cell: ({ row: { original: a } }) => (
           <div className='min-w-0'>
-            <div className='truncate font-medium lg:max-w-[200px]' title={a.name}>{a.name}</div>
-            <div className='truncate font-mono text-xs text-muted-foreground lg:max-w-[200px]' title={a.key}>{a.key}</div>
+            <div className='truncate font-medium lg:max-w-[184px]' title={a.name}>{a.name}</div>
+            <div className='truncate font-mono text-xs text-muted-foreground lg:max-w-[184px]' title={a.key}>{a.key}</div>
           </div>
         ),
       },
@@ -252,7 +252,7 @@ export function Agents() {
             {table.getHeaderGroups().map((hg) => (
               <TableRow key={hg.id} className='hover:bg-transparent'>
                 {hg.headers.map((h) => (
-                  <TableHead key={h.id} className={h.id === 'actions' ? 'w-56' : h.id === 'name' ? 'w-[200px] max-w-[200px]' : undefined}>
+                  <TableHead key={h.id} className={h.id === 'actions' ? 'w-56' : h.id === 'name' ? 'w-[200px] max-w-[200px]' /* K-19：列宽含 2×8px 内边距共 200px，内容 184px */ : undefined}>
                     {flexRender(h.column.columnDef.header, h.getContext())}
                   </TableHead>
                 ))}

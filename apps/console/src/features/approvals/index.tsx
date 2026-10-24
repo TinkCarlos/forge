@@ -139,7 +139,7 @@ export function Approvals() {
                 return (
                   <MotionRow key={a.id} {...rowMotion(i)} className='h-13 [&>td]:py-2'>
                     <TableCell>
-                      <div className='truncate font-medium lg:max-w-[200px]' title={a.agent_name}>{a.agent_name}</div>
+                      <div className='truncate font-medium lg:max-w-[184px]' title={a.agent_name}>{a.agent_name}</div>
                       <RunId id={a.run_id} />
                     </TableCell>
                     <TableCell data-label='工具与参数' className='max-lg:items-start'>
