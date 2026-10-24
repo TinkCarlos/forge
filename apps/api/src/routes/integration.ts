@@ -9,7 +9,7 @@ import {
   bodyOf,
   param,
   stringBody,
-  runInputBody,
+  externalRunInputBody,
   presentRun,
   presentRunOutput,
   requireBodyString,
@@ -55,7 +55,7 @@ export default async function integrationRoutes(app: FastifyInstance): Promise<v
       agentId: agent.id,
       versionId: agent.published_version_id,
       principal,
-      input: runInputBody(body),
+      input: externalRunInputBody(body),
       triggerType: "connector",
       triggerRef: null,
     });

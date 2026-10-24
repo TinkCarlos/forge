@@ -79,16 +79,45 @@ export function jsonBody(body: Record<string, unknown>, key: string, fallback: u
 }
 
 /**
- * Item 9: run input from `input` (object or JSON text) and/or `text`. Both given while `input` is an object (or array)
- * without a `text` key used to store the user message as "[object Object]"; that combination is 400 CFG-8501
- * (details.field = "text"). `text` alone becomes `{ text }`.
+ * Item 9: run input from `input` (object or JSON text) and/or `text`. A non-empty `text` (after trim) next to an `input`
+ * object (or array) without a `text` key used to store the user message as "[object Object]"; that combination is
+ * 400 CFG-8501 (details.field = "text"). A "" / blank `text` counts as not sent there, so `input` alone is used.
+ * `text` alone becomes `{ text }`.
  */
 export function runInputBody(body: Record<string, unknown>): unknown {
-  const input = jsonBody(body, "input", { text: stringBody(body, "text", "") }, "objectOrArray");
-  if (Object.hasOwn(body, "text") && Object.hasOwn(body, "input") && input !== null && typeof input === "object" && !("text" in input)) {
+  const text = stringBody(body, "text", "");
+  const input = jsonBody(body, "input", { text }, "objectOrArray");
+  if (text.trim() && Object.hasOwn(body, "input") && input !== null && typeof input === "object" && !("text" in input)) {
     throw errors.invalid("text 与不含 text 字段的 input 不能同时传", { field: "text" });
   }
   return input;
+}
+
+/** Item E: text is empty when missing, null, "" or blank after trim. */
+const isEmptyText = (text: unknown): boolean => text === undefined || text === null || (typeof text === "string" && !text.trim());
+
+/**
+ * Item E: the empty-input rule shared by /open and /integration. text is empty per isEmptyText; input (already parsed
+ * from JSON text) when missing, null, {} or an object whose only key is an empty `text`. Any other key makes it
+ * non-empty. Empty only when both are.
+ */
+export function isEmptyRunInput(text: unknown, input: unknown): boolean {
+  const keys = jsonShapeMatches(input, "object") ? Object.keys(input as object) : null;
+  const inputEmpty = input === undefined || input === null || (keys !== null && (!keys.length || (keys.length === 1 && keys[0] === "text" && isEmptyText((input as Record<string, unknown>).text))));
+  return isEmptyText(text) && inputEmpty;
+}
+
+/**
+ * Item E: run input for /open (runs, invoke) and /integration. `input` must be an object here (an array, also as JSON
+ * text, is 400 CFG-8501 like the item-A shape checks). Both sides empty -> 400 CFG-8501「缺少字段: text 或 input」 (no
+ * Run). Otherwise an empty side is dropped and the rest goes through runInputBody. Multipart fields are not parsed into
+ * the body, so a multipart request arrives here with neither field. Admin keeps runInputBody unchanged.
+ */
+export function externalRunInputBody(body: Record<string, unknown>): unknown {
+  const text = stringBody(body, "text");
+  const input = jsonBody(body, "input", null, "object");
+  if (isEmptyRunInput(text, input)) throw errors.invalid("缺少字段: text 或 input");
+  return runInputBody({ ...(text.trim() ? { text } : {}), ...(isEmptyRunInput(undefined, input) ? {} : { input }) });
 }
 
 /**

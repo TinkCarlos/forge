@@ -182,7 +182,9 @@ Idempotency-Key: 4b1c6f0e-...
 | `options.timeoutSeconds` | 否 | 只能小于等于策略上限 |
 | `threadId` | 否 | P1；传入则续接会话 |
 
-顶层 `text`（当前实现，item 9）：可代替 `input` 传纯文本（等同 `input: { text }`）。同时传 `text` 和不含 `text` 字段的 `input` 对象 → `400 CFG-8501`（`details.field = "text"`），不建 Run（之前用户消息会存成 `[object Object]`）；只传不含 `text` 的 `input` 对象时，用户消息存为该对象的 JSON 文本。管理端试运行与 Connector `/integration/v1/runs` 同一规则。
+顶层 `text`（当前实现，item 9）：可代替 `input` 传纯文本（等同 `input: { text }`）。同时传非空 `text`（trim 后不为空）和不含 `text` 字段的 `input` 对象 → `400 CFG-8501`（`details.field = "text"`），不建 Run；`text` 为 `""` 或纯空白时当作没传，只带 `input` 对象是合法请求（item E 调整，管理端试运行、开放平台、Connector 同改；之前也是 400）（之前用户消息会存成 `[object Object]`）；只传不含 `text` 的 `input` 对象时，用户消息存为该对象的 JSON 文本。管理端试运行与 Connector `/integration/v1/runs` 同一规则。
+
+空输入（当前实现，item E，仅 `/open/v1/agents/{key}/runs`、`/invoke` 与 `/integration/v1/runs`）：`text` 缺省、`null`、`""` 或 trim 后为空算空；`input` 缺省、`null`、`{}`，或只有一个 `text` 键且其值为 `null` / `""` / 纯空白（均含 JSON 文本写法）算空；带了其他键（如 `{ "text": "", "file": … }`）不算空。这两个入口的 `input` 必须是对象（或对象的 JSON 文本）：`[]`、`"[]"` 等数组 → `400 CFG-8501`，不建 Run（之前 202 建 Run）。两边都空 → `400 CFG-8501「缺少字段: text 或 input」`（无 `details`），不建 Run、不写审计、不扣配额；之前这类请求返回 202 并建出 `input = {"text":""}` 的 Run。任一边非空照常建 Run，空的一边当作没传：`text` 有内容配 `input: {}` 等同只传 `text`；空白 `text` 配 `input` 对象按只传 `input` 处理（见上）。`text` / `input` 现在接受 `null`（等同没传，之前是 ajv 400）。`multipart/form-data` 请求的字段不会解析进请求体，所以到这里一律按空输入处理（`/open` 返回上面的 400；`/integration` 先报 `缺少字段: agentKey`）。管理端试运行 `POST /admin/api/agents/{id}/run` 与定时任务立即运行 `POST /admin/api/schedules/{id}/run` 不接入：试运行遇到无 body、`{}`、`text: ""` / 空白、`input: {}` 仍建 Run，`text: null` / `input: null` 仍是 ajv 400；立即运行不读请求体，用定时任务存的 `input`。
 
 响应 `202 Accepted`：
 

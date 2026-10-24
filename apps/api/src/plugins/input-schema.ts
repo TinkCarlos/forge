@@ -74,6 +74,9 @@ const DAILY_QUOTA = int(1, 10_000_000);
 const PROVIDER_TIMEOUT_MS = int(1_000, 600_000);
 const jsonObject = (maxLength: number) => ({ type: ["object", "string"], maxLength }) as const;
 const runInput = { type: ["object", "array", "string"], maxLength: MIB, maxItems: 1000 } as const;
+// Item E: the external run entries (/open, /integration) also accept null for text / input (null counts as empty); input is an object (or its JSON text), not an array.
+const externalText = { type: ["string", "null"], maxLength: MIB } as const;
+const externalRunInput = { type: ["object", "string", "null"], maxLength: MIB } as const;
 const arr = <T extends object>(maxItems: number, items: T) => ({ type: "array", maxItems, items }) as const;
 const obj = <T extends Record<string, object>>(properties: T) => ({ type: "object", properties }) as const;
 /**
@@ -183,8 +186,8 @@ export const ROUTE_SCHEMAS = {
   // runs: input JSON; threads.id CHAR(26); agents.key 64
   // External callers (Connector /integration/v1/*, open platform /open/*): fields and types declared, body NOT
   // closed (architect P1: only admin / console write routes are closed; external clients may send extra fields).
-  integrationRun: { body: obj({ agentKey: str(64), text: str(MIB), input: runInput }) },
-  openRun: { body: obj({ text: str(MIB), input: runInput, threadId: str(ID_MAX) }) },
+  integrationRun: { body: obj({ agentKey: str(64), text: externalText, input: externalRunInput }) },
+  openRun: { body: obj({ text: externalText, input: externalRunInput, threadId: str(ID_MAX) }) },
   // users.email 255; password bounded at 256 like userCreate
   localLogin: { body: body(obj({ email: str(255), password: str(256) })) },
   // P1: write routes that take no body (actions such as logout, cancel, enable / disable / run, refresh, test,

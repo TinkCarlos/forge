@@ -118,3 +118,29 @@ describe("item 9: text + object input without a text key -> 400", () => {
     expect(messages.some((m) => m.includes("foo"))).toBe(true);
   });
 });
+
+describe("item 9 adjusted: only a non-empty (after trim) text conflicts with an input object without a text key", () => {
+  const latestInput = async () => (await query<{ input_json: unknown }>("SELECT input_json FROM runs WHERE agent_id = ? ORDER BY created_at DESC, id DESC LIMIT 1", [agentId]))[0]?.input_json;
+  for (const entry of entries) {
+    it(`${entry.name}: text "" / blank + input object -> Run with that input (positive)`, async () => {
+      for (const [i, text] of ["", "   "].entries()) {
+        const marker = `${entry.name}-${i}`;
+        const runsBefore = await runCount();
+        const res = await entry.call({ text, input: { marker } });
+        expect([200, 201, 202], `${JSON.stringify(text)}: ${res.body}`).toContain(res.statusCode);
+        expect(await runCount()).toBe(runsBefore + 1);
+        const stored = await latestInput();
+        expect(typeof stored === "string" ? JSON.parse(stored) : stored).toEqual({ marker });
+      }
+    });
+
+    it(`${entry.name}: padded non-empty text + input object -> 400 CFG-8501, no Run (negative)`, async () => {
+      const runsBefore = await runCount();
+      const res = await entry.call({ text: "  hi  ", input: { foo: 1 } });
+      expect(res.statusCode, res.body).toBe(400);
+      expect(errorOf(res).code).toBe("CFG-8501");
+      expect(errorDetails(res)?.field).toBe("text");
+      expect(await runCount()).toBe(runsBefore);
+    });
+  }
+});
