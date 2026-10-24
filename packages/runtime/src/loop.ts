@@ -142,7 +142,7 @@ async function runLoop(run: RunRow, workerId: string, lease: AbortSignal): Promi
         summary: { modelKey: `${candidate.provider}/${candidate.model}`, attempt },
       });
       const deltas = createDeltaBuffer(async (delta) => {
-        await emit(fresh.id, "message.delta", { delta });
+        await emit(fresh.id, "message.delta", { delta, masked: true });
       });
       try {
         result = await callModel({

@@ -342,6 +342,9 @@ data: {"type":"run.completed","seq":15,"runId":"...","data":{"status":"succeeded
 规则：
 - `seq` 在同一 Run 内严格递增；`id` 等于 `seq`。
 - 事件只保证单 Run 内有序，不保证跨 Run。
+- 打码（P1）：所有事件的 `data` 与 REST 同等程度打码，用的是 Run 输出的同一个掩码函数（敏感键、`Bearer`/`Basic`/`sk-`/JWT、URL 查询参数、`password=`/`密码：` 这类正文凭据都换成 `***`）。事件写入 `run_events` 时就已打码；修复前写入的旧事件在读取时再打一遍（不回填、不改库）。
+- `message.delta` 是对累计全文整体打码后只下发已稳定的前缀：尾部还可能是某个凭据模式的开头、或正处在未结束的匹配里时先扣住，直到出现分隔符或消息结束；扣住的部分超过 4KB 时打码成 `***` 下发，该匹配余下部分不再下发。`***` 不会被拆到两个 delta 里。完整、规范的打码文本以 `message.completed.data.text` 为准。
+- 回放：已经有 `message.completed` 的消息不再重放它的 `message.delta`，只发打码后的完整消息。
 - Redis 保留 1 小时热事件；更早的事件从 MySQL 里程碑重建（Token 增量不重建）。
 - 重连时若 `Last-Event-ID` 已过期，服务端发送 `event: reset` 与当前快照，客户端应重新拉取 Run/结果。
 - SSE 与 Webhook 可同时使用；Webhook 是可靠投递，SSE 是实时体验。

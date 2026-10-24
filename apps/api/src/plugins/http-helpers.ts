@@ -183,13 +183,29 @@ export function requireBodyString(body: Record<string, unknown>, key: string): s
 }
 
 /**
- * P1: the terminal run.* events (run.completed / failed / cancelled / budget_exhausted) carry the run output; it leaves
- * the SSE stream masked like presentRunOutput. Other events pass unchanged (message.delta fragments must not be
- * JSON-parsed or masked piecewise).
+ * P1: every event leaves the SSE stream masked like REST, with the run-output mask (maskArgsDeep via presentRunOutput),
+ * including rows written before message events were masked at write time (no backfill; the stored row is unchanged).
+ * message.delta rows written by the current runtime are flagged `masked: true` (masked over the accumulated message,
+ * see createStreamMasker) and are not masked again piecewise; the flag is not sent.
  */
 export function presentEventData(type: string, data: unknown): unknown {
-  if (!type.startsWith("run.") || data === null || typeof data !== "object" || Array.isArray(data) || !("output" in data)) return data;
-  return { ...(data as Record<string, unknown>), output: presentRunOutput((data as Record<string, unknown>).output) };
+  if (type === "message.delta" && data !== null && typeof data === "object" && !Array.isArray(data) && (data as Record<string, unknown>).masked === true) {
+    const { masked: _masked, ...rest } = data as Record<string, unknown>;
+    return rest;
+  }
+  return presentRunOutput(data);
+}
+
+/**
+ * P1 replay: a message.delta followed (in the same batch) by a message.completed belongs to a message that is already
+ * complete; only the masked full message is sent, not its fragments.
+ */
+export function replayableEvents<T extends { type: string }>(events: T[]): T[] {
+  let lastCompleted = -1;
+  events.forEach((event, index) => {
+    if (event.type === "message.completed") lastCompleted = index;
+  });
+  return events.filter((event, index) => !(event.type === "message.delta" && index < lastCompleted));
 }
 
 export async function streamRun(request: FastifyRequest, reply: FastifyReply, runId: string): Promise<void> {
@@ -209,8 +225,8 @@ export async function streamRun(request: FastifyRequest, reply: FastifyReply, ru
     if (closed) return;
     try {
       const events = await repos.listEvents(runId, lastSeq);
-      for (const event of events) {
-        lastSeq = Number(event.seq);
+      for (const event of events) lastSeq = Math.max(lastSeq, Number(event.seq));
+      for (const event of replayableEvents(events)) {
         const data = JSON.stringify({
           type: event.type,
           seq: event.seq,
