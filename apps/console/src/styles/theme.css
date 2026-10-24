@@ -64,6 +64,9 @@
 }
 
 @theme inline {
+  /* K-15 / UI-056：设计字号 12/13/14/16/20/28，text-2xl 按设计是 28px（Tailwind 默认 24px）。 */
+  --text-2xl: 1.75rem;
+  --text-2xl--line-height: 2.25rem;
   --font-inter: 'Inter', 'sans-serif';
   --font-manrope: 'Manrope', 'sans-serif';
 

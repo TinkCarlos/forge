@@ -17,7 +17,7 @@ export function SignIn() {
         <Card className='gap-4'>
           <CardHeader>
             {/* 页面唯一的 h1（a11y：登录页原来没有标题层级），样式与 CardTitle 一致 */}
-            <h1 data-slot='card-title' className='text-lg leading-none font-semibold tracking-tight'>登录 Forge 控制台</h1>
+            <h1 data-slot='card-title' className='text-xl leading-none font-semibold tracking-tight'>登录 Forge 控制台</h1>
             <CardDescription>用管理员账号登录，管理 Agent、审批和开放 API。</CardDescription>
           </CardHeader>
           <CardContent className='grid gap-4'>
