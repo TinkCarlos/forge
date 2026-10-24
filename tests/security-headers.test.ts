@@ -26,7 +26,14 @@ function checkHeaders(h: Hdrs, label: string): void {
   expect(h["x-content-type-options"], `${label} nosniff`).toBe("nosniff");
   expect(h["x-frame-options"], `${label} XFO`).toBe("DENY");
   expect(["no-referrer", "strict-origin-when-cross-origin"], `${label} Referrer-Policy`).toContain(h["referrer-policy"]);
+  expect(h["cross-origin-opener-policy"], `${label} COOP`).toBe("same-origin");
 }
+
+// P3: the full policy strings, written out literally (not taken from the exported constants), so adding, dropping or
+// loosening any directive fails here.
+const STRICT_CSP =
+  "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
+const LEGACY_CSP = `${STRICT_CSP}; script-src-attr 'unsafe-inline'; style-src-attr 'unsafe-inline'`;
 
 beforeAll(async () => {
   app = await buildApp({ logger: false });
@@ -58,6 +65,10 @@ describe("security headers on every response", () => {
     ["POST bad JSON (400)", () => app.inject({ method: "POST", url: "/auth/local/login", headers: { "content-type": "application/json" }, payload: "{bad" })],
     ["GET /assets/app.js (static)", () => app.inject({ method: "GET", url: "/assets/app.js" })],
     ["GET /healthz", () => app.inject({ method: "GET", url: "/healthz" })],
+    // Framework-generated errors (P3): rejected before any route handler runs.
+    ["POST text/plain (415)", () => app.inject({ method: "POST", url: "/auth/local/login", headers: { "content-type": "text/plain" }, payload: "x" })],
+    ["POST body over bodyLimit (413)", () => app.inject({ method: "POST", url: "/auth/local/login", headers: { "content-type": "application/json" }, payload: `{"x":"${"a".repeat(2 * 1024 * 1024 + 16)}"}` })],
+    ["DELETE on a GET-only path (404)", () => app.inject({ method: "DELETE", url: "/healthz" })],
   ];
   for (const [label, run] of cases) {
     it(label, async () => checkHeaders((await run()).headers, label));
@@ -68,6 +79,19 @@ describe("security headers on every response", () => {
     expect(String(res.headers["content-type"])).toContain("text/event-stream");
     expect(res.body).toContain(": forge stream");
     checkHeaders(res.headers, "SSE");
+  });
+  it("framework errors keep their status (415 / 413 / 404)", async () => {
+    const statuses = [];
+    for (const [label, run] of cases.filter(([l]) => /\((415|413|404)\)$/.test(l))) statuses.push([label, (await run()).statusCode]);
+    expect(statuses.map(([, code]) => code)).toEqual([415, 413, 404]);
+  });
+  it("CSP strings are pinned whole: strict everywhere, legacy only on / and /index.html", async () => {
+    for (const url of ["/next/", "/next/agents", "/auth/session", "/healthz", "/assets/app.js", "/no-such-route-" + suffix, "/index.htm", "/next/index.html"]) {
+      expect([url, (await app.inject({ method: "GET", url })).headers["content-security-policy"]]).toEqual([url, STRICT_CSP]);
+    }
+    for (const url of ["/", "/index.html", "/?x=1"]) {
+      expect([url, (await app.inject({ method: "GET", url })).headers["content-security-policy"]]).toEqual([url, LEGACY_CSP]);
+    }
   });
   it("new console policy has no unsafe-inline at all; only the legacy page allows inline attributes", async () => {
     const next = String((await app.inject({ method: "GET", url: "/next/" })).headers["content-security-policy"]);
