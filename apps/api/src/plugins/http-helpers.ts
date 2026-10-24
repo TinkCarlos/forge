@@ -109,7 +109,15 @@ export function assertAgentWritable(principal: Principal, agent: AgentRow): void
   if (!agent.owner_org_unit_id && principal.role !== "platform_admin") throw errors.forbidden("无主 Agent 仅平台管理员可修改");
 }
 
-/** Run DTO shared by admin, open and integration APIs. `input` is masked (maskArgsDeep); the stored row is unchanged. */
+/**
+ * P1 (U-12 follow-up): run output leaving the server, in every API (admin, open, integration; run DTO, /result and the
+ * open invoke wait body). Same structured rules as input and tool results (maskArgsDeep); the stored row is unchanged.
+ */
+export function presentRunOutput(output: unknown): unknown {
+  return maskArgsDeep(output);
+}
+
+/** Run DTO shared by admin, open and integration APIs. `input` and `output` are masked (maskArgsDeep); the stored row is unchanged. */
 export function presentRun(run: RunRow) {
   return {
     id: run.id,
@@ -122,7 +130,7 @@ export function presentRun(run: RunRow) {
     triggerType: run.trigger_type,
     triggerRef: run.trigger_ref,
     input: maskArgsDeep(run.input_json),
-    output: run.output_json,
+    output: presentRunOutput(run.output_json),
     usage: run.usage_json,
     costUsd: Number(run.cost_usd),
     errorCode: run.error_code,
@@ -154,6 +162,16 @@ export function requireBodyString(body: Record<string, unknown>, key: string): s
   return value;
 }
 
+/**
+ * P1: the terminal run.* events (run.completed / failed / cancelled / budget_exhausted) carry the run output; it leaves
+ * the SSE stream masked like presentRunOutput. Other events pass unchanged (message.delta fragments must not be
+ * JSON-parsed or masked piecewise).
+ */
+export function presentEventData(type: string, data: unknown): unknown {
+  if (!type.startsWith("run.") || data === null || typeof data !== "object" || Array.isArray(data) || !("output" in data)) return data;
+  return { ...(data as Record<string, unknown>), output: presentRunOutput((data as Record<string, unknown>).output) };
+}
+
 export async function streamRun(request: FastifyRequest, reply: FastifyReply, runId: string): Promise<void> {
   const header = request.headers["last-event-id"];
   let lastSeq = Number(Array.isArray(header) ? header[0] : header ?? 0) || 0;
@@ -178,7 +196,7 @@ export async function streamRun(request: FastifyRequest, reply: FastifyReply, ru
           seq: event.seq,
           runId,
           ts: new Date(event.created_at).toISOString(),
-          data: parseJsonValue(event.data_json, {}),
+          data: presentEventData(event.type, parseJsonValue(event.data_json, {})),
         });
         reply.raw.write(`id: ${event.seq}\nevent: ${event.type}\ndata: ${data}\n\n`);
       }
