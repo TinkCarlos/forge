@@ -7,7 +7,7 @@ import { onReject } from '@/lib/settle'
 import { api, ApiError } from '@/lib/api'
 import { useCan } from '@/hooks/use-can'
 import { shortTime } from '@/lib/format'
-import { handleServerError } from '@/lib/handle-server-error'
+import { handleDialogServerError } from '@/lib/handle-server-error'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -97,7 +97,7 @@ export function Approvals() {
       qc.invalidateQueries({ queryKey: ['approvals'] }).catch(onReject({ warn: 'approvals: refresh after decide' }))
     },
     onError: (err) => {
-      handleServerError(err)
+      handleDialogServerError(err, () => setPending(null))
       if (err instanceof ApiError && err.status === 409) qc.invalidateQueries({ queryKey: ['approvals'] }).catch(onReject({ warn: 'approvals: refresh after conflict' }))
     },
   })

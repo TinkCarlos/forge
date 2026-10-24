@@ -15,7 +15,7 @@ import { onReject } from '@/lib/settle'
 import { api } from '@/lib/api'
 import { useCan } from '@/hooks/use-can'
 import { versionLabel } from '@/lib/format'
-import { handleServerError } from '@/lib/handle-server-error'
+import { handleDialogServerError, handleServerError } from '@/lib/handle-server-error'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -89,7 +89,7 @@ export function Agents() {
       setPending(null)
       qc.invalidateQueries({ queryKey: ['agents'] }).catch(onReject({ warn: 'agents: refresh after API toggle' }))
     },
-    onError: handleServerError,
+    onError: (err) => handleDialogServerError(err, () => setPending(null)),
   })
 
   const publish = useMutation({
@@ -100,7 +100,7 @@ export function Agents() {
       setPending(null)
       qc.invalidateQueries({ queryKey: ['agents'] }).catch(onReject({ warn: 'agents: refresh after publish' }))
     },
-    onError: handleServerError,
+    onError: (err) => handleDialogServerError(err, () => setPending(null)),
   })
 
   // 发布前实时确认草稿还在（列表可能已过期）
