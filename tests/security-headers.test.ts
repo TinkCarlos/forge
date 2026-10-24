@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomBytes } from "node:crypto";
+import { readFileSync } from "node:fs";
 import type { FastifyInstance } from "fastify";
 import { sessionCookieValue } from "@forge/identity";
 import { execute, repos } from "@forge/store";
@@ -75,5 +76,20 @@ describe("security headers on every response", () => {
     const legacy = String((await app.inject({ method: "GET", url: "/" })).headers["content-security-policy"]);
     expect(legacy).toContain("script-src 'self'");
     expect(legacy).not.toMatch(/script-src [^;]*unsafe-inline/);
+  });
+  it("API and asset responses never relax the policy (no unsafe-inline anywhere)", async () => {
+    for (const url of ["/auth/session", "/admin/api/agents", "/healthz", "/assets/app.js", "/index.html?x=1#/"]) {
+      const res = await app.inject({ method: "GET", url, headers: url.startsWith("/admin") ? headers : {} });
+      const csp = String(res.headers["content-security-policy"]);
+      if (url.startsWith("/index.html")) expect(csp, url).not.toMatch(/script-src [^;]*unsafe-inline/);
+      else expect(csp, url).not.toContain("unsafe-inline");
+    }
+  });
+  it("S-10 legacy-page relaxation is recorded as a temporary, architect-approved exception (doc + code)", () => {
+    const doc = readFileSync(new URL("../docs/02-architecture/permissions.md", import.meta.url), "utf8");
+    expect(doc).toMatch(/S-10[^\n]*临时例外/);
+    expect(doc).toContain("script-src-attr 'unsafe-inline'");
+    const code = readFileSync(new URL("../apps/api/src/plugins/security-headers.ts", import.meta.url), "utf8");
+    expect(code).toContain("TEMPORARY EXCEPTION (S-10)");
   });
 });

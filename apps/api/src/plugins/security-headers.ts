@@ -23,7 +23,10 @@ export const CONTENT_SECURITY_POLICY = BASE_DIRECTIVES.join("; ");
 /**
  * Legacy console (`GET /`, apps/console/public): its markup uses inline onclick= / style= attributes, so only
  * attribute-level inline is allowed there (script-src-attr / style-src-attr); <script> blocks and eval stay blocked.
- * Needs the architect's written consent (P1-06 ⑤); scoped to that one HTML route.
+ * TEMPORARY EXCEPTION (S-10), approved in writing by the architect (P1-06 ⑤), recorded in
+ * docs/02-architecture/permissions.md 4.5: only `/` and `/index.html` get it; script-src stays 'self' (no
+ * unsafe-inline), and /next/, /api/*, /admin/api/*, /auth/* and static assets are never relaxed
+ * (pinned by tests/security-headers.test.ts). Remove once the legacy console is retired or drops inline attributes.
  */
 export const LEGACY_CONSOLE_CSP = [...BASE_DIRECTIVES, "script-src-attr 'unsafe-inline'", "style-src-attr 'unsafe-inline'"].join("; ");
 
