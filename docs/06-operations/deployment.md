@@ -1,6 +1,6 @@
 # Forge 部署与运维
 
-版本：1.0　日期：2026-10-21　状态：待评审
+版本：1.1　日期：2026-10-24　状态：待评审
 
 > 发布执行以 [release-process.md](release-process.md) 与公司 K8s/CI/Nginx 上游文档为准。本文描述部署拓扑、配置项与日常运维。
 
@@ -61,7 +61,8 @@ minio:9000/9001
 | --- | --- | --- |
 | `NODE_ENV` | 是 | 生产写 `production`。**本地开发必须显式写 `NODE_ENV=development`**（跑测试为 `test`）：只有这两个值才允许使用内置开发密钥（启动时打 warn）、非 secure 的会话 cookie、`SSO_MODE` 不为 `required`、`scripts/reset.ts`；未设置或其他任何值一律按生产处理，缺 `FORGE_MASTER_KEY` / `SESSION_SECRET` / `API_KEY_PEPPER` 直接拒绝启动（rc=1，报错只列变量名） |
 | `FORGE_PUBLIC_URL` | 是 | `https://forge.acme.internal` |
-| `PORT` | 否 | 默认 3000 |
+| `PORT` | 否 | 默认 3000；必须是 1–65535 的整数，否则拒绝启动 |
+| `HOST` | 否 | 监听地址，默认 `0.0.0.0`（所有网卡）。只接受 IPv4/IPv6 地址或主机名，不能带协议、端口或空格。单机部署且前面有本机 Nginx 时建议显式写 `127.0.0.1`；K8s 内保持默认，由 Service/NetworkPolicy 控制暴露面 |
 | `DATABASE_URL` | 是 | `mysql://forge_app:***@mysql:3306/forge`。所有环境都必须显式设置，代码里没有默认值；缺失时启动失败（rc=1，报错只写变量名，不打印连接串）。`pnpm smoke:isolated` 同样要求显式设置，且只会写以 `_test` 结尾的库 |
 | `REDIS_URL` | 是 | `redis://redis:6379/0` |
 | `TEMPORAL_ADDRESS` | 是 | `temporal:7233` |
@@ -70,8 +71,11 @@ minio:9000/9001
 | `S3_REGION` | 是 | `ap-shanghai` |
 | `S3_BUCKET` | 是 | `forge-prod` |
 | `S3_ACCESS_KEY` / `S3_SECRET_KEY` | 是 | Secret 注入 |
-| `FORGE_MASTER_KEY` | 是 | 32 字节 base64；信封加密主密钥；单独托管 |
-| `SESSION_SECRET` | 是 | BFF 会话签名。只含空白（空格、制表符、换行）的密钥一律视为未设置（P3-18）：`FORGE_MASTER_KEY` / `SESSION_SECRET` / `API_KEY_PEPPER` 在 development/test 下改用内置开发密钥并打 warn（列出变量名），其他环境按上面的规则拒绝启动；`FORGE_ADMIN_PASSWORD` 没有默认值，只含空白时任何环境都拒绝启动并写出变量名；`OIDC_CLIENT_SECRET`、`AGENT_CONNECTOR_CLIENT_SECRET` 只含空白时按未配置处理 |
+| `FORGE_MASTER_KEY` | 是 | base64 解码后必须正好 32 字节（`openssl rand -base64 32`），否则拒绝启动；信封加密主密钥，单独托管。**更换主密钥会导致库里已有密文（Provider 凭据等）无法解密**，没有重新加密流程前不要轮换 |
+| `API_KEY_PEPPER` | 是 | API Key 哈希用的 pepper。非 development/test 环境下去掉首尾空白后至少 32 个字符，否则拒绝启动；更换后已有 API Key 全部失效 |
+| `SESSION_TTL_SECONDS` | 否 | 会话有效期（秒），300–86400 的整数，默认 28800（8 小时）；超出范围拒绝启动 |
+| `FORGE_ADMIN_EMAIL` / `FORGE_ADMIN_PASSWORD` / `FORGE_ADMIN_NAME` | 是（密码） | 应急管理员，`pnpm db:seed` 时写入，**必须在 migrate/seed 之前设好**。密码没有默认值；非 development/test 环境下使用 `.env.example` 里的示例密码会拒绝启动 |
+| `SESSION_SECRET` | 是 | BFF 会话签名。非 development/test 环境下去掉首尾空白后至少 32 个字符，否则拒绝启动。只含空白（空格、制表符、换行）的密钥一律视为未设置（P3-18）：`FORGE_MASTER_KEY` / `SESSION_SECRET` / `API_KEY_PEPPER` 在 development/test 下改用内置开发密钥并打 warn（列出变量名），其他环境按上面的规则拒绝启动；`FORGE_ADMIN_PASSWORD` 没有默认值，只含空白时任何环境都拒绝启动并写出变量名；`OIDC_CLIENT_SECRET`、`AGENT_CONNECTOR_CLIENT_SECRET` 只含空白时按未配置处理 |
 | `LOG_LEVEL` | 否 | `info` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | 否 | OTel Collector |
 | `OUTBOUND_ALLOWLIST` | 否 | 出站请求白名单，逗号分隔的 `host:port`（IPv6 写 `[addr]:port`），默认空。列出的目标跳过内网/回环/元数据地址检查（协议仍只允许 http/https）。每项必须是精确的 `host:port`（不支持通配符、CIDR、只写 host；无效项会让进程启动失败）。生产只放行确实需要的内网服务，例如内网模型网关 `llm.acme.internal:443`；**私有部署的 OIDC IdP 也必须列入，否则 SSO 无法登录**。被拦截的请求在服务端日志里记 `outbound.blocked`（host、解析出的 IP、reason）。本地开发连 mock（`pnpm mock:services`）需要 `OUTBOUND_ALLOWLIST=127.0.0.1:8090`；`pnpm smoke:isolated` 会给它启动的 API 自动带上这一项（除非已显式设置）。详见 admin-api.md §2.1 |
@@ -125,7 +129,9 @@ minio:9000/9001
 1. 准备 MySQL 8（业务库 + Temporal 库）、Redis 7、对象存储、Temporal。
 2. 生成主密钥/会话密钥：`openssl rand -base64 32`；存入密钥管理。
 3. 配置 `.env`/Secret；SSO/Connector 开关保持 `false`。
-4. 执行迁移 Job：`pnpm db:migrate`；再执行权限/角色种子 `pnpm db:seed`。
+4. 设好应急管理员变量（`FORGE_ADMIN_EMAIL` / `FORGE_ADMIN_PASSWORD` / `FORGE_ADMIN_NAME`）后再执行迁移和种子：`pnpm db:migrate`，再 `pnpm db:seed`。迁移按顺序执行到 `006_audit_org_unit`（审计表补组织单元列），已执行过的会跳过。库名不以 `_test` / `_ux` 结尾时必须带 `--confirm-db=<库名>`，例如 `pnpm db:migrate --confirm-db=forge`。
+4a. 构建新控制台：`pnpm build:console`（产物在 `apps/console/dist`，由 API 在 `/next/` 下托管；没构建时 `/next/` 返回 503）。构建脚本固定 `NODE_ENV=production`，不要在构建时注入 `NODE_ENV=development`。
+4b. 首次上线前先轮换所有沿用过示例值或曾经在别处出现过的密码和密钥（K-25），再对外开放。
 5. 启动 API → Worker → doc-parser/browser；检查 `/readyz`。
 6. 配置 Nginx：`/` 静态控制台，`/admin` `/open` `/integration` `/auth` `/sse` 反代 API；SSE 关闭缓冲。
 7. 使用应急管理员登录，配置 SSO；未拿到三方参数时先保持 SSO 不对外开放，用应急管理员完成初始配置，不得用本地账号对普通用户开放。完成 OIDC 登录验收后再启用。
@@ -143,6 +149,21 @@ minio:9000/9001
 6. 数据库迁移只前进；破坏性清理放下一版本。
 
 详见 [release-process.md](release-process.md)。
+
+### 6.1 本版本升级须知（破坏性变更）
+
+以下变更都是安全或输入校验修复，调用方需要按新行为调整。错误码 CFG-8501 表示请求参数不合法，响应里的 `details.field` 指出是哪个字段。
+
+1. **事件流不再下发 `message.delta`**：管理端 Run 事件流和 `/open` 的 Run 事件流，实时和回放都只发打码后的 `message.completed` 和 `run.*` 事件。Worker 不再把 delta 落库；库里已有的 delta 行读取时过滤掉，不回填、不删除。客户端请以 `message.completed` 的全文为准。
+2. **管理端 API 不接受未声明的字段**：请求体里出现 schema 没声明的字段返回 400。`/open` 和 `/integration` 不受这条影响。
+3. **建用户、改用户不再接受 `orgUnitId`**：传了返回 400 CFG-8501（以前建用户时会被忽略）。
+4. **multipart 请求**：管理端写接口（含 PATCH）和 `/auth` 写路由收到 multipart 返回 415，在 CSRF 和鉴权之前拒绝，Content-Type 大小写不影响判断；`/open` 和 `/integration` 收到 multipart 一律返回 400，不建 Run。
+5. **JSON 字段校验**：`spec`、`headers`、`input`、`manifest`、`resources`、`capabilities` 是非法 JSON 或形状不对时返回 400 CFG-8501。`input` 必须是对象：传数组、或 JSON 文本解析出字符串、数字时返回 400（以前会被悄悄换成默认值）。读库时遇到形状不对的旧数据按 `{}`（`capabilities` 按 `[]`）处理，warn 里只记表名、列名和 id。
+6. **`text` 与 `input` 同时传**：`text` 去掉首尾空白后非空、同时 `input` 是不带 `text` 键的对象时返回 400，不再存成 `[object Object]`。`text` 为 `null`、空串或只有空白时按没传处理，这时只带 `input` 对象是合法请求。
+7. **`/open` 和 `/integration` 拒绝空输入**：`text` 和 `input` 都为空时返回 400 CFG-8501，不建 Run、不写审计（以前返回 202 并建出空 Run）。`text` 为空指没传、`null`、空串或只有空白；`input` 为空指没传、`null`、`{}`，或者只有一个 `text` 键且该值按 `text` 的规则为空。管理端试运行和定时任务不受这条影响。
+8. **manifest 非法的插件不加载**：它的 MCP 不进工具列表、技能不进系统提示，Provider 调用报 MDL-3001；它带的 Agent 发起 Run 时返回 409 CFG-8503，定时触发只跳过这一次并记下 `last_error_code`，任务不禁用。manifest 修好后自动恢复，其他插件不受影响。
+
+其他行为变化（不破坏兼容）：重装插件沿用原记录的 `pkg_` id；user、tool、assistant 三种消息和 webhook 负载在落库、下发和读取时都经过同一个掩码函数，单独出现的 `sk-` 密钥也会打码。
 
 ## 7. 备份与恢复
 
@@ -164,6 +185,8 @@ minio:9000/9001
 - `/metrics`：Prometheus；Run、队列、模型、工具、审批、Webhook、DB/Redis。
 - Trace：`run`、`model.call`、`tool.call`、`connector.call`、`webhook.deliver`。
 - 日志：pino JSON；固定字段；错误只在边界记录。请求日志的 `req.url` 记录路径和 query，其中键名为 `token`、`access_token`、`refresh_token`、`id_token`、`api_key`、`apikey`、`key`、`secret`、`client_secret`、`password`、`code`、`state` 的值（键名不区分大小写，按百分号解码后匹配，重复键全部处理）替换为 `[REDACTED]`；fragment 不记录，超过 2048 字符截断。未匹配路由的 404 日志和响应里的 URL 也按同样规则处理。请求头、请求体和其他 query 键不在这条规则内，不得在日志里输出凭据。
+- 日志里可能含有业务内容和未被规则覆盖的敏感信息。落盘时日志文件权限设为 `0600`、目录 `0700`，只给运维账号读；按天轮转（logrotate 或采集端），本地保留不超过 14 天，长期留存只放在有访问控制的日志平台。不要把日志文件提交到仓库或贴进工单。
+- 缓存头：新控制台 `/next/assets/*`（文件名带内容哈希）返回 `max-age=365d, immutable`；`/next/` 入口和 SPA 回退的 `index.html` 返回 `no-cache`，发布后立即生效。Nginx 不要覆盖这两类缓存头，也不要缓存 API 和事件流响应（事件流本身返回 `Cache-Control: no-cache, no-transform`）。
 - 建议告警:
   - API 5xx > 1% / 5min；`readyz` 失败；
   - Temporal 队列积压 > 阈值；
@@ -181,6 +204,7 @@ minio:9000/9001
 - Secret 不落盘、不进日志；Connector 缓存 `0600`。
 - DB 账户最小权限；迁移账户仅 Job 使用。
 - 管理端 CSRF、CSP、安全 Cookie；开放 API 仅服务端调用。
+- CSP 例外：只有旧版控制台 `/` 和 `/index.html` 允许属性级内联（`script-src-attr` / `style-src-attr 'unsafe-inline'`），`script-src` 仍是 `'self'`。这是架构书面批准的临时例外（S-10，见 permissions.md 4.5），`/next/`、API 和静态资源不放宽；旧版控制台下线后移除。Nginx 不要再叠加或改写 CSP 头。
 - 关闭 Pi 内置 bash/文件工具；代码执行只在 P2 沙箱。
 
 ## 10. 离线/私有化
@@ -230,3 +254,7 @@ minio:9000/9001
 - 紧急关闭 Connector：将三个开关设 `false` 并滚动重启，记录时间与原因。
 - SSO 故障：启用应急管理员；恢复后立即禁用并审计。
 - 所有生产操作记录在发布/事故记录中，附镜像 digest、迁移版本与回滚方式。
+
+## 14. 已知风险
+
+- **测试依赖的已知漏洞（只影响开发和测试环境）**：vitest 3 依赖链上的 tinypool（GHSA-5gmw-xhrv-c9v3、GHSA-85c8-ppgw-ccpr）和 vitest / @vitest/mocker（GHSA-82fw-gwwq-j7x9、GHSA-qxg6-89mg-rqv8）。它们都是 devDependencies，不进生产运行时；只有在测试进程里运行不可信代码时才有风险。不要在 CI 或开发机上对不可信分支直接跑测试。升级到 vitest 4 另立任务跟进。
