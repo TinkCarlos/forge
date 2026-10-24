@@ -20,12 +20,12 @@ function files(dir: string): string[] {
   });
 }
 
-/** Every writeAudit(...) / repos.audit({...}) call: its action and the call text up to the matching parenthesis. */
+/** Every writeAudit(...) / prepareAudit(...) / repos.audit({...}) call: its action and the call text up to the matching parenthesis. */
 function auditCalls(): Array<{ file: string; action: string; call: string }> {
   const out: Array<{ file: string; action: string; call: string }> = [];
   for (const file of files(ROOT)) {
     const src = readFileSync(file, "utf8");
-    const re = /\b(writeAudit\(|\.audit\(\{)/g;
+    const re = /\b(writeAudit\(|prepareAudit\(|\.audit\(\{)/g;
     for (let m = re.exec(src); m; m = re.exec(src)) {
       let depth = 0;
       let end = m.index + m[0].length - 1;
@@ -35,8 +35,8 @@ function auditCalls(): Array<{ file: string; action: string; call: string }> {
         if (depth === 0) break;
       }
       const call = src.slice(m.index, end + 1);
-      if (call.startsWith("writeAudit(session: Session")) continue; // the helper's own declaration
-      const action = /action: "([^"]+)"/.exec(call)?.[1] ?? /writeAudit\(\s*\w+,\s*"([^"]+)"/.exec(call)?.[1];
+      if (/^(writeAudit|prepareAudit)\(\s*session: Session/.test(call)) continue; // the helpers' own declarations
+      const action = /action: "([^"]+)"/.exec(call)?.[1] ?? /(?:writeAudit|prepareAudit)\(\s*\w+,\s*"([^"]+)"/.exec(call)?.[1];
       if (action) out.push({ file: file.slice(ROOT.length + 1), action, call });
     }
   }
