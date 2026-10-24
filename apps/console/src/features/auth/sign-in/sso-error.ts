@@ -1,43 +1,68 @@
-// 单点登录失败时后端 302 到 /next/sign-in?ssoError=<code>。
-// 只认白名单里的错误码并映射成固定文案；原值一律不渲染，防止借参数注入或伪造提示。
-//
-// 码表（前端已就绪；除 HTP-4003 外，目前后端回调出错还是直接返回 400/401 JSON，需要后端改成 302 带 ssoError）：
-//   HTP-4003         出站策略拦截了 IdP 地址（后端已在 /auth/oidc/login 映射）
-//   access_denied    IdP 拒绝登录：IdP 回调带 error=access_denied（OAuth 标准值，后端按白名单原样转发）
-//   SSO-1203         登录状态过期或不匹配（后端 identity 里 state 校验失败的现有码）
-//   invalid_request  回调参数缺失：后端现在也用 SSO-1203，建议拆开后转发为这个值（OAuth 标准值）
-//   SSO-1204         令牌交换失败（后端现有码）
-//   其他任何值        通用文案
+// 单点登录失败时后端 302 到 /next/sign-in?ssoError=<码>（apps/api/src/routes/auth.ts 的 ssoErrorLocation）。
+// 码表的键必须和后端白名单 SSO_ERROR_CODES 完全一致（sso-error.test.ts 钉住）；后端只会带白名单里的码，
+// 不在白名单的码后端会换成 SYS-9001。
+// 只认码表里的码并映射成固定中文文案；URL 里的原值一律不渲染（未知码 / 非法值 / 非字符串都显示通用文案），
+// 显示后用 history.replaceState 把参数从地址栏去掉。
 
-export type SsoErrorKind = 'outbound_blocked' | 'idp_denied' | 'state_invalid' | 'callback_missing' | 'token_exchange' | 'generic'
+/** 后端白名单里的每个码 → 固定文案。 */
+export const SSO_ERROR_CODE_MESSAGES = Object.freeze({
+  'HTP-4003': '单点登录暂不可用：身份提供方的地址被出站策略拦截，请联系管理员。',
+  'SSO-1201': '单点登录尚未配置，请使用账号密码登录或联系管理员。',
+  'SSO-1202': '暂时无法连接身份提供方，请稍后重试；如果反复出现，请联系管理员。',
+  'SSO-1203': '登录状态已过期或无效，请重新发起单点登录。',
+  'SSO-1204': '无法向身份提供方验证登录凭证，请重试；如果反复出现，请联系管理员。',
+  'SSO-1205': '身份提供方没有返回有效的登录凭证，请重试或联系管理员。',
+  'SSO-1206': '登录校验未通过，请重新发起单点登录。',
+  'SSO-1207': '身份提供方没有返回访问令牌，请联系管理员检查 SSO 配置。',
+  'SSO-1208': '登录凭证中的用户身份不一致，请重新发起单点登录。',
+  'SSO-1209': '身份提供方没有返回用户标识，请联系管理员检查 SSO 配置。',
+  'SSO-1210': '你的 SSO 账号缺少邮箱，无法创建 Forge 账号，请联系管理员。',
+  'SSO-1211': '创建 Forge 账号失败，请稍后重试或联系管理员。',
+  // IdP 回调带 error=（如 access_denied）；IdP 的 error / error_description 后端已丢弃，这里也不展示
+  'SSO-1212': '身份提供方拒绝了这次登录。如果你需要访问 Forge，请联系管理员开通。',
+  // 后端兜底码（意外错误）
+  'SYS-9001': '单点登录失败，请稍后重试或联系管理员。',
+} as const)
+
+export type SsoErrorCode = keyof typeof SSO_ERROR_CODE_MESSAGES
 
 export const SSO_ERROR_FALLBACK = '单点登录失败，请稍后重试或联系管理员。'
 
-export const SSO_ERROR_MESSAGES: Record<SsoErrorKind, string> = {
-  outbound_blocked: '单点登录暂不可用：身份提供方的地址被出站策略拦截，请联系管理员。',
-  idp_denied: '身份提供方拒绝了这次登录。如果你需要访问 Forge，请联系管理员开通。',
-  state_invalid: '登录状态已过期或无效，请重新发起单点登录。',
-  callback_missing: '单点登录回调缺少必要参数，请重新发起单点登录。',
-  token_exchange: '无法向身份提供方验证登录凭证，请重试；如果反复出现，请联系管理员。',
-  generic: SSO_ERROR_FALLBACK,
+export const SSO_ERROR_PARAM = 'ssoError'
+
+function isKnownCode(value: unknown): value is SsoErrorCode {
+  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(SSO_ERROR_CODE_MESSAGES, value)
 }
 
-const CODE_TO_KIND: Readonly<Record<string, SsoErrorKind>> = Object.freeze(
-  Object.assign(Object.create(null) as Record<string, SsoErrorKind>, {
-    'HTP-4003': 'outbound_blocked',
-    access_denied: 'idp_denied',
-    'SSO-1203': 'state_invalid',
-    invalid_request: 'callback_missing',
-    'SSO-1204': 'token_exchange',
-  })
-)
-
-/** 未知码（含大小写不符、带空格、原型链上的名字）一律 generic。 */
-export function ssoErrorKind(code: string): SsoErrorKind {
-  return Object.prototype.hasOwnProperty.call(CODE_TO_KIND, code) ? CODE_TO_KIND[code] : 'generic'
+/** 路由 validateSearch 用：白名单码原样保留，其余任何值收敛成 'unknown'（原值不进路由状态），缺省 / 空串为 undefined。 */
+export function normalizeSsoError(raw: unknown): SsoErrorCode | 'unknown' | undefined {
+  if (raw === undefined || raw === null || raw === '') return undefined
+  return isKnownCode(raw) ? raw : 'unknown'
 }
 
+/** 没有 ssoError 返回 null；白名单码返回对应文案；其他任何值（含 'unknown'、非字符串）返回通用文案。 */
 export function ssoErrorMessage(code: unknown): string | null {
-  if (typeof code !== 'string' || code.length === 0) return null
-  return SSO_ERROR_MESSAGES[ssoErrorKind(code)]
+  if (code === undefined || code === null || code === '') return null
+  return isKnownCode(code) ? SSO_ERROR_CODE_MESSAGES[code] : SSO_ERROR_FALLBACK
+}
+
+/** 去掉 ssoError 后的同源相对地址（path + search + hash）；本来就没有这个参数时返回 null。 */
+export function urlWithoutSsoError(href: string): string | null {
+  const url = new URL(href)
+  if (!url.searchParams.has(SSO_ERROR_PARAM)) return null
+  url.searchParams.delete(SSO_ERROR_PARAM)
+  return `${url.pathname}${url.search}${url.hash}`
+}
+
+interface HistoryWindow {
+  location: { href: string }
+  history: { state: unknown; replaceState(data: unknown, unused: string, url?: string | URL | null): void }
+}
+
+/** 显示过错误后调用：replaceState 去掉参数（保留 history.state，路由器的 index 不变），不产生新的历史记录。 */
+export function clearSsoErrorFromUrl(win: HistoryWindow = window): boolean {
+  const next = urlWithoutSsoError(win.location.href)
+  if (next === null) return false
+  win.history.replaceState(win.history.state, '', next)
+  return true
 }

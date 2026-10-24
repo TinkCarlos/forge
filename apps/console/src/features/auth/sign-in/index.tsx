@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { motion } from 'motion/react'
 import { useSearch } from '@tanstack/react-router'
 import { CircleAlert } from 'lucide-react'
@@ -5,11 +6,15 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card'
 import { AuthLayout } from '../auth-layout'
 import { UserAuthForm } from './components/user-auth-form'
-import { ssoErrorMessage } from './sso-error'
+import { clearSsoErrorFromUrl, ssoErrorMessage } from './sso-error'
 
 export function SignIn() {
   const { redirect, ssoError } = useSearch({ from: '/(auth)/sign-in' })
-  const ssoMessage = ssoErrorMessage(ssoError)
+  // 文案在首次渲染时定下来；随后把 ?ssoError= 从地址栏去掉（刷新 / 复制链接不再带着它），提示保持显示
+  const [ssoMessage] = useState(() => ssoErrorMessage(ssoError))
+  useEffect(() => {
+    if (ssoMessage) clearSsoErrorFromUrl()
+  }, [ssoMessage])
 
   return (
     <AuthLayout>
