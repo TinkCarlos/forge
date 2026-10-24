@@ -229,6 +229,7 @@ export async function streamRun(request: FastifyRequest, reply: FastifyReply, ru
     } catch {
       closed = true;
       reply.raw.end();
+      clearInterval(timer); // P3-06: no further polls after a failure
     }
     heartbeat += 1;
     if (!closed && heartbeat % 15 === 0) reply.raw.write(": heartbeat\n\n");
