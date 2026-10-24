@@ -1,7 +1,7 @@
 // Server-side, display-only summary of tool-call arguments for the approval list.
 // Pure: no I/O. The raw arguments never leave the server; only this string does.
 // The secret-detection rules live in sensitive.ts (shared with maskArgsDeep).
-import { isSecretValue, isSensitiveKey, MASK, maskQueryString, parseJsonContainer, UNPARSEABLE_JSON } from "./sensitive.js";
+import { isSecretValue, isSensitiveKey, MASK, maskProseSecrets, maskQueryString, parseJsonContainer, UNPARSEABLE_JSON } from "./sensitive.js";
 
 export {
   isHttpUrl,
@@ -33,7 +33,7 @@ function renderScalar(value: string | number | boolean | bigint | symbol, depth:
   const embedded = parseJsonContainer(value);
   if (embedded === UNPARSEABLE_JSON) return MASK;
   if (embedded !== undefined) return render(embedded, depth);
-  return clip(maskQueryString(value), ARGS_PREVIEW_VALUE_MAX);
+  return clip(maskProseSecrets(maskQueryString(value)), ARGS_PREVIEW_VALUE_MAX);
 }
 
 function render(value: unknown, depth: number): string {

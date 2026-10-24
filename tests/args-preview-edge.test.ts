@@ -34,7 +34,8 @@ const kept: [string, unknown][] = [
   ["author", { author: F }], ["cookbook", { cookbook: F }], ["secretary", { secretary: F }], ["sentence with ?", { subject: `明天开会? ${F}` }],
   ["sk- not at start", { v: `my sk-${F}` }],
 ];
-const knownLimits: [string, unknown][] = [
+// Formerly KNOWN LIMITS; masked since the P2 prose key=value rule (maskProseSecrets).
+const formerLimits: [string, unknown][] = [
   ["url fragment #token", { url: `https://ex.com/a#token=${F}` }], ["url without scheme/slash/www", { url: `ex.com/a?token=${F}` }],
   ["full-width ？", { u: `https://ex.com/a？token=${F}` }],
 ];
@@ -42,7 +43,7 @@ const knownLimits: [string, unknown][] = [
 describe("args_preview edge cases: masked", () => { it.each(masked)("%s", (_n, a) => expect(preview(a)).not.toContain(F)); });
 it("incomplete JSON string -> whole value ***", () => { expect(preview({ body: `{"password": "${F}"` })).toBe("body=***"); });
 describe("args_preview edge cases: kept verbatim", () => { it.each(kept)("%s", (_n, a) => expect(preview(a)).toContain(F)); });
-describe("args_preview KNOWN LIMITS (documented; flip when fixed)", () => { it.each(knownLimits)("%s", (_n, a) => expect(preview(a)).toContain(F)); });
+describe("args_preview former KNOWN LIMITS (fixed by the prose rule)", () => { it.each(formerLimits)("%s", (_n, a) => expect(preview(a)).not.toContain(F)); });
 it("caps the whole preview at 300 chars", () => {
   expect(preview(Object.fromEntries(Array.from({ length: 30 }, (_, i) => [`k${i}`, "v".repeat(50)]))).length).toBeLessThanOrEqual(300);
 });

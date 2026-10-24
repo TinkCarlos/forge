@@ -57,6 +57,22 @@ export function isSecretValue(value: string): boolean {
   return SECRET_VALUE_PREFIX.test(text) || JWT_LIKE.test(text);
 }
 
+// Prose credentials inside a longer string (P2, QA 714b3f3): `Bearer <token>` (token has a digit), `Basic <base64>`,
+// and `<credential key>=value` / `key: value` / `密码：value`. Only the value becomes `***`; the sentence stays.
+const PROSE_BEARER = /\b(bearer\s+)(?=[A-Za-z0-9._~+/=-]*\d)[A-Za-z0-9._~+/=-]{6,}/gi;
+// Basic: base64-looking (a digit, + / =, or an inner lower->upper switch), so "Basic Authentication" stays readable.
+const PROSE_BASIC = /\b(Basic\s+)(?=[A-Za-z0-9+/=]*(?:[0-9+/=]|[a-z][A-Z]))[A-Za-z0-9+/]{8,}={0,2}/g;
+const PROSE_KEY_VALUE =
+  /(^|[^\w-])((?:password|passwd|pwd|secret|client[_-]?secret|api[_-]?key|apikey|access[_-]?token|refresh[_-]?token|id[_-]?token|token|密码|口令|密钥|令牌)\s*[=:：]\s*)(?!\*\*\*)([^\s,;，；。"'()（）<>]+)/gi;
+
+/** Masks prose-style credentials inside free text; returns the input unchanged when there are none. */
+export function maskProseSecrets(value: string): string {
+  return value
+    .replace(PROSE_BEARER, `$1${MASK}`)
+    .replace(PROSE_BASIC, `$1${MASK}`)
+    .replace(PROSE_KEY_VALUE, (_m, lead: string, key: string) => `${lead}${key}${MASK}`);
+}
+
 /** True when the trimmed string starts with http:// or https:// and `new URL` accepts it. */
 export function isHttpUrl(value: string): boolean {
   const text = value.trim();

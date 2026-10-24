@@ -1,6 +1,6 @@
 // Deep masking of tool-call arguments / user input / audit details before they leave the server.
 // Pure: no I/O, never mutates its input. Uses exactly the rules of the approval-list args_preview (sensitive.ts).
-import { isSecretValue, isSensitiveKey, MASK, maskQueryString, parseJsonContainer, UNPARSEABLE_JSON } from "./sensitive.js";
+import { isSecretValue, isSensitiveKey, MASK, maskProseSecrets, maskQueryString, parseJsonContainer, UNPARSEABLE_JSON } from "./sensitive.js";
 
 /** Objects/arrays nested deeper than this (root = depth 0) are replaced whole by `***`. */
 export const MASK_ARGS_MAX_DEPTH = 32;
@@ -17,6 +17,7 @@ interface Ctx {
  * - a value under a sensitive key (segment match, {@link isSensitiveKey}) -> `***` whole (null/undefined are kept);
  * - secret-looking strings (`Bearer `/`Basic `/`sk-`/`ghp_`/`xox` prefixes, JWT-like) under any key -> `***`;
  * - URL-looking strings -> sensitive query values masked ({@link maskQueryString});
+ * - prose credentials inside any other string (`Bearer x`, `password=x`, `api_key: x`, `密码：x`) -> value `***` ({@link maskProseSecrets});
  * - JSON-like strings -> parsed, masked with the same rules and re-serialised (still a string; returned unchanged when
  *   nothing inside was masked); JSON-like strings that do not parse -> `***`;
  * - circular references and containers deeper than {@link MASK_ARGS_MAX_DEPTH} -> `***`.
@@ -58,6 +59,7 @@ function maskString(value: string, depth: number, ctx: Ctx): string {
     return ctx.changes === before ? value : JSON.stringify(inner);
   }
   const query = maskQueryString(value);
-  if (query !== value) ctx.changes += 1;
-  return query;
+  const prose = maskProseSecrets(query);
+  if (prose !== value) ctx.changes += 1;
+  return prose;
 }

@@ -112,15 +112,11 @@ export default async function adminRunRoutes(app: FastifyInstance): Promise<void
 }
 
 /**
- * User messages are user input and tool messages carry tool results -> masked whole (U-12); assistant messages -> only
- * the tool_calls (their arguments) are masked.
+ * User messages are user input, tool messages carry tool results, assistant messages carry model text and tool_calls
+ * arguments -> all masked whole with the shared rules (U-12; P2 QA 714b3f3: assistant text too, prose credentials).
  */
 function maskMessageContent(role: string, content: unknown): unknown {
-  if (role === "user" || role === "tool") return maskArgsDeep(content);
-  if (role === "assistant" && content && typeof content === "object" && !Array.isArray(content) && "tool_calls" in content) {
-    const record = content as Record<string, unknown>;
-    return { ...record, tool_calls: maskArgsDeep(record.tool_calls) };
-  }
+  if (role === "user" || role === "tool" || role === "assistant") return maskArgsDeep(content);
   return content;
 }
 
