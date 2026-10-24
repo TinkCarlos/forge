@@ -566,6 +566,7 @@ POST /admin/v1/schedules
 - `concurrencyPolicy`：`skip`（默认）、`queue`、`cancel_previous`。
 - 服务账号停用、Agent 停用或无权限 → 自动暂停并返回 `SCD-4801` 原因。
 - **已知限制（P2，计划下一轮修）**：`GET /schedules`、`GET /schedules/{id}` 返回的 `input_json` 是明文，没有经过 `maskArgsDeep`（审计里的 `schedule.update` 已打码）。
+- `cron` 只接受 5 段表达式（分 时 日 月 周）或宏 `@yearly`/`@annually`/`@monthly`/`@weekly`/`@daily`/`@midnight`/`@hourly`（先去掉首尾空白，宏不区分大小写）。宏在创建、PATCH、`/enable` 时换成对应的 5 段表达式再校验并保存（如 `@daily` → `0 0 * * *`）；`@reboot` 和其他宏返回 `400 CFG-8501`，消息「只支持 5 段 cron 或 @yearly/@annually/@monthly/@weekly/@daily/@midnight/@hourly」。普通表达式只去首尾空白。库里已有的宏老数据：PATCH 不带 `cron`/`timezone` 时不重新校验旧值，已知宏顺带改写为 5 段；`/enable` 先归一再校验，5 段结果随启用一起保存；调度器读取时也按同一规则归一。
 - 调度器触发时第一步解析 `cron` 和 `timezone`（I-SCH-17 / I-ERR-20）：解析失败（含空串、越界字段、不存在的时区）记 `last_error_code = SCD-4803`、`failure_count + 1` 并停用任务（`status = disabled`、`next_run_at = NULL`），不建 Run；这一步先于 Agent、运行身份等其他检查。
 - 触发时运行身份实时校验（S-45，自动触发和手动 run 都一样）：绑定服务账号的，服务账号须为 active，且所属部门及每一级上级部门都启用；未绑定服务账号的存量任务，按任务行上的用户（`subject_type = 'user'` 取 `subject_id`，否则取 `created_by`）做和会话认证相同的校验（用户 active、部门链全部启用）。不满足时：自动触发暂停任务并记 `SCD-4801`；手动 run 返回 `409 SCD-4801`；都不建 Run。
 - 校验时查库出错：自动触发只把本次记为失败（`last_error_code = SCD-4803`、`failure_count + 1`），任务保持 active，`next_run_at` 推到下一个 cron 时间；手动 run 返回 `503 SYS-9003`；都不建 Run。
