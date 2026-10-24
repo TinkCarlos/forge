@@ -130,9 +130,10 @@ export default async function adminAgentRoutes(app: FastifyInstance): Promise<vo
     const versionId = requireBodyString(body, "versionId");
     const version = await repos.getAgentVersion(versionId);
     if (!version || version.agent_id !== agent.id) throw errors.notFound("版本不存在");
-    await repos.publishAgentVersion(agent.id, versionId);
-    await writeAudit(session, "agent.publish", "agent_version", versionId, { agentId: agent.id });
-    return { ok: true };
+    // K-34: already published -> 200 with the current state, no second audit row.
+    const changed = await repos.publishAgentVersion(agent.id, versionId);
+    if (changed) await writeAudit(session, "agent.publish", "agent_version", versionId, { agentId: agent.id });
+    return { ok: true, changed, publishedVersionId: versionId };
   });
 
   app.post("/admin/api/agents/:id/run", { schema: ROUTE_SCHEMAS.agentRun, attachValidation: true }, async (request) => {

@@ -76,10 +76,19 @@ export const agentsRepo = {
     await agentsRepo.updateAgent(input.agentId, { latest_version_id: id });
     return id;
   },
-  async publishAgentVersion(agentId: string, versionId: string): Promise<void> {
-    await transaction(async (conn) => {
+  /**
+   * K-34: conditional UPDATE. Returns false (and changes nothing) when versionId is already the published version, so
+   * concurrent / repeated publishes of the same version are idempotent; the agents row lock serializes them.
+   */
+  async publishAgentVersion(agentId: string, versionId: string): Promise<boolean> {
+    return transaction(async (conn) => {
+      const [result] = await conn.execute(
+        "UPDATE agents SET published_version_id = ?, latest_version_id = ? WHERE id = ? AND (published_version_id IS NULL OR published_version_id <> ?)",
+        [versionId, versionId, agentId, versionId],
+      );
+      if (Number((result as { affectedRows?: number }).affectedRows ?? 0) === 0) return false;
       await conn.execute("UPDATE agent_versions SET status = 'published', published_at = CURRENT_TIMESTAMP(3) WHERE id = ? AND agent_id = ?", [versionId, agentId]);
-      await conn.execute("UPDATE agents SET published_version_id = ?, latest_version_id = ? WHERE id = ?", [versionId, versionId, agentId]);
+      return true;
     });
   },
   async publishLatestAgentVersion(agentId: string, versionId: string): Promise<void> {
