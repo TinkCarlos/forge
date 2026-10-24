@@ -73,8 +73,10 @@ const obj = <T extends Record<string, object>>(properties: T) => ({ type: "objec
 const capabilities = { type: ["array", "string"], maxLength: 4096, maxItems: 32, items: str(64) } as const;
 
 export const ROUTE_SCHEMAS = {
-  agentCreate: { body: { type: "object", properties: { key: str(64), ...agentProps } } },
-  agentPatch: { body: { type: "object", properties: agentProps } },
+  // P2 (QA): every field the handler reads is declared with a type (tests/route-body-fields.test.ts); agent PATCH used
+  // to store `apiEnabled: "yes"` as 1 because the schema (44f7a55) listed only the string fields.
+  agentCreate: { body: { type: "object", properties: { key: str(64), ...agentProps, spec: { type: ["object", "string"], maxLength: 1_048_576 }, publish: { type: "boolean" } } } },
+  agentPatch: { body: { type: "object", properties: { ...agentProps, apiEnabled: { type: "boolean" } } } },
   // users: email VARCHAR(255), username VARCHAR(64), display_name VARCHAR(128), role VARCHAR(32), data_scope / status
   // VARCHAR(16); password is hashed (password_hash VARCHAR(255)), bounded at 256 so hashing cannot be abused.
   userCreate: {
@@ -99,8 +101,9 @@ export const ROUTE_SCHEMAS = {
   },
   runsList: { querystring: limitQuery(200) },
   auditList: { querystring: limitQuery(500) },
-  scheduleCreate: { body: { type: "object", properties: { key: str(64), ...scheduleProps } } },
-  schedulePatch: { body: { type: "object", properties: { ...scheduleProps, status: { type: "string", maxLength: 16, enum: SCHEDULE_STATUSES } } } },
+  // schedules.input_json: object or JSON text (jsonBody), bounded like other JSON bodies; enabled is a boolean.
+  scheduleCreate: { body: { type: "object", properties: { key: str(64), ...scheduleProps, input: { type: ["object", "string"], maxLength: 1_048_576 }, enabled: { type: "boolean" } } } },
+  schedulePatch: { body: { type: "object", properties: { ...scheduleProps, input: { type: ["object", "string"], maxLength: 1_048_576 }, status: { type: "string", maxLength: 16, enum: SCHEDULE_STATUSES } } } },
   // F1 (P1): every write route that reads a body declares its schema (tests/route-body-schema-guard.test.ts).
   // agent_versions: version VARCHAR(32), changelog VARCHAR(2048), instructions MEDIUMTEXT
   agentVersionCreate: { body: obj({ version: str(32), instructions: str(MIB), spec: jsonObject(MIB), publish: bool, changelog: str(2048) }) },

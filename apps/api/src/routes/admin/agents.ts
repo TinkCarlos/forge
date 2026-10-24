@@ -93,7 +93,7 @@ export default async function adminAgentRoutes(app: FastifyInstance): Promise<vo
       }
       fields.status = body.status;
     }
-    if (body.apiEnabled !== undefined) fields.api_enabled = body.apiEnabled ? 1 : 0;
+    if (body.apiEnabled !== undefined) fields.api_enabled = body.apiEnabled === true ? 1 : 0; // boolean (schema)
     await repos.updateAgent(agent.id, fields);
     await writeAudit(session, "agent.update", "agent", agent.id, fields);
     return { ok: true };

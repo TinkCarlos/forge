@@ -180,11 +180,13 @@ describe("audit details are masked before they are written", () => {
     expect(JSON.stringify(stored!.input_json)).toContain(SECRET);
   });
 
-  it("role_mapping.upsert: request body masked in audit", async () => {
+  it("role_mapping.upsert: only declared fields in audit, no plaintext", async () => {
     const res = await app.inject({ method: "POST", url: "/admin/api/role-mappings", headers, payload: { agentRoleCode: roleCode, agentRoleName: "IT mask", localRole: "user", clientSecret: SECRET, note: `Bearer ${SECRET}` } });
     expect(res.statusCode).toBe(200);
     const details = (await latestAudit("role_mapping.upsert", null)) as Record<string, unknown>;
     assertNoPlaintext(details);
-    expect(details).toEqual({ agentRoleCode: roleCode, agentRoleName: "IT mask", localRole: "user", clientSecret: "***", note: "***" });
+    // Only the declared fields are recorded (undeclared body fields such as clientSecret / note are neither read nor
+    // written to the audit row); still masked, no plaintext anywhere.
+    expect(details).toEqual({ agentRoleCode: roleCode, agentRoleName: "IT mask", localRole: "user" });
   });
 });

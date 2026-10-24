@@ -122,8 +122,10 @@ export default async function adminIdentityRoutes(app: FastifyInstance): Promise
     await assertOrgWritable(session.principal, null, PLATFORM_WRITE_MESSAGE);
     assertValidInput(request);
     const body = bodyOf(request);
-    await repos.upsertRoleMapping(requireBodyString(body, "agentRoleCode"), stringBody(body, "agentRoleName"), requireBodyString(body, "localRole"));
-    await writeAudit(session, "role_mapping.upsert", "oidc_role_mapping", null, maskArgsDeep(body));
+    const mapping = { agentRoleCode: requireBodyString(body, "agentRoleCode"), agentRoleName: stringBody(body, "agentRoleName"), localRole: requireBodyString(body, "localRole") };
+    await repos.upsertRoleMapping(mapping.agentRoleCode, mapping.agentRoleName, mapping.localRole);
+    // Only the declared fields go to the audit row (undeclared body fields are neither read nor recorded).
+    await writeAudit(session, "role_mapping.upsert", "oidc_role_mapping", null, maskArgsDeep(mapping));
     return { ok: true };
   });
 
