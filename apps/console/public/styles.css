@@ -51,6 +51,7 @@ textarea { min-height: 110px; resize: vertical; font-family: ui-monospace, SFMon
 .btn.small { padding: 6px 10px; font-size: 12px; }
 .btn.block { width: 100%; text-align: center; display: inline-block; margin-top: 14px; }
 .btn:disabled { opacity: .55; cursor: not-allowed; }
+select:disabled { opacity: .6; cursor: not-allowed; background-color: #f4f5f7; }
 
 .app-shell { min-height: 100vh; display: grid; grid-template-columns: 236px 1fr; }
 .sidebar { background: var(--nav); color: #cbd5e1; padding: 18px 14px; display: flex; flex-direction: column; gap: 18px; position: sticky; top: 0; height: 100vh; }

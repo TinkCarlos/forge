@@ -135,6 +135,7 @@ async function api(path, options = {}) {
   if (!response.ok) {
     const error = new Error(payload?.error?.message ?? `请求失败 (${response.status})`);
     error.code = payload?.error?.code;
+    error.status = response.status;
     throw error;
   }
   return payload;
@@ -518,14 +519,26 @@ async function renderApps() {
 }
 
 async function renderUsers() {
-  const [users, permissions] = await Promise.all([api("/admin/api/users"), api("/admin/api/permissions")]);
+  // K-37：/admin/api/permissions 需要 role.view（org_admin 没有）。403 时只显示用户列表，
+  // 角色下拉和权限矩阵禁用并提示，不让整页失败；其它错误照常整页报错。
+  const [users, permissions] = await Promise.all([
+    api("/admin/api/users"),
+    api("/admin/api/permissions").catch((error) => {
+      if (error?.status === 403) return null;
+      throw error;
+    }),
+  ]);
   state.users = users.items ?? [];
-  const roles = Object.keys(permissions.roles ?? {});
+  const canViewRoles = permissions !== null;
+  const roles = Object.keys(permissions?.roles ?? {});
+  const noRoleHint = `<span class="muted" id="no-role-hint">无权限查看角色</span>`;
   $("#content").innerHTML = `
     <div class="card">
-      <div class="card-head"><div><h3>用户与权限</h3><p class="muted">功能角色决定可用功能，数据范围决定可见数据</p></div><button class="btn ghost small" onclick="app.showPermissionMatrix()">查看权限矩阵</button></div>
+      <div class="card-head"><div><h3>用户与权限</h3><p class="muted">功能角色决定可用功能，数据范围决定可见数据</p></div><div>${canViewRoles ? "" : noRoleHint} <button class="btn ghost small" ${canViewRoles ? "" : 'disabled aria-describedby="no-role-hint" title="无权限查看角色"'}onclick="app.showPermissionMatrix()">查看权限矩阵</button></div></div>
       ${state.users.length ? `<div class="table-wrap"><table><thead><tr><th>用户</th><th>邮箱</th><th>角色</th><th>数据范围</th><th>状态</th><th></th></tr></thead><tbody>
-        ${state.users.map((user) => `<tr><td><strong>${esc(user.display_name)}</strong><div class="muted mono">${esc(user.id)}</div></td><td>${esc(user.email)}</td><td><select id="role-${esc(user.id)}">${roles.map((role) => `<option ${role === user.role ? "selected" : ""}>${role}</option>`).join("")}</select></td><td><select id="scope-${esc(user.id)}">${["all","org","self"].map((scope) => `<option ${scope === user.data_scope ? "selected" : ""}>${scope}</option>`).join("")}</select></td><td>${statusPill(user.status)}</td><td><button class="btn ghost small" onclick="app.saveUser('${esc(user.id)}')">保存</button></td></tr>`).join("")}
+        ${state.users.map((user) => `<tr><td><strong>${esc(user.display_name)}</strong><div class="muted mono">${esc(user.id)}</div></td><td>${esc(user.email)}</td><td>${canViewRoles
+          ? `<select id="role-${esc(user.id)}">${roles.map((role) => `<option ${role === user.role ? "selected" : ""}>${esc(role)}</option>`).join("")}</select>`
+          : `<select id="role-${esc(user.id)}" disabled aria-describedby="no-role-hint" title="无权限查看角色"><option selected>${esc(user.role)}</option></select> <span class="muted">无权限查看角色</span>`}</td><td><select id="scope-${esc(user.id)}">${["all","org","self"].map((scope) => `<option ${scope === user.data_scope ? "selected" : ""}>${scope}</option>`).join("")}</select></td><td>${statusPill(user.status)}</td><td><button class="btn ghost small" onclick="app.saveUser('${esc(user.id)}')">保存</button></td></tr>`).join("")}
       </tbody></table></div>` : empty("没有用户", "SSO 用户首次登录会自动创建。")}
     </div>`;
 }
