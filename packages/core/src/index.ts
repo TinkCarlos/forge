@@ -1,10 +1,10 @@
 import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual, createCipheriv, createDecipheriv } from "node:crypto";
-import { ulid } from "ulid";
 
 export * from "./config";
 export * from "./outbound";
 export * from "./env-ref";
 export * from "./cron";
+export * from "./ids";
 
 /** User status values written by the code (T): login / loadActivePrincipal only accept "active". */
 export const USER_STATUSES = ["active", "disabled"] as const;
@@ -188,12 +188,6 @@ export const errors = {
   unavailable: (message = "服务暂时不可用，请稍后重试") => new ForgeError("SYS-9003", message, 503, undefined, true),
   budget: (message = "预算已耗尽") => new ForgeError("BUD-5001", message, 400),
 };
-
-export function ulidWithPrefix(prefix: string): string {
-  const raw = ulid();
-  const suffix = raw.slice(0, 26 - prefix.length - 1);
-  return `${prefix}_${suffix}`;
-}
 
 export function hashApiKey(key: string, pepper: string): string {
   return createHmac("sha256", pepper).update(key).digest("hex");
