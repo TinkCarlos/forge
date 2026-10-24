@@ -19,6 +19,7 @@ import {
   requireBodyString,
   sessionPayload,
 } from "../plugins/http-helpers.js";
+import { sanitizeIdpError } from "../plugins/log-sanitize.js";
 import { RETURN_TO_FALLBACK, safeReturnTo } from "../plugins/return-to.js";
 import { ROUTE_SCHEMAS, assertValidInput } from "../plugins/input-schema.js";
 
@@ -115,7 +116,12 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
     let result: Awaited<ReturnType<typeof handleOidcCallback>>;
     try {
       // P3-04: the IdP's own error (error=access_denied ...) is one fixed code; error_description is never used.
-      if (query.error !== undefined) throw new ForgeError("SSO-1212", "身份提供方拒绝了登录", 401);
+      // SSO-1212 hardening: the raw error / error_description never go into the redirect, a response or the logs; only
+      // a plain OAuth error token is logged, anything else as [REDACTED] (sanitizeIdpError).
+      if (query.error !== undefined) {
+        request.log.warn({ idpError: sanitizeIdpError(query.error) }, "oidc callback: identity provider returned an error");
+        throw new ForgeError("SSO-1212", "身份提供方拒绝了登录", 401);
+      }
       if (!code || !state) throw new ForgeError("SSO-1203", "回调参数缺失", 400);
       result = await handleOidcCallback(code, state);
     } catch (error) {

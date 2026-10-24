@@ -28,6 +28,27 @@ export const SENSITIVE_QUERY_KEYS: ReadonlySet<string> = new Set([
 
 const MAX_LOGGED_URL_LENGTH = 2048;
 
+/**
+ * SSO-1212 (architect ruling 2): query keys whose value is provider-controlled but useful in logs when it is a plain
+ * OAuth error token (RFC 6749 error codes such as access_denied). The value is kept only when it is
+ * [A-Za-z0-9_.-]{1,64} (after percent-decoding); anything else is [REDACTED].
+ */
+export const TOKEN_ONLY_QUERY_KEYS: ReadonlySet<string> = new Set(["error"]);
+const IDP_ERROR_TOKEN = /^[A-Za-z0-9_.-]{1,64}$/;
+
+/** The IdP's `error` value as it may be logged: a plain error token, otherwise [REDACTED]. Never the raw value. */
+export function sanitizeIdpError(value: unknown): string {
+  return typeof value === "string" && IDP_ERROR_TOKEN.test(value) ? value : REDACTED;
+}
+
+function decodeValue(raw: string): string | null {
+  try {
+    return decodeURIComponent(raw.replace(/\+/g, " "));
+  } catch {
+    return null;
+  }
+}
+
 function decodeKey(raw: string): string {
   let value = raw.replace(/\+/g, " ");
   // Up to 3 rounds so double-encoded keys (%2574oken) are recognised too; stop at the first malformed escape.
@@ -66,6 +87,10 @@ export function sanitizeUrlForLog(url: unknown): string {
     const parts = query.split("&").map((part) => {
       const eq = part.indexOf("=");
       const rawKey = eq === -1 ? part : part.slice(0, eq);
+      if (TOKEN_ONLY_QUERY_KEYS.has(decodeKey(rawKey))) {
+        const value = eq === -1 ? "" : decodeValue(part.slice(eq + 1));
+        return value !== null && IDP_ERROR_TOKEN.test(value) ? `${rawKey}=${value}` : `${rawKey}=${REDACTED}`;
+      }
       if (!isSensitiveQueryKey(rawKey)) return part;
       return `${rawKey}=${REDACTED}`;
     });
