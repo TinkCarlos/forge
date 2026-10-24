@@ -1,4 +1,5 @@
 import mysql, { type Pool, type PoolConnection, type ResultSetHeader } from "mysql2/promise";
+import type { PoolConnection as CorePoolConnection, QueryError } from "mysql2";
 import { config } from "@forge/core";
 
 const dbUrl = new URL(config.DATABASE_URL);
@@ -25,8 +26,13 @@ export const pool: Pool = mysql.createPool({
   charset: "utf8mb4",
 });
 
+// Item 10 (no-floating-promises): the promise pool re-emits the core pool's "connection" event with the core
+// (callback-style) connection, so the typed promise `query` is really the callback API here. Use the callback: a failed
+// SET is logged (error code only) instead of being an unobserved result.
 pool.on("connection", (connection) => {
-  connection.query("SET time_zone = '+00:00'");
+  (connection as unknown as CorePoolConnection).query("SET time_zone = '+00:00'", (error: QueryError | null) => {
+    if (error) console.error(`DB session time_zone setup failed: ${error.code ?? "unknown"}`);
+  });
 });
 
 export async function query<T = Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<T[]> {
