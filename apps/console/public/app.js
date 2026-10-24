@@ -94,6 +94,12 @@ function toast(message, kind = "ok") {
   toast.timer = setTimeout(() => el.classList.add("hidden"), 4200);
 }
 
+// K-36：错误提示统一带上后端错误码（和新控制台一致），方便对照排查
+function errorText(error) {
+  if (!(error instanceof Error)) return String(error ?? "");
+  return error.code ? `${error.message}（错误码 ${error.code}）` : error.message;
+}
+
 async function api(path, options = {}) {
   const method = options.method ?? "GET";
   const headers = { ...(options.headers ?? {}) };
@@ -101,12 +107,20 @@ async function api(path, options = {}) {
   if (method !== "GET" && method !== "HEAD" && state.session?.csrfToken) {
     headers["x-csrf-token"] = state.session.csrfToken;
   }
-  const response = await fetch(path, {
-    method,
-    headers,
-    credentials: "same-origin",
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
-  });
+  let response;
+  try {
+    response = await fetch(path, {
+      method,
+      headers,
+      credentials: "same-origin",
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    });
+  } catch {
+    // 断网或请求被中断：不显示浏览器原文 Failed to fetch，统一成中文 + NET-0001（同新控制台 K-35）
+    const error = new Error("网络连接失败");
+    error.code = "NET-0001";
+    throw error;
+  }
   const text = await response.text();
   let payload = null;
   try {
@@ -158,7 +172,7 @@ async function init() {
       });
       await enterApp();
     } catch (error) {
-      toast(error.message, "error");
+      toast(errorText(error), "error");
     }
   });
   $("#logout").addEventListener("click", async () => {
@@ -259,7 +273,7 @@ async function renderCurrent() {
 }
 
 function errorCard(error) {
-  return `<div class="card"><div class="card-body"><strong>加载失败</strong><p class="muted">${esc(error.message)}</p><button class="btn ghost" onclick="app.renderCurrent()">重试</button></div></div>`;
+  return `<div class="card"><div class="card-body"><strong>加载失败</strong><p class="muted">${esc(errorText(error))}</p><button class="btn ghost" onclick="app.renderCurrent()">重试</button></div></div>`;
 }
 
 function empty(title, text, action = "") {
@@ -589,7 +603,7 @@ function openModal(title, body, onSubmit, submitLabel = "保存", danger = false
       await onSubmit(new FormData(form));
       dialog.close();
     } catch (error) {
-      toast(error.message, "error");
+      toast(errorText(error), "error");
     } finally {
       submit.disabled = false;
     }
@@ -680,7 +694,7 @@ const app = {
         await renderAgents();
       }, "创建并发布");
     } catch (error) {
-      toast(error.message, "error");
+      toast(errorText(error), "error");
     }
   },
 
@@ -717,7 +731,7 @@ const app = {
         await renderSkills();
       }, "保存并发布");
     } catch (error) {
-      toast(error.message, "error");
+      toast(errorText(error), "error");
     }
   },
 
@@ -814,7 +828,7 @@ const app = {
       toast(`已发布 ${next}`);
       await renderAgents();
     } catch (error) {
-      toast(error.message, "error");
+      toast(errorText(error), "error");
     }
   },
 
@@ -826,7 +840,7 @@ const app = {
       toast(enabled ? "已开放 API" : "已关闭 API");
       await renderAgents();
     } catch (error) {
-      toast(error.message, "error");
+      toast(errorText(error), "error");
     }
   },
 
@@ -835,7 +849,7 @@ const app = {
       const agent = await api(`/admin/api/agents/${id}`);
       openModal(`Agent ${agent.name}`, `<div class="code-block">${json(agent)}</div>`, async () => {}, "关闭");
     } catch (error) {
-      toast(error.message, "error");
+      toast(errorText(error), "error");
     }
   },
 
@@ -892,7 +906,7 @@ const app = {
       const result = await api(`/admin/api/providers/${id}/test`, { method: "POST", body: {} });
       toast(result.ok ? `连接成功：${result.content}` : `失败：${result.error}`, result.ok ? "ok" : "error");
     } catch (error) {
-      toast(error.message, "error");
+      toast(errorText(error), "error");
     }
   },
 
@@ -916,7 +930,7 @@ const app = {
       toast(`已刷新 ${result.tools?.length ?? 0} 个工具`);
       await renderMcp();
     } catch (error) {
-      toast(error.message, "error");
+      toast(errorText(error), "error");
     }
   },
 
@@ -956,7 +970,7 @@ const app = {
       toast(`安装完成：${Object.values(result.created ?? {}).flat().length} 个资源`);
       await renderPackages();
     } catch (error) {
-      toast(error.message, "error");
+      toast(errorText(error), "error");
     }
   },
 
@@ -968,7 +982,7 @@ const app = {
       toast("已标记卸载");
       await renderPackages();
     } catch (error) {
-      toast(error.message, "error");
+      toast(errorText(error), "error");
     }
   },
 
@@ -986,7 +1000,7 @@ const app = {
         </div>`, async () => {}, "关闭");
       listenRun(run.id);
     } catch (error) {
-      toast(error.message, "error");
+      toast(errorText(error), "error");
     }
   },
 
@@ -997,7 +1011,7 @@ const app = {
       $("#modal").close();
       await renderRuns();
     } catch (error) {
-      toast(error.message, "error");
+      toast(errorText(error), "error");
     }
   },
 
@@ -1072,7 +1086,7 @@ const app = {
       toast(action === "enable" ? "已启用" : "已停用");
       await renderSchedules();
     } catch (error) {
-      toast(error.message, "error");
+      toast(errorText(error), "error");
     }
   },
 
@@ -1096,7 +1110,7 @@ const app = {
       const result = await api(`/admin/api/apps/${appId}/keys`, { method: "POST", body: { name: "default" } });
       openModal("API Key（只显示一次）", `<p class="muted">请立即复制保存，关闭后无法再次查看。</p><div class="code-block">${esc(result.key)}</div>`, async () => {}, "已保存");
     } catch (error) {
-      toast(error.message, "error");
+      toast(errorText(error), "error");
     }
   },
 
@@ -1105,7 +1119,7 @@ const app = {
       const result = await api(`/admin/api/apps/${appId}/keys`);
       openModal("API Keys", `<div class="table-wrap"><table><thead><tr><th>名称</th><th>Prefix</th><th>状态</th><th>最后使用</th></tr></thead><tbody>${(result.items ?? []).map((key) => `<tr><td>${esc(key.name)}</td><td class="mono">${esc(key.prefix)}</td><td>${statusPill(key.status)}</td><td>${fmt(key.last_used_at)}</td></tr>`).join("")}</tbody></table></div>`, async () => {}, "关闭");
     } catch (error) {
-      toast(error.message, "error");
+      toast(errorText(error), "error");
     }
   },
 
@@ -1117,7 +1131,7 @@ const app = {
       toast("用户权限已更新");
       await renderUsers();
     } catch (error) {
-      toast(error.message, "error");
+      toast(errorText(error), "error");
     }
   },
 
