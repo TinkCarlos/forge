@@ -58,6 +58,8 @@ const bool = { type: "boolean" } as const;
 const int = (minimum: number, maximum: number) => ({ type: "integer", minimum, maximum }) as const;
 /** N-02 I-APP-03: requests per minute; 0 is not documented as "unlimited", so it is rejected. */
 const RATE_LIMIT_PER_MINUTE = int(1, 100_000);
+/** N-03 I-MDL-04: provider request timeout in ms (default 120000 when omitted). */
+const PROVIDER_TIMEOUT_MS = int(1_000, 600_000);
 const jsonObject = (maxLength: number) => ({ type: ["object", "string"], maxLength }) as const;
 const runInput = { type: ["object", "array", "string"], maxLength: MIB, maxItems: 1000 } as const;
 const arr = <T extends object>(maxItems: number, items: T) => ({ type: "array", maxItems, items }) as const;
@@ -124,10 +126,10 @@ export const ROUTE_SCHEMAS = {
   toolSourceImport: { body: obj({ key: str(64), name: str(128), baseUrl: str(2048), spec: jsonObject(MIB), headers: jsonObject(65_536) }) },
   // llm_providers: key 64, name 128, protocol 32, base_url 2048, status 16; llm_models: key 128, display_name 128
   providerCreate: {
-    body: obj({ key: str(64), name: str(128), protocol: str(32), baseUrl: str(2048), apiKey: str(4096), headers: jsonObject(65_536), timeoutMs: num }),
+    body: obj({ key: str(64), name: str(128), protocol: str(32), baseUrl: str(2048), apiKey: str(4096), headers: jsonObject(65_536), timeoutMs: PROVIDER_TIMEOUT_MS }),
   },
   providerPatch: {
-    body: obj({ name: str(128), protocol: str(32), baseUrl: str(2048), apiKey: str(4096), headers: jsonObject(65_536), timeoutMs: num, status: str(16) }),
+    body: obj({ name: str(128), protocol: str(32), baseUrl: str(2048), apiKey: str(4096), headers: jsonObject(65_536), timeoutMs: PROVIDER_TIMEOUT_MS, status: str(16) }),
   },
   modelCreate: {
     body: obj({ key: str(128), displayName: str(128), capabilities, contextWindow: num, maxOutputTokens: num, inputPrice: num, outputPrice: num }),

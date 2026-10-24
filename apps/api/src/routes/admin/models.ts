@@ -60,7 +60,7 @@ export default async function adminModelRoutes(app: FastifyInstance): Promise<vo
       baseUrl: requireBodyString(body, "baseUrl"),
       apiKeyEncrypted: apiKey ? encryptSecret(apiKey, config.FORGE_MASTER_KEY) : null,
       headers: jsonBody(body, "headers", {}),
-      timeoutMs: Number(body.timeoutMs ?? 120000),
+      timeoutMs: body.timeoutMs === undefined ? 120000 : Number(body.timeoutMs), // schema: integer 1000..600000
       createdBy: session.principal.id,
     });
     await writeAudit(session, "provider.create", "llm_provider", providerId, { key });
