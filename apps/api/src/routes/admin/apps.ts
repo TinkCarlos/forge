@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { type FastifyInstance } from "fastify";
 import { assertOutboundUrlStatic, config, encryptSecret, errors, hashApiKey } from "@forge/core";
 import { deliverDueWebhooks } from "@forge/runtime";
+import { assertOrgWritable } from "@forge/governance";
 import { repos } from "@forge/store";
 import {
   bodyOf,
@@ -48,6 +49,8 @@ export default async function adminAppRoutes(app: FastifyInstance): Promise<void
     const session = await admin(request, "apikey.manage");
     const delivery = await repos.getWebhookDelivery(param(request, "id"));
     if (!delivery) throw errors.notFound("投递记录不存在");
+    const owner = await repos.getApiApp(String(delivery.app_id));
+    await assertOrgWritable(session.principal, owner ? (owner.owner_org_unit_id as string | null) : null);
     const replayed = await repos.replayWebhookDelivery(String(delivery.id));
     if (!replayed) throw errors.conflict("投递记录无法重放");
     await writeAudit(session, "webhook.replay", "webhook_delivery", String(delivery.id), { eventId: delivery.event_id });
@@ -99,6 +102,7 @@ export default async function adminAppRoutes(app: FastifyInstance): Promise<void
     const session = await admin(request, "apikey.manage");
     const app = await repos.getApiApp(param(request, "id"));
     if (!app) throw errors.notFound("应用不存在");
+    await assertOrgWritable(session.principal, app.owner_org_unit_id as string | null);
     const body = bodyOf(request);
     const fields: Record<string, unknown> = {};
     if (body.name !== undefined) fields.name = stringBody(body, "name");
@@ -118,6 +122,7 @@ export default async function adminAppRoutes(app: FastifyInstance): Promise<void
     const session = await admin(request, "apikey.manage");
     const app = await repos.getApiApp(param(request, "id"));
     if (!app) throw errors.notFound("应用不存在");
+    await assertOrgWritable(session.principal, app.owner_org_unit_id as string | null);
     const body = bodyOf(request);
     const rawKey = `fsk_${randomBytes(32).toString("base64url")}`;
     const prefix = rawKey.slice(0, 16);

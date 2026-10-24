@@ -43,3 +43,14 @@ export async function auditScopeFromGrants(
   }
   return { all: false, orgIds: [...orgIds], actors };
 }
+
+/**
+ * K-05 / P0-02: may a principal with this scope write a resource owned by `orgUnitId`? Same scope object as the
+ * audit read filter (one rule set): all -> yes; otherwise only departments in orgIds (org_tree subtree /
+ * custom_orgs). A resource without a department (global) is writable only with dataScope=all; "self" covers no
+ * department, so it writes no department-owned resource.
+ */
+export function scopeCoversOrg(scope: AuditScope, orgUnitId: string | null | undefined): boolean {
+  if (scope.all) return true;
+  return typeof orgUnitId === "string" && orgUnitId !== "" && scope.orgIds.includes(orgUnitId);
+}

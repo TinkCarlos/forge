@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { auditScopeFromGrants, type AuditGrant } from "../packages/governance/src/audit-scope.js";
+import { auditScopeFromGrants, scopeCoversOrg, type AuditGrant } from "../packages/governance/src/audit-scope.js";
 import { AUDIT_ORG_SOURCES, AUDIT_PLATFORM_RESOURCES, buildAuditListQuery, userUpdateAuditEntries } from "../packages/store/src/repositories/audit-scope-sql.js";
 
 // I-SCOPE-13/14 plan A: audit rows carry the resource's department (written at write time) and the list is filtered by
@@ -92,5 +92,30 @@ describe("userUpdateAuditEntries", () => {
       { action: "user.update", orgUnitId: "B", details: { role: "builder", fromOrgUnitId: "A", toOrgUnitId: "B" } },
       { action: "user.org_transfer_out", orgUnitId: "A", details: { fromOrgUnitId: "A", toOrgUnitId: "B" } },
     ]);
+  });
+});
+
+describe("scopeCoversOrg (K-05 write check, same scope object as the audit filter)", () => {
+  it("all writes everything, including resources without a department", () => {
+    expect(scopeCoversOrg({ all: true }, "X")).toBe(true);
+    expect(scopeCoversOrg({ all: true }, null)).toBe(true);
+  });
+  it("org_tree writes its own department and the subtree, not the parent or a sibling", async () => {
+    const scope = await auditScopeFromGrants(user, [{ scope: "org_tree" }], subtree);
+    expect(scopeCoversOrg(scope, "A")).toBe(true);
+    expect(scopeCoversOrg(scope, "A1")).toBe(true);
+    expect(scopeCoversOrg(scope, "ROOT")).toBe(false);
+    expect(scopeCoversOrg(scope, "B")).toBe(false);
+  });
+  it("a resource without a department needs dataScope=all", async () => {
+    const scope = await auditScopeFromGrants(user, [{ scope: "org_tree" }], subtree);
+    expect(scopeCoversOrg(scope, null)).toBe(false);
+    expect(scopeCoversOrg(scope, "")).toBe(false);
+  });
+  it("self covers no department; custom_orgs covers exactly the listed ones", async () => {
+    expect(scopeCoversOrg(await auditScopeFromGrants(user, [{ scope: "self" }], subtree), "A")).toBe(false);
+    const custom = await auditScopeFromGrants(user, [{ scope: "custom_orgs", orgIds: ["B"] }], subtree);
+    expect(scopeCoversOrg(custom, "B")).toBe(true);
+    expect(scopeCoversOrg(custom, "A")).toBe(false);
   });
 });

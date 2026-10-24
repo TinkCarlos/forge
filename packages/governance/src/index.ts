@@ -1,6 +1,6 @@
 import { errors, hasPermission, type Principal } from "@forge/core";
 import { repos, type RunRow } from "@forge/store";
-import { auditScopeFromGrants, type AuditGrant, type AuditScope } from "./audit-scope.js";
+import { auditScopeFromGrants, scopeCoversOrg, type AuditGrant, type AuditScope } from "./audit-scope.js";
 
 export function assertPermission(principal: Principal, permission: string): void {
   if (principal.type === "app") {
@@ -71,7 +71,7 @@ export async function visibleAgentOrgIds(principal: Principal): Promise<string[]
  * "app"); it is mapped to grants and evaluated by the generic rules in auditScopeFromGrants (union, all absorbs).
  * "org" is the org_tree scope (same subtree rule as canAccessRun). custom_orgs has no Principal field yet.
  */
-export async function auditFilterFor(principal: Principal): Promise<AuditScope> {
+export async function dataScopeFor(principal: Principal): Promise<AuditScope> {
   const grants: AuditGrant[] = [];
   if (principal.dataScope === "all") grants.push({ scope: "all" });
   else if (principal.dataScope === "org") grants.push({ scope: "org_tree" });
@@ -80,7 +80,19 @@ export async function auditFilterFor(principal: Principal): Promise<AuditScope> 
   return auditScopeFromGrants({ type: principal.type, id: principal.id, orgUnitId: principal.orgUnitId }, grants, (orgId) => repos.orgSubtreeIds(orgId));
 }
 
-export { auditScopeFromGrants, type AuditGrant, type AuditScope, type AuditSubject } from "./audit-scope.js";
+/** Audit read filter (plan A ruling ④): the principal's data scope. */
+export const auditFilterFor = dataScopeFor;
+
+/**
+ * K-05 / P0-02: a write to a department-owned resource outside the caller's data scope -> 403 POL-2001, thrown
+ * before anything is written. Same scope as auditFilterFor (dataScopeFor + scopeCoversOrg), not a second rule set.
+ * 403 (not 404) because the resources this guards (api apps, keys, webhook deliveries) are globally readable.
+ */
+export async function assertOrgWritable(principal: Principal, orgUnitId: string | null | undefined, message = "无权修改本部门数据范围以外的资源"): Promise<void> {
+  if (!scopeCoversOrg(await dataScopeFor(principal), orgUnitId)) throw errors.forbidden(message);
+}
+
+export { auditScopeFromGrants, scopeCoversOrg, type AuditGrant, type AuditScope, type AuditSubject } from "./audit-scope.js";
 export { buildArgsPreview, isHttpUrl, isSecretValue, isSensitiveKey, keySegments, looksLikeJson, looksLikeUrl, maskQueryString, maskUrlQuery, SENSITIVE_KEY_SEGMENTS, SENSITIVE_QUERY_PARAMS, ARGS_PREVIEW_VALUE_MAX, ARGS_PREVIEW_TOTAL_MAX } from "./args-preview.js";
 export { assertCanGrant, assertCanManageUser, canSeeUser, grantDefaultDataScope, loadVisibleUserOr404, userFilterFor, USER_DATA_SCOPES } from "./user-admin.js";
 export { maskArgsDeep, MASK_ARGS_MAX_DEPTH } from "./mask-args.js";
