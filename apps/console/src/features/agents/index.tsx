@@ -33,7 +33,15 @@ import { DataTablePagination } from '@/components/data-table'
 import { PageShell } from '@/components/layout/page-shell'
 import { rowMotion } from '@/components/motion/page'
 import { StatusBadge } from '@/components/status-badge'
-import { SkeletonRows, TableError, TableMessage } from '@/components/table-states'
+import { type SkeletonCol, SkeletonRows, TableError, TableMessage } from '@/components/table-states'
+
+const AGENT_SKELETON: SkeletonCol[] = [
+  { kind: 'title' },
+  { kind: 'badge', label: '状态' },
+  { kind: 'text', label: '线上版本' },
+  { kind: 'switch', label: '开放 API' },
+  { kind: 'actions' },
+]
 
 type Agent = {
   id: string
@@ -254,7 +262,7 @@ export function Agents() {
             {error ? (
               <TableError cols={5} error={error} onRetry={() => refetch().catch(onReject({ toast: '重试失败，请稍后再试' }))} />
             ) : isPending ? (
-              <SkeletonRows cols={5} />
+              <SkeletonRows cols={AGENT_SKELETON} />
             ) : visible.length === 0 ? (
               data.length ? (
                 <TableMessage cols={5} kind='empty' title='没有符合条件的 Agent' hint='换个关键词或筛选条件试试。' />

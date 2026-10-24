@@ -24,13 +24,21 @@ import { ConfirmDialog } from '@/components/confirm-dialog'
 import { PageShell } from '@/components/layout/page-shell'
 import { rowMotion } from '@/components/motion/page'
 import { StatusBadge } from '@/components/status-badge'
-import { SkeletonRows, TableError, TableMessage } from '@/components/table-states'
+import { type SkeletonCol, SkeletonRows, TableError, TableMessage } from '@/components/table-states'
 import { type Approval, approvalsQuery } from './api'
 
 type Decision = { approval: Approval; decision: 'approved' | 'rejected' } | null
 
 const MotionRow = motion.create(TableRow)
 const COLS = 6
+const APPROVAL_SKELETON: SkeletonCol[] = [
+  { kind: 'title' },
+  { kind: 'code', label: '工具与参数' },
+  { kind: 'badge', label: '风险' },
+  { kind: 'text', label: '提交时间' },
+  { kind: 'text', label: '过期时间' },
+  { kind: 'actions' },
+]
 const SIZE = 20
 
 /** args_preview：null 表示没有工具调用，空字符串表示调用时没有参数，都显示「无参数」。 */
@@ -121,7 +129,7 @@ export function Approvals() {
             {error ? (
               <TableError cols={COLS} error={error} onRetry={() => refetch().catch(onReject({ toast: '重试失败，请稍后再试' }))} />
             ) : isPending ? (
-              <SkeletonRows cols={COLS} />
+              <SkeletonRows cols={APPROVAL_SKELETON} />
             ) : data.items.length === 0 ? (
               <TableMessage cols={COLS} kind='empty' title='没有待审批的调用' hint='Agent 调用高风险工具时会暂停，等你在这里批准或驳回。' />
             ) : (

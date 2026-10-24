@@ -6,12 +6,40 @@ import { BackButton } from '@/components/back-button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { TableCell, TableRow } from '@/components/ui/table'
 
-export function SkeletonRows({ cols, rows = 6 }: { cols: number; rows?: number }) {
+/**
+ * 骨架行的每一列长什么样。卡片布局（<1024px）下每列变成一行，所以骨架要和真实单元格同高、带同样的 data-label，
+ * 否则加载完成时卡片会跳高（UI-065）。高度对照真实内容：title 20+16、badge 24、text 20、switch 18、code 40/36、actions 32+4。
+ */
+export type SkeletonCol = { kind: 'title' | 'badge' | 'text' | 'switch' | 'code' | 'actions'; label?: string }
+
+function SkeletonCell({ kind }: SkeletonCol) {
+  switch (kind) {
+    case 'title':
+      return (
+        <div className='flex flex-col gap-0'>
+          <Skeleton className='my-0.5 h-4 w-40' />
+          <Skeleton className='my-0.5 h-3 w-24' />
+        </div>
+      )
+    case 'badge':
+      return <Skeleton className='h-6 w-16 rounded-full' />
+    case 'switch':
+      return <Skeleton className='h-[18px] w-8 rounded-full' />
+    case 'code':
+      return <Skeleton className='h-9 w-44 max-lg:h-10 max-lg:w-40' />
+    case 'actions':
+      return <Skeleton className='ms-auto h-8 w-16' />
+    default:
+      return <Skeleton className='my-0.5 h-4 w-20' />
+  }
+}
+
+export function SkeletonRows({ cols, rows = 6 }: { cols: SkeletonCol[]; rows?: number }) {
   return Array.from({ length: rows }, (_, r) => (
-    <TableRow key={r} className='h-13 hover:bg-transparent'>
-      {Array.from({ length: cols }, (_, c) => (
-        <TableCell key={c}>
-          <Skeleton className={c === 0 ? 'h-4 w-40' : 'h-4 w-20'} />
+    <TableRow key={r} className='h-13 hover:bg-transparent' aria-hidden='true'>
+      {cols.map((col, c) => (
+        <TableCell key={c} data-label={col.label} data-actions={col.kind === 'actions' ? '' : undefined}>
+          <SkeletonCell {...col} />
         </TableCell>
       ))}
     </TableRow>
