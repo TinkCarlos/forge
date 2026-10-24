@@ -7,7 +7,7 @@ export default defineConfig({
   resolve: base.resolve,
   test: {
     environment: "node",
-    include: ["tests/config-required.test.ts", "tests/tick-backoff.test.ts", "tests/env-mode-callsites.test.ts", "tests/log-sanitize.test.ts", "tests/not-found-console.test.ts", "tests/approval-decide-execute-reject.test.ts", "tests/static-upgrade.test.ts", "tests/config-hardening.test.ts", "tests/audit-scope.test.ts"],
+    include: ["tests/config-required.test.ts", "tests/tick-backoff.test.ts", "tests/env-mode-callsites.test.ts", "tests/log-sanitize.test.ts", "tests/not-found-console.test.ts", "tests/approval-decide-execute-reject.test.ts", "tests/static-upgrade.test.ts", "tests/config-hardening.test.ts", "tests/audit-scope.test.ts", "tests/input-schema.test.ts"],
     pool: "forks",
   },
 });

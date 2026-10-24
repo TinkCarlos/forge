@@ -19,6 +19,7 @@ import {
   requireBodyString,
   enumBody,
 } from "../../plugins/http-helpers.js";
+import { limitQuerySchema, parseInput, userCreateSchema } from "../../plugins/input-schema.js";
 
 /**
  * User list DTO (I-USR-01): explicit whitelist instead of spreading the row. Field names stay snake_case because the
@@ -54,7 +55,7 @@ export default async function adminIdentityRoutes(app: FastifyInstance): Promise
   app.post("/admin/api/users", async (request) => {
     const session = await admin(request, "user.manage");
     const body = bodyOf(request);
-    const email = requireBodyString(body, "email");
+    const { email } = parseInput(userCreateSchema, body);
     const status = enumBody(body, "status", USER_STATUSES);
     if (await repos.getUserByEmail(email)) throw errors.conflict("邮箱已存在");
     const role = stringBody(body, "role", "user");
@@ -122,7 +123,7 @@ export default async function adminIdentityRoutes(app: FastifyInstance): Promise
   app.get("/admin/api/audit", async (request) => {
     const session = await admin(request, "audit.view");
     // I-SCOPE-13/14: rows filtered by the caller's dataScope (auditFilterFor); NULL-department rows only for dataScope all.
-    return { items: await repos.listAudit(await auditFilterFor(session.principal), Number((request.query as Record<string, unknown>).limit ?? 100)) };
+    return { items: await repos.listAudit(await auditFilterFor(session.principal), parseInput(limitQuerySchema(500), request.query ?? {}).limit ?? 100) };
   });
 
   app.get("/admin/api/sso", async (request) => {

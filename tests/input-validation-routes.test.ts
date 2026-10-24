@@ -1,0 +1,94 @@
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { randomBytes } from "node:crypto";
+import type { FastifyInstance } from "fastify";
+import { sessionCookieValue } from "@forge/identity";
+import { execute, repos } from "@forge/store";
+import { buildApp } from "../apps/api/src/app.js";
+import { cleanupRealSessions, realSession, sessionHeaders } from "./helpers/real-session.js";
+
+// K-23 / K-24 / I-ERR-22 / I-USR-02 / I-APR-34 / I-RUN-02 / S-25 (needs a *_test DB): bad input -> 400 CFG-8501 from
+// the route schema, nothing stored, never a 500 from the database.
+const suffix = `${Date.now().toString(36)}${randomBytes(3).toString("hex")}`;
+const ROOT = "01J00000000000000000000000";
+const ADMIN_ID = "01J00000000000000000000001";
+let app: FastifyInstance;
+let headers: Record<string, string> = {};
+let agentId = "";
+let versionId = "";
+let accountId = "";
+let scheduleId = "";
+
+const code = (res: { json: () => unknown }): string | undefined => (res.json() as { error?: { code?: string }; code?: string }).error?.code ?? (res.json() as { code?: string }).code;
+
+beforeAll(async () => {
+  app = await buildApp();
+  const session = await realSession({ name: "IT validation", role: "platform_admin", orgUnitId: ROOT, dataScope: "all" });
+  headers = sessionHeaders(session, sessionCookieValue(session));
+  agentId = await repos.createAgent({ key: `it-val-${suffix}`, name: "IT val", ownerOrgUnitId: ROOT, createdBy: ADMIN_ID });
+  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID });
+  await repos.publishAgentVersion(agentId, versionId);
+  accountId = await repos.createServiceAccount({ key: `it-val-svc-${suffix}`, name: "IT val svc", orgUnitId: ROOT, role: "operator", dataScope: "org", createdBy: ADMIN_ID });
+  scheduleId = await repos.createSchedule({
+    key: `it-val-${suffix}`, name: "IT val", agentId, orgUnitId: ROOT, subjectType: "service", subjectId: accountId, serviceAccountId: accountId,
+    cron: "0 9 * * *", timezone: "Asia/Shanghai", input: { text: "x" }, status: "disabled", nextRunAt: null, createdBy: ADMIN_ID,
+  });
+});
+
+afterAll(async () => {
+  await execute("DELETE FROM schedules WHERE id = ?", [scheduleId]);
+  await execute("DELETE FROM service_accounts WHERE id = ?", [accountId]);
+  await execute("DELETE FROM agent_versions WHERE id = ?", [versionId]);
+  await execute("DELETE FROM agents WHERE `key` LIKE ?", [`it-val-%${suffix}`]);
+  await execute("DELETE FROM users WHERE email LIKE ?", [`%${suffix}%`]);
+  await cleanupRealSessions();
+  await app.close();
+});
+
+describe("route input schema -> 400 CFG-8501", () => {
+  it("K-23: agent name of 200 chars -> 400 on create and patch; nothing stored", async () => {
+    const create = await app.inject({ method: "POST", url: "/admin/api/agents", headers, payload: { key: `it-val-long-${suffix}`, name: "n".repeat(200) } });
+    expect(create.statusCode).toBe(400);
+    expect(code(create)).toBe("CFG-8501");
+    expect(await repos.getAgentByKey(`it-val-long-${suffix}`)).toBeNull();
+    const patch = await app.inject({ method: "PATCH", url: `/admin/api/agents/${agentId}`, headers, payload: { name: "n".repeat(200) } });
+    expect(patch.statusCode).toBe(400);
+    expect((await repos.getAgent(agentId))!.name).toBe("IT val");
+  });
+
+  it("K-24 / I-ERR-22: PATCH cron only (no status) with an invalid cron -> 400, nothing stored; bad timezone / status -> 400", async () => {
+    for (const payload of [{ cron: "not a cron" }, { cron: "61 * * * *" }, { timezone: "Mars/Olympus" }, { status: "paused" }, { name: "n".repeat(200) }]) {
+      const res = await app.inject({ method: "PATCH", url: `/admin/api/schedules/${scheduleId}`, headers, payload });
+      expect(res.statusCode, JSON.stringify(payload)).toBe(400);
+      expect(code(res)).toBe("CFG-8501");
+    }
+    const row = (await repos.getSchedule(scheduleId))!;
+    expect([row.cron, row.timezone, row.status, row.name]).toEqual(["0 9 * * *", "Asia/Shanghai", "disabled", "IT val"]);
+    const ok = await app.inject({ method: "PATCH", url: `/admin/api/schedules/${scheduleId}`, headers, payload: { cron: "0 10 * * *" } });
+    expect(ok.statusCode).toBe(200);
+    expect((await repos.getSchedule(scheduleId))!.cron).toBe("0 10 * * *");
+  });
+
+  it("I-USR-02: missing email / email=abc -> 400; no user created", async () => {
+    for (const payload of [{ username: `it-val-${suffix}` }, { email: "abc", username: `it-val-${suffix}` }]) {
+      const res = await app.inject({ method: "POST", url: "/admin/api/users", headers, payload });
+      expect(res.statusCode).toBe(400);
+      expect(code(res)).toBe("CFG-8501");
+    }
+  });
+
+  it("I-APR-34: decide on a missing approval stays 404; body errors are 400 CFG-8501", async () => {
+    const missing = await app.inject({ method: "POST", url: "/admin/api/approvals/01JNOTEXIST000000000000000/decide", headers, payload: { decision: "nope" } });
+    expect(missing.statusCode).toBe(404);
+  });
+
+  it("I-RUN-02 / S-25: runs and audit limit=abc/1.5/-1 -> 400; limit=10 -> 200", async () => {
+    for (const url of ["/admin/api/runs", "/admin/api/audit"]) {
+      for (const limit of ["abc", "1.5", "-1"]) {
+        const res = await app.inject({ method: "GET", url: `${url}?limit=${limit}`, headers });
+        expect(res.statusCode, `${url}?limit=${limit}`).toBe(400);
+        expect(code(res)).toBe("CFG-8501");
+      }
+      expect((await app.inject({ method: "GET", url: `${url}?limit=10`, headers })).statusCode).toBe(200);
+    }
+  });
+});

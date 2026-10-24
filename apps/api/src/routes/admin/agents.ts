@@ -16,6 +16,7 @@ import {
   requireBodyString,
   sessionPayload,
 } from "../../plugins/http-helpers.js";
+import { agentFieldsSchema, parseInput } from "../../plugins/input-schema.js";
 
 export default async function adminAgentRoutes(app: FastifyInstance): Promise<void> {
   app.get("/admin/api/dashboard", async (request) => {
@@ -43,6 +44,7 @@ export default async function adminAgentRoutes(app: FastifyInstance): Promise<vo
     const body = bodyOf(request);
     const key = requireBodyString(body, "key").trim();
     if (!/^[a-z0-9][a-z0-9-]{1,63}$/.test(key)) throw errors.invalid("key 必须为小写字母、数字、连字符，2-64 位");
+    parseInput(agentFieldsSchema, body);
     if (await repos.getAgentByKey(key)) throw errors.conflict("Agent key 已存在");
     const agentId = await repos.createAgent({
       key,
@@ -82,6 +84,7 @@ export default async function adminAgentRoutes(app: FastifyInstance): Promise<vo
     assertAgentWritable(session.principal, agent);
     const body = bodyOf(request);
     const fields: Record<string, unknown> = {};
+    parseInput(agentFieldsSchema, body);
     if (body.name !== undefined) fields.name = stringBody(body, "name");
     if (body.description !== undefined) fields.description = stringBody(body, "description");
     if (body.status !== undefined) {

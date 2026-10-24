@@ -15,6 +15,7 @@ import {
   agentAccessible,
   requireBodyString,
 } from "../../plugins/http-helpers.js";
+import { assertScheduleTiming, parseInput, scheduleCreateSchema, schedulePatchSchema } from "../../plugins/input-schema.js";
 
 /** A schedule's service account must exist, be visible to the caller (own department or a sub-department unless dataScope all), be active and not platform_admin. */
 async function requireUsableServiceAccount(principal: Principal, id: string) {
@@ -97,14 +98,11 @@ export default async function adminScheduleRoutes(app: FastifyInstance): Promise
     if (!agent.published_version_id) throw errors.invalid("Agent 尚未发布");
     // FR-TR-06 / permissions.md §3.4: new schedules run as a service account, never as the creator.
     const account = await requireUsableServiceAccount(session.principal, requireBodyString(body, "serviceAccountId"));
+    parseInput(scheduleCreateSchema, body);
     const cron = requireBodyString(body, "cron");
     const timezone = stringBody(body, "timezone", "Asia/Shanghai");
-    let nextRunAt: Date | null = null;
-    try {
-      nextRunAt = CronExpressionParser.parse(cron, { currentDate: new Date(), tz: timezone }).next().toDate();
-    } catch {
-      throw errors.invalid("Cron 表达式无效");
-    }
+    assertScheduleTiming(cron, timezone);
+    const nextRunAt = CronExpressionParser.parse(cron, { currentDate: new Date(), tz: timezone }).next().toDate();
     const id = await repos.createSchedule({
       key: stringBody(body, "key", `schedule-${Date.now()}`),
       name: stringBody(body, "name", "Scheduled Agent"),
@@ -126,6 +124,12 @@ export default async function adminScheduleRoutes(app: FastifyInstance): Promise
 
   scheduleByIdRoute(app, "PATCH", "", "schedule.manage", async ({ request, session, schedule }) => {
     const body = bodyOf(request);
+    // K-24 / I-ERR-22: every field is validated before anything is stored; cron and timezone are always checked
+    // (effective values, so a timezone-only change is checked against the stored cron and vice versa), whatever status.
+    const input = parseInput(schedulePatchSchema, body);
+    const cron = input.cron ?? String(schedule.cron);
+    const timezone = input.timezone ?? String(schedule.timezone);
+    if (input.cron !== undefined || input.timezone !== undefined) assertScheduleTiming(cron, timezone);
     const fields: Record<string, unknown> = {};
     if (body.name !== undefined) fields.name = stringBody(body, "name");
     if (body.cron !== undefined) fields.cron = stringBody(body, "cron");
@@ -133,8 +137,8 @@ export default async function adminScheduleRoutes(app: FastifyInstance): Promise
     if (body.input !== undefined) fields.input_json = jsonBody(body, "input", {});
     if (body.status !== undefined) fields.status = stringBody(body, "status");
     if (body.serviceAccountId !== undefined) fields.service_account_id = (await requireUsableServiceAccount(session.principal, requireBodyString(body, "serviceAccountId"))).id;
-    if (body.cron && body.status === "active") {
-      fields.next_run_at = CronExpressionParser.parse(String(fields.cron), { currentDate: new Date(), tz: String(fields.timezone ?? schedule.timezone) }).next().toDate();
+    if ((input.cron !== undefined || input.timezone !== undefined) && (input.status ?? schedule.status) === "active") {
+      fields.next_run_at = CronExpressionParser.parse(cron, { currentDate: new Date(), tz: timezone }).next().toDate();
     }
     await repos.updateSchedule(schedule.id as string, fields);
     await writeAudit(session, "schedule.update", "schedule", String(schedule.id), maskArgsDeep(fields));

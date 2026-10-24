@@ -12,6 +12,7 @@ import {
   presentRun,
   streamRun,
 } from "../../plugins/http-helpers.js";
+import { approvalDecideSchema, limitQuerySchema, parseInput } from "../../plugins/input-schema.js";
 
 export default async function adminRunRoutes(app: FastifyInstance): Promise<void> {
   app.get("/admin/api/runs", async (request) => {
@@ -21,7 +22,7 @@ export default async function adminRunRoutes(app: FastifyInstance): Promise<void
     const runs = await repos.listRuns({
       ...filter,
       status: typeof query.status === "string" ? query.status : undefined,
-      limit: Number(query.limit ?? 50),
+      limit: parseInput(limitQuerySchema(200), query ?? {}).limit ?? 50,
     });
     const items = await Promise.all(
       runs.map(async (run) => {
@@ -89,15 +90,14 @@ export default async function adminRunRoutes(app: FastifyInstance): Promise<void
     const run = approval ? await repos.getRun(approval.run_id) : null;
     if (!approval || !run || !(await canAccessRun(session.principal, run))) throw errors.notFound("审批不存在");
     const body = bodyOf(request);
-    const decision = stringBody(body, "decision");
-    if (!["approved", "rejected"].includes(decision)) throw errors.invalid("decision 必须为 approved/rejected");
+    const { decision, comment } = parseInput(approvalDecideSchema, body);
     // I-APR-38: the Run already ended -> the approval is no longer operable (pending -> expired), 409 RUN-7005, no audit,
     // no executeRun. Checked here at the API, not in the loop.
     if (isRunFinished(run.status)) {
       await repos.expirePendingApproval(approval.id);
       throw new ForgeError(RUN_FINISHED_CODE, "Run 已结束，审批不可操作", 409);
     }
-    const ok = await repos.decideApproval(approval.id, decision as "approved" | "rejected", session.principal.id, stringBody(body, "comment"));
+    const ok = await repos.decideApproval(approval.id, decision, session.principal.id, comment ?? "");
     if (!ok) throw errors.conflict("审批已处理或已过期");
     await writeAudit(session, "approval.decide", "approval", approval.id, { decision });
     // Fire-and-forget like the worker (K-20): a rejected executeRun is logged (sanitized), never an unhandled rejection.
