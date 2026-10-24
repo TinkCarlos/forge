@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { Separator } from '@/components/ui/separator'
-import { SidebarTrigger } from '@/components/ui/sidebar'
+import { SidebarTrigger, useSidebar } from '@/components/ui/sidebar'
+import { useReturnFocus } from '@/hooks/use-return-focus'
 
 type HeaderProps = React.HTMLAttributes<HTMLElement> & {
   fixed?: boolean
@@ -10,6 +11,8 @@ type HeaderProps = React.HTMLAttributes<HTMLElement> & {
 
 export function Header({ className, fixed, children, ...props }: HeaderProps) {
   const [offset, setOffset] = useState(0)
+  const { openMobile } = useSidebar()
+  useReturnFocus(openMobile, '[data-sidebar=trigger]')
 
   useEffect(() => {
     const onScroll = () => {
