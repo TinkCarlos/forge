@@ -6,6 +6,7 @@ import { fileURLToPath, URL } from 'node:url'
 import { sonnerNoInsertCss } from './vite-plugins/sonner-no-insert-css.ts'
 import { styleSingletonAdopted } from './vite-plugins/style-singleton-adopted.ts'
 import { noInlineArtifacts } from './vite-plugins/no-inline-artifacts.ts'
+import { chunkBudget, vendorChunk } from './vite-plugins/chunk-budget.ts'
 
 const api = process.env.FORGE_API_URL ?? 'http://127.0.0.1:3100'
 
@@ -24,11 +25,18 @@ export default defineConfig({
     react(),
     tailwindcss(),
     noInlineArtifacts(),
+    chunkBudget(),
   ],
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   server: {
     port: 5175,
     proxy: Object.fromEntries(['/admin', '/auth', '/open', '/integration', '/healthz', '/readyz'].map((path) => [path, { target: api, changeOrigin: false }])),
   },
-  build: { outDir: 'dist', emptyOutDir: true },
+  build: {
+    outDir: 'dist',
+    emptyOutDir: true,
+    // OPS-019：第三方依赖拆成 vendor-react / vendor-radix / vendor-tanstack / vendor-zod / vendor-motion / vendor-misc，
+    // 业务代码仍按路由 autoCodeSplitting；chunkBudget() 守住入口 ≤200 kB、单块 ≤250 kB。
+    rollupOptions: { output: { manualChunks: vendorChunk } },
+  },
 })

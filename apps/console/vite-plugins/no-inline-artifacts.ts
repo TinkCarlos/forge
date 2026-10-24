@@ -83,14 +83,20 @@ export function assertDistClean(dir: string, base: string): void {
 
 export function noInlineArtifacts(): Plugin {
   let config: ResolvedConfig | undefined
+  let written = false
   return {
     name: 'forge:no-inline-artifacts',
     apply: 'build',
     configResolved(c) {
       config = c
     },
+    writeBundle() {
+      written = true
+    },
+    // 前面的插件已经让构建失败（没写出产物）时不再检查，免得 ENOENT 盖住真正的错误
     closeBundle() {
-      if (!config) return
+      if (!config || !written) return
+      written = false
       assertDistClean(resolve(config.root, config.build.outDir), config.base)
     },
   }

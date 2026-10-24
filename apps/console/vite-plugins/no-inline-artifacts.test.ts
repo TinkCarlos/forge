@@ -111,6 +111,17 @@ describe('assertDistClean：有违规就抛错（构建失败）', () => {
   })
 })
 
+describe('插件钩子', () => {
+  it('没写出产物（前面的插件已让构建失败）时 closeBundle 不检查，不用 ENOENT 盖住真正的错误', async () => {
+    const m = (await import('./no-inline-artifacts')) as unknown as { noInlineArtifacts(): Record<string, (...a: unknown[]) => unknown> }
+    const p = m.noInlineArtifacts()
+    p.configResolved({ root: '/nonexistent-forge-root', base: '/next/', build: { outDir: 'dist' } })
+    expect(() => p.closeBundle()).not.toThrow()
+    p.writeBundle()
+    expect(() => p.closeBundle()).toThrow(/ENOENT/)
+  })
+})
+
 describe('接进构建', () => {
   it('vite.config.ts 挂了 noInlineArtifacts()，保留 FE-CSP-01/03 两个插件', () => {
     const cfg = readFileSync(new URL('../vite.config.ts', import.meta.url), 'utf8')
