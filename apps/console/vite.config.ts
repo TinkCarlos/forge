@@ -5,6 +5,7 @@ import { tanstackRouter } from '@tanstack/router-plugin/vite'
 import { fileURLToPath, URL } from 'node:url'
 import { sonnerNoInsertCss } from './vite-plugins/sonner-no-insert-css.ts'
 import { styleSingletonAdopted } from './vite-plugins/style-singleton-adopted.ts'
+import { noInlineArtifacts } from './vite-plugins/no-inline-artifacts.ts'
 
 const api = process.env.FORGE_API_URL ?? 'http://127.0.0.1:3100'
 
@@ -15,7 +16,15 @@ export default defineConfig({
   publicDir: false,
   // FE-CSP-01：sonner 不在运行时插 <style>，样式由 src/styles/index.css 静态引入
   // FE-CSP-03：Radix 弹层的滚动锁样式改走 adoptedStyleSheets
-  plugins: [sonnerNoInsertCss(), styleSingletonAdopted(), tanstackRouter({ target: 'react', autoCodeSplitting: true }), react(), tailwindcss()],
+  // 产物断言：dist 里出现内联脚本 / 注入式内联样式就让构建失败（vite-plugins/no-inline-artifacts.ts）
+  plugins: [
+    sonnerNoInsertCss(),
+    styleSingletonAdopted(),
+    tanstackRouter({ target: 'react', autoCodeSplitting: true }),
+    react(),
+    tailwindcss(),
+    noInlineArtifacts(),
+  ],
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   server: {
     port: 5175,
