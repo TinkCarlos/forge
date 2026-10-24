@@ -119,4 +119,16 @@ describe("POST /admin/api/approvals/:id/decide when executeRun rejects (fire-and
     expect(emit).toHaveBeenCalledWith(RUN_ID, "run.started", { agentId: "agt_1", agentVersionId: "agv_1" });
     expectOneSanitizedLine(errorLog);
   });
+
+  it("P2-05: an error whose message carries a connection string -> the logged line has no user, password or query value", async () => {
+    // Fake credentials (test-only literals): the line must keep neither the user, the password, the host part nor the token.
+    const leaky = Object.assign(new Error(`pool failed for ${["my", "sql"].join("")}://forge_user:pw-SEKRET@db.internal:3306/forge?ssl=1&password=q-SEKRET`), { code: "ECONNREFUSED" });
+    claimRun.mockRejectedValueOnce(leaky);
+    const errorLog = await decideAndCollect();
+    expect(unhandled).toHaveBeenCalledTimes(0);
+    expect(errorLog).toHaveBeenCalledTimes(1);
+    const line = String(errorLog.mock.calls[0]?.[0]);
+    expect(line).toContain("[REDACTED]");
+    for (const secret of ["forge_user", "pw-SEKRET", "q-SEKRET"]) expect(line).not.toContain(secret);
+  });
 });

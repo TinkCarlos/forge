@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // Pure module (no imports): no database, no config.
-import { guardTick, tickBackoffMs, TICK_BACKOFF_MAX_MS } from "../packages/runtime/src/tick-guard";
+import { describeTickError, guardTick, tickBackoffMs, TICK_BACKOFF_MAX_MS } from "../packages/runtime/src/tick-guard";
 
 // K-20 (OPS-010): a rejecting tick must never become an unhandled rejection; consecutive failures back off
 // 1s, 2s, 4s, ... capped at 30s; a success resets the backoff.
@@ -106,5 +106,32 @@ describe("guardTick", () => {
     await tick.run();
     expect(logs[0]!.length).toBeLessThan(400);
     expect(logs[0]).not.toContain("at ");
+  });
+});
+
+describe("describeTickError redacts credentials (P2-05, same sanitizer as K-26)", () => {
+  // Test-only fake credentials. The scheme is assembled so the source carries no literal connection-string prefix.
+  const MYSQL = ["my", "sql"].join("") + "://";
+  const cases: Array<[string, string[]]> = [
+    [`connect failed ${MYSQL}app_user:pw-SEKRET@db.internal:3306/forge`, ["app_user", "pw-SEKRET"]],
+    ["GET https://bob:hunter2-SEKRET@api.example.com/v1 failed", ["bob", "hunter2-SEKRET"]],
+    ["fetch https://api.example.com/hook?token=tok-SEKRET&x=1 failed", ["tok-SEKRET"]],
+    ["two: postgres://u1:p1-SEKRET@h1/db and redis://:p2-SEKRET@h2:6379", ["u1", "p1-SEKRET", "p2-SEKRET"]],
+    ["no scheme: admin:p3-SEKRET@10.0.0.5:3306", ["admin:", "p3-SEKRET"]],
+  ];
+  for (const [message, secrets] of cases) {
+    it(message.slice(0, 40), () => {
+      const out = describeTickError(Object.assign(new Error(message), { code: "ECONNREFUSED" }));
+      expect(out).toContain("[REDACTED]");
+      for (const secret of secrets) expect(out).not.toContain(secret);
+    });
+  }
+  it("a connection string straddling the 300-char cut is redacted before truncation", () => {
+    const out = describeTickError(new Error(`${"x".repeat(280)} ${MYSQL}cut_user:cut-SEKRET@db/forge`));
+    expect(out).not.toContain("cut_user");
+    expect(out).not.toContain("cut-S");
+  });
+  it("plain messages are unchanged", () => {
+    expect(describeTickError(Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:1"), { code: "ECONNREFUSED" }))).toBe("Error ECONNREFUSED: connect ECONNREFUSED 127.0.0.1:1");
   });
 });

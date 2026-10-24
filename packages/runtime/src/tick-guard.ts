@@ -14,14 +14,34 @@ export function tickBackoffMs(consecutiveFailures: number, minMs = TICK_BACKOFF_
   return Math.min(maxMs, minMs * 2 ** exponent);
 }
 
-/** Short, log-safe description of an error: name/code/message only (no stack, no object dump, no config). */
+const REDACTED = "[REDACTED]";
+/** Same sensitive query keys as the K-26 request-log sanitizer (apps/api/src/plugins/log-sanitize.ts), plus pwd/passwd. */
+const SENSITIVE_QUERY_KEY = "token|access_token|refresh_token|id_token|api_key|apikey|key|secret|client_secret|password|passwd|pwd|code|state";
+const URL_USERINFO = /([a-z][a-z0-9+.-]*:\/\/)[^\s/@]*@/gi;
+const BARE_USERINFO = /(^|[\s(=,'"[])[^\s:@/()'"[\]]+:[^\s@/]+@/g;
+const SENSITIVE_QUERY = new RegExp(`([?&;](?:${SENSITIVE_QUERY_KEY})(?:\\[[^\\]]*\\])?=)[^&\\s#]*`, "gi");
+
+/**
+ * P2-05: credentials inside an error message (driver errors quote connection strings) are redacted before the message
+ * is logged: `scheme://user:pass@` and bare `user:pass@host` userinfo -> `[REDACTED]@`, sensitive query values ->
+ * `[REDACTED]`. Runs before truncation so a secret straddling the cut cannot survive half-masked.
+ */
+export function redactCredentials(message: string): string {
+  return message
+    .replace(URL_USERINFO, `$1${REDACTED}@`)
+    .replace(BARE_USERINFO, `$1${REDACTED}@`)
+    .replace(SENSITIVE_QUERY, `$1${REDACTED}`);
+}
+
+const truncate = (text: string): string => (text.length > 300 ? `${text.slice(0, 300)}…` : text);
+
+/** Short, log-safe description of an error: name/code/message only (no stack, no object dump, no config, no credentials). */
 export function describeTickError(error: unknown): string {
   if (error instanceof Error) {
     const code = (error as { code?: unknown }).code;
-    const message = error.message.length > 300 ? `${error.message.slice(0, 300)}…` : error.message;
-    return `${error.name}${typeof code === "string" && code ? ` ${code}` : ""}: ${message}`;
+    return `${error.name}${typeof code === "string" && code ? ` ${code}` : ""}: ${truncate(redactCredentials(error.message))}`;
   }
-  return typeof error === "string" ? error.slice(0, 300) : "non-error value thrown";
+  return typeof error === "string" ? redactCredentials(error).slice(0, 300) : "non-error value thrown";
 }
 
 export interface TickGuardOptions {
