@@ -166,3 +166,10 @@
 
 /* 侧栏折叠为图标时只留第一个子元素（图标或头像），文字和徽标不挤进 44px 的按钮里 */
 [data-slot='sidebar'][data-collapsible='icon'] [data-sidebar='menu-button'] > :not(:first-child) { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+
+/* UI-055：sonner richColors 的浅色 error 文字 #e60000 叠在 #fff0f0 上只有 4.35:1。
+   在 toast 元素自身上覆盖 --error-text（比 toaster 上的同名变量就近生效，不依赖样式表先后），
+   浅色改用 --destructive-text（实测 5.80:1）；深色保留 sonner 原值（实测 9.34:1）。 */
+[data-sonner-toaster][data-sonner-theme='light'] [data-sonner-toast] {
+  --error-text: var(--destructive-text);
+}
