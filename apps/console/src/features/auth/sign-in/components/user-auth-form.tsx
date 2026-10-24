@@ -1,4 +1,5 @@
 import { safeRedirectPath } from '@/lib/safe-redirect'
+import { ssoLoginHref } from '@/lib/sso-login-href'
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useNavigate } from '@tanstack/react-router'
@@ -82,7 +83,7 @@ export function UserAuthForm({ className, redirectTo }: { className?: string; re
       )}
       {config.oidcConfigured && (
         <Button variant='outline' asChild>
-          <a href='/auth/oidc/login'>使用统一 SSO 登录</a>
+          <a href={ssoLoginHref(redirectTo)}>使用统一 SSO 登录</a>
         </Button>
       )}
     </form>
