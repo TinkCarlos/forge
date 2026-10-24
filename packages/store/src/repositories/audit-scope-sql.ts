@@ -76,8 +76,11 @@ export function userUpdateAuditEntries(before: string | null, after: string | nu
  * Delete-class audit actions (architect ruling): the resource row is gone (or going) when the audit row is written,
  * so the department cannot be resolved from it. Callers must pass orgUnitId explicitly (read before the delete), or an
  * explicit null for platform-level resources; repos.audit throws when it is omitted.
+ *
+ * Suffix rule: the last dot segment is a delete verb (also unbind / detach / unlink / deactivate), case-insensitive;
+ * the prefix is one or more dot-separated segments of letters (camelCase), digits, "_" or "-".
  */
-export const DELETE_CLASS_AUDIT_ACTION = /^[a-z_.]+\.(delete|remove|uninstall|revoke|purge|destroy|archive)$/;
+export const DELETE_CLASS_AUDIT_ACTION = /^[a-z0-9_-]+(?:\.[a-z0-9_-]+)*\.(?:delete|remove|uninstall|revoke|purge|destroy|archive|unbind|detach|unlink|deactivate)$/i;
 
 export function isDeleteClassAuditAction(action: string): boolean {
   return DELETE_CLASS_AUDIT_ACTION.test(action);
