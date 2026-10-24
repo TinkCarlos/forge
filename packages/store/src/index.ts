@@ -8,7 +8,7 @@ import { auditRepo } from "./repositories/audit.js";
 
 export * from "./db.js";
 export * from "./types.js";
-export { AUDIT_ORG_SOURCES, AUDIT_PLATFORM_RESOURCES, DELETE_CLASS_AUDIT_ACTION, isDeleteClassAuditAction, buildAuditListQuery, userUpdateAuditEntries, type AuditListScope, type UserUpdateAuditEntry } from "./repositories/audit-scope-sql.js";
+export { AUDIT_ORG_SOURCES, AUDIT_PLATFORM_RESOURCES, DELETE_CLASS_AUDIT_ACTION, assertDeleteAuditOrgUnit, isDeleteClassAuditAction, buildAuditListQuery, userUpdateAuditEntries, type AuditListScope, type UserUpdateAuditEntry } from "./repositories/audit-scope-sql.js";
 
 export const repos = {
   ...identityRepo,

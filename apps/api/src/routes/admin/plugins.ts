@@ -10,6 +10,7 @@ import {
   jsonBody,
   admin,
   writeAudit,
+  prepareAudit,
   requireBodyString,
 } from "../../plugins/http-helpers.js";
 import { ROUTE_SCHEMAS, assertValidInput } from "../../plugins/input-schema.js";
@@ -112,9 +113,11 @@ export default async function adminPluginRoutes(app: FastifyInstance): Promise<v
     if (!plugin) throw errors.notFound("插件不存在");
     // Delete-class audit: the department is taken before the change and passed explicitly, never re-resolved from a
     // row that may be gone. Plugins are platform-level (no department column) -> explicit null.
+    // P2: the audit entry is validated before uninstalling (guard failure -> nothing uninstalled).
     const orgUnitId = null;
+    const audit = prepareAudit(session, "plugin.uninstall", "plugin", String(plugin.id), undefined, { orgUnitId });
     await repos.uninstallPlugin(String(plugin.id));
-    await writeAudit(session, "plugin.uninstall", "plugin", String(plugin.id), undefined, { orgUnitId });
+    await audit();
     return { ok: true };
   });
 }

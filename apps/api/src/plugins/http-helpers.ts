@@ -12,6 +12,7 @@ import { assertPermission, maskArgsDeep, visibleAgentOrgIds } from "@forge/gover
 import { sessionCookieOptions } from "./session-cookie.js";
 import { oidcConfigured, readSignedSessionCookie, readStoredSessionCookie, sessionCookieValue, type Session, type StoredSession } from "@forge/identity";
 import {
+  assertDeleteAuditOrgUnit,
   parseJsonValue,
   repos,
   type AgentRow,
@@ -92,6 +93,23 @@ export async function writeAudit(
 ): Promise<void> {
   // I-SCOPE plan A: the row records the resource's department (resolved in repos.audit unless opts.orgUnitId is given).
   await repos.audit({ actorType: "user", actorId: session.principal.id, action, resourceType, resourceId, details, ...(opts.orgUnitId !== undefined ? { orgUnitId: opts.orgUnitId } : {}) });
+}
+
+/**
+ * P2 (QA 714b3f3 §4): builds and validates an audit entry BEFORE the change it records (delete-class guard: explicit
+ * orgUnitId, null for platform-level resources), and returns the writer to call after the change. A guard failure
+ * then aborts the request before anything is changed.
+ */
+export function prepareAudit(
+  session: Session,
+  action: string,
+  resourceType: string,
+  resourceId: string | null,
+  details?: unknown,
+  opts: { orgUnitId?: string | null } = {},
+): () => Promise<void> {
+  assertDeleteAuditOrgUnit({ action, ...opts });
+  return () => writeAudit(session, action, resourceType, resourceId, details, opts);
 }
 
 export async function agentAccessible(principal: Principal, agent: AgentRow | null): Promise<boolean> {
