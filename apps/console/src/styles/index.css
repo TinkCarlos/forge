@@ -191,4 +191,9 @@
    浅色改用 --destructive-text（实测 5.80:1）；深色保留 sonner 原值（实测 9.34:1）。 */
 [data-sonner-toaster][data-sonner-theme='light'] [data-sonner-toast] {
   --error-text: var(--destructive-text);
+  /* 同理：sonner 浅色 success 4.29:1、info 4.35:1、warning 3.07:1（axe 实测 success 4.25）。色相不变，只压低亮度到 ≥ 4.5:1；
+     数值由 src/lib/toast-contrast.test.ts 校验。 */
+  --success-text: hsl(140, 100%, 23%);
+  --info-text: hsl(210, 92%, 39%);
+  --warning-text: hsl(31, 92%, 29%);
 }
