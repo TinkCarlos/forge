@@ -5,5 +5,5 @@ import { fileURLToPath, URL } from 'node:url'
 // 用法：pnpm --filter @forge/console test
 export default defineConfig({
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
-  test: { environment: 'node', include: ['src/**/*.test.ts'] },
+  test: { environment: 'node', include: ['src/**/*.test.ts', 'vite-plugins/**/*.test.ts'] },
 })

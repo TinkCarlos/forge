@@ -1,5 +1,7 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
+/* FE-CSP-01：sonner 样式静态引入（/next/ 的 style-src 'self' 不允许运行时插 <style>） */
+@import 'sonner/dist/styles.css';
 @import './theme.css';
 
 @custom-variant dark (&:is(.dark *));
