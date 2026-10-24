@@ -17,7 +17,7 @@ import {
   bodyOf,
   param,
   stringBody,
-  jsonBody,
+  runInputBody,
   presentRun,
   presentRunOutput,
   streamRun,
@@ -99,7 +99,7 @@ export default async function openRoutes(app: FastifyInstance): Promise<void> {
     const versionId = agent.published_version_id;
     if (!versionId) throw errors.notFound("Agent 不存在");
     const principal: Principal = { ...context.principal, orgUnitId: appOrg };
-    const input = jsonBody(body, "input", { text: stringBody(body, "text", "") });
+    const input = runInputBody(body);
     const result = await resolveIdempotentCreate({
       scope: String(context.app.id),
       key: idempotencyKey,
@@ -138,7 +138,7 @@ export default async function openRoutes(app: FastifyInstance): Promise<void> {
     const idempotencyKey = Array.isArray(header) ? header[0] : header;
     const wait = clampWaitSeconds((request.query as Record<string, unknown>).wait, 30);
     const principal: Principal = { ...context.principal, orgUnitId: appOrg };
-    const input = jsonBody(body, "input", { text: stringBody(body, "text", "") });
+    const input = runInputBody(body);
     const result = await resolveIdempotentCreate({
       scope: String(context.app.id),
       key: idempotencyKey,

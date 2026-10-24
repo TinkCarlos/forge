@@ -408,7 +408,7 @@ export async function createQueuedRun(input: {
     triggerRef: input.triggerRef ?? null,
     input: input.input,
   });
-  const text = typeof input.input === "object" && input.input && "text" in input.input ? String((input.input as Record<string, unknown>).text) : String(input.input ?? "");
+  const text = userMessageText(input.input);
   await repos.addMessage({
     threadId,
     runId,
@@ -418,4 +418,16 @@ export async function createQueuedRun(input: {
   });
   await emit(runId, "run.queued", { status: "queued" });
   return runId;
+}
+
+/**
+ * Item 9: text of the first user message. `input.text` when present; another object is stored as its JSON text (it used
+ * to become "[object Object]"); a scalar as its string form.
+ */
+function userMessageText(input: unknown): string {
+  if (input !== null && typeof input === "object") {
+    if ("text" in input) return String((input as Record<string, unknown>).text);
+    return JSON.stringify(input);
+  }
+  return String(input ?? "");
 }

@@ -7,7 +7,7 @@ import {
   bodyOf,
   param,
   stringBody,
-  jsonBody,
+  runInputBody,
   jsonObjectBody,
   admin,
   writeAudit,
@@ -148,7 +148,7 @@ export default async function adminAgentRoutes(app: FastifyInstance): Promise<vo
     const requestedVersion = stringBody(body, "versionId");
     const version = requestedVersion ? await repos.getAgentVersion(requestedVersion) : agent.published_version_id ? await repos.getAgentVersion(agent.published_version_id) : await repos.getPublishedVersion(agent.id);
     if (!version || version.agent_id !== agent.id) throw errors.invalid("Agent 没有可用版本");
-    const input = jsonBody(body, "input", { text: stringBody(body, "text", "") });
+    const input = runInputBody(body);
     const runId = await createQueuedRun({ agentId: agent.id, versionId: version.id, principal: session.principal, input, threadId: stringBody(body, "threadId") || null });
     await writeAudit(session, "run.create", "run", runId, { agentId: agent.id, versionId: version.id });
     const created = await repos.getRun(runId);

@@ -39,6 +39,7 @@ const HELPERS = "stringBody|requireBodyString|jsonObjectBody|jsonBody|arrayBody|
 const WHOLE_BODY_HELPERS: Record<string, { file: string; reads: string[] }> = {
   webhookUrlOf: { file: "admin/apps.ts", reads: ["webhookUrl"] },
   planPluginInstall: { file: "admin/plugins.ts", reads: ["resources", "key", "version", "type", "name", "manifest"] },
+  runInputBody: { file: "../plugins/http-helpers.ts", reads: ["input", "text"] },
 };
 
 function files(dir: string): string[] {

@@ -182,6 +182,8 @@ Idempotency-Key: 4b1c6f0e-...
 | `options.timeoutSeconds` | 否 | 只能小于等于策略上限 |
 | `threadId` | 否 | P1；传入则续接会话 |
 
+顶层 `text`（当前实现，item 9）：可代替 `input` 传纯文本（等同 `input: { text }`）。同时传 `text` 和不含 `text` 字段的 `input` 对象 → `400 CFG-8501`（`details.field = "text"`），不建 Run（之前用户消息会存成 `[object Object]`）；只传不含 `text` 的 `input` 对象时，用户消息存为该对象的 JSON 文本。管理端试运行与 Connector `/integration/v1/runs` 同一规则。
+
 响应 `202 Accepted`：
 
 ```json

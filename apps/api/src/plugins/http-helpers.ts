@@ -63,6 +63,19 @@ export function jsonBody(body: Record<string, unknown>, key: string, fallback: u
 }
 
 /**
+ * Item 9: run input from `input` (object or JSON text) and/or `text`. Both given while `input` is an object (or array)
+ * without a `text` key used to store the user message as "[object Object]"; that combination is 400 CFG-8501
+ * (details.field = "text"). `text` alone becomes `{ text }`.
+ */
+export function runInputBody(body: Record<string, unknown>): unknown {
+  const input = jsonBody(body, "input", { text: stringBody(body, "text", "") });
+  if (Object.hasOwn(body, "text") && Object.hasOwn(body, "input") && input !== null && typeof input === "object" && !("text" in input)) {
+    throw errors.invalid("text 与不含 text 字段的 input 不能同时传", { field: "text" });
+  }
+  return input;
+}
+
+/**
  * Item 7: `spec` / `headers` from a request body: a JSON object, or JSON text that parses to one. Text that does not
  * parse, or parses to anything but an object, is 400 CFG-8501 with details.field (no silent fallback). Missing → fallback.
  */
