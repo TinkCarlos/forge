@@ -22,6 +22,8 @@ import { ForgeError } from "./index";
 export const OUTBOUND_BLOCKED_CODE = "HTP-4003";
 export const OUTBOUND_BLOCKED_MESSAGE = "目标地址不允许（内网/回环/元数据）";
 const MAX_REDIRECTS = 5;
+/** Headers kept when a redirect leaves the origin (P2-04c). Everything else is dropped. */
+const CROSS_ORIGIN_SAFE_HEADERS = new Set(["accept", "accept-encoding", "accept-language", "user-agent", "content-type"]);
 
 export function outboundBlockedError(): ForgeError {
   return new ForgeError(OUTBOUND_BLOCKED_CODE, OUTBOUND_BLOCKED_MESSAGE, 400, undefined, false);
@@ -361,8 +363,9 @@ export async function safeFetch(input: string | URL, init: SafeFetchInit = {}): 
     if (hop >= maxRedirects) throw new ForgeError("HTP-4001", "重定向次数过多", 502);
     const next = new URL(location, url);
     if (next.origin !== url.origin) {
-      delete headers.authorization;
-      delete headers.cookie;
+      // P2-04c: a new origin (scheme, host or port changed) only gets the safe headers; credentials and every
+      // caller-specific header (x-api-key, ...) are dropped for this and all later hops.
+      for (const name of Object.keys(headers)) if (!CROSS_ORIGIN_SAFE_HEADERS.has(name)) delete headers[name];
     }
     url = next;
     if (response.status === 303 || ((response.status === 301 || response.status === 302) && method === "POST")) {
