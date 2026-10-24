@@ -13,6 +13,7 @@ import {
   requireBodyString,
   enumBody,
 } from "../../plugins/http-helpers.js";
+import { ROUTE_SCHEMAS, assertValidInput } from "../../plugins/input-schema.js";
 
 // P0-03 / U-15: MCP servers, Skills, tool sources, plugins and LLM Providers/Models have no department column, so they
 // are platform-wide (org = null) and only a dataScope=all principal may write them, whatever its role permissions.
@@ -37,9 +38,10 @@ export default async function adminCapabilityRoutes(app: FastifyInstance): Promi
     return { items };
   });
 
-  app.post("/admin/api/mcp", async (request) => {
+  app.post("/admin/api/mcp", { schema: ROUTE_SCHEMAS.mcpCreate, attachValidation: true }, async (request) => {
     const session = await admin(request, "mcp.manage");
     await assertOrgWritable(session.principal, null, PLATFORM_WRITE_MESSAGE); // P0-03 / U-15: platform-wide resource (no department column)
+    assertValidInput(request);
     const body = bodyOf(request);
     const key = requireBodyString(body, "key");
     if (await repos.getMcpServerByKey(key)) throw errors.conflict("MCP key 已存在");
@@ -68,11 +70,12 @@ export default async function adminCapabilityRoutes(app: FastifyInstance): Promi
     return { id, warning };
   });
 
-  app.patch("/admin/api/mcp/:id", async (request) => {
+  app.patch("/admin/api/mcp/:id", { schema: ROUTE_SCHEMAS.mcpPatch, attachValidation: true }, async (request) => {
     const session = await admin(request, "mcp.manage");
     await assertOrgWritable(session.principal, null, PLATFORM_WRITE_MESSAGE); // P0-03 / U-15: platform-wide resource (no department column)
     const server = await repos.getMcpServer(param(request, "id"));
     if (!server) throw errors.notFound("MCP 不存在");
+    assertValidInput(request);
     const body = bodyOf(request);
     const fields: Record<string, unknown> = {};
     if (body.name !== undefined) fields.name = stringBody(body, "name");
@@ -108,9 +111,10 @@ export default async function adminCapabilityRoutes(app: FastifyInstance): Promi
     return { items: skills };
   });
 
-  app.post("/admin/api/skills", async (request) => {
+  app.post("/admin/api/skills", { schema: ROUTE_SCHEMAS.skillCreate, attachValidation: true }, async (request) => {
     const session = await admin(request, "skill.manage");
     await assertOrgWritable(session.principal, null, PLATFORM_WRITE_MESSAGE); // P0-03 / U-15: platform-wide resource (no department column)
+    assertValidInput(request);
     const body = bodyOf(request);
     const key = requireBodyString(body, "key");
     if (await repos.getSkillByKey(key)) throw errors.conflict("Skill key 已存在");
@@ -134,11 +138,12 @@ export default async function adminCapabilityRoutes(app: FastifyInstance): Promi
     return { ...skill, versions: await repos.listSkillVersions(String(skill.id)) };
   });
 
-  app.patch("/admin/api/skills/:id", async (request) => {
+  app.patch("/admin/api/skills/:id", { schema: ROUTE_SCHEMAS.skillPatch, attachValidation: true }, async (request) => {
     const session = await admin(request, "skill.manage");
     await assertOrgWritable(session.principal, null, PLATFORM_WRITE_MESSAGE); // P0-03 / U-15: platform-wide resource (no department column)
     const skill = await repos.getSkill(param(request, "id"));
     if (!skill) throw errors.notFound("Skill 不存在");
+    assertValidInput(request);
     const body = bodyOf(request);
     const status = enumBody(body, "status", SKILL_STATUSES);
     await repos.updateSkill(skill.id as string, {
@@ -150,11 +155,12 @@ export default async function adminCapabilityRoutes(app: FastifyInstance): Promi
     return { ok: true };
   });
 
-  app.post("/admin/api/skills/:id/versions", async (request) => {
+  app.post("/admin/api/skills/:id/versions", { schema: ROUTE_SCHEMAS.skillVersionCreate, attachValidation: true }, async (request) => {
     const session = await admin(request, "skill.manage");
     await assertOrgWritable(session.principal, null, PLATFORM_WRITE_MESSAGE); // P0-03 / U-15: platform-wide resource (no department column)
     const skill = await repos.getSkill(param(request, "id"));
     if (!skill) throw errors.notFound("Skill 不存在");
+    assertValidInput(request);
     const body = bodyOf(request);
     const versionId = await repos.createSkillVersion(
       String(skill.id),
@@ -181,9 +187,10 @@ export default async function adminCapabilityRoutes(app: FastifyInstance): Promi
     return { items };
   });
 
-  app.post("/admin/api/tool-sources/import", async (request) => {
+  app.post("/admin/api/tool-sources/import", { schema: ROUTE_SCHEMAS.toolSourceImport, attachValidation: true }, async (request) => {
     const session = await admin(request, "tool.manage");
     await assertOrgWritable(session.principal, null, PLATFORM_WRITE_MESSAGE); // P0-03 / U-15: platform-wide resource (no department column)
+    assertValidInput(request);
     const body = bodyOf(request);
     const key = requireBodyString(body, "key");
     if (await repos.getToolSourceByKey(key)) throw errors.conflict("工具源 key 已存在");

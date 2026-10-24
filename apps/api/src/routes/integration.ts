@@ -13,6 +13,7 @@ import {
   presentRun,
   requireBodyString,
 } from "../plugins/http-helpers.js";
+import { ROUTE_SCHEMAS, assertValidInput } from "../plugins/input-schema.js";
 
 async function connectorUser(request: FastifyRequest): Promise<Principal> {
   const header = request.headers.authorization;
@@ -36,11 +37,12 @@ export default async function integrationRoutes(app: FastifyInstance): Promise<v
     return { items };
   });
 
-  app.post("/integration/v1/runs", async (request, reply) => {
+  app.post("/integration/v1/runs", { schema: ROUTE_SCHEMAS.integrationRun, attachValidation: true }, async (request, reply) => {
     const principal = await connectorUser(request);
     // P0-04 / I-INT-11: the caller is always a Connector principal mapped to a Forge user, so the user's functional
     // permission applies (403 POL-2001) before the scope check below (agentAccessible, unchanged).
     assertPermission(principal, "agent.run");
+    assertValidInput(request);
     const body = bodyOf(request);
     const agent = await repos.getAgentByKey(requireBodyString(body, "agentKey"));
     // I-INT-17: outside the mapped user's scope -> the same 404 as a missing Agent (checked before status).

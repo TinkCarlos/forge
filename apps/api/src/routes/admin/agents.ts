@@ -99,11 +99,12 @@ export default async function adminAgentRoutes(app: FastifyInstance): Promise<vo
     return { ok: true };
   });
 
-  app.post("/admin/api/agents/:id/versions", async (request) => {
+  app.post("/admin/api/agents/:id/versions", { schema: ROUTE_SCHEMAS.agentVersionCreate, attachValidation: true }, async (request) => {
     const session = await admin(request, "agent.publish");
     const agent = await repos.getAgent(param(request, "id"));
     if (!agent || !(await agentAccessible(session.principal, agent))) throw errors.notFound("Agent 不存在");
     assertAgentWritable(session.principal, agent);
+    assertValidInput(request);
     const body = bodyOf(request);
     const versionId = await repos.createAgentVersion({
       agentId: agent.id,
@@ -119,11 +120,12 @@ export default async function adminAgentRoutes(app: FastifyInstance): Promise<vo
     return { versionId };
   });
 
-  app.post("/admin/api/agents/:id/publish", async (request) => {
+  app.post("/admin/api/agents/:id/publish", { schema: ROUTE_SCHEMAS.agentPublish, attachValidation: true }, async (request) => {
     const session = await admin(request, "agent.publish");
     const agent = await repos.getAgent(param(request, "id"));
     if (!agent || !(await agentAccessible(session.principal, agent))) throw errors.notFound("Agent 不存在");
     assertAgentWritable(session.principal, agent);
+    assertValidInput(request);
     const body = bodyOf(request);
     const versionId = requireBodyString(body, "versionId");
     const version = await repos.getAgentVersion(versionId);
@@ -133,11 +135,12 @@ export default async function adminAgentRoutes(app: FastifyInstance): Promise<vo
     return { ok: true };
   });
 
-  app.post("/admin/api/agents/:id/run", async (request) => {
+  app.post("/admin/api/agents/:id/run", { schema: ROUTE_SCHEMAS.agentRun, attachValidation: true }, async (request) => {
     const session = await admin(request, "agent.run");
     const agent = await repos.getAgent(param(request, "id"));
     if (!agent || !(await agentAccessible(session.principal, agent))) throw errors.notFound("Agent 不存在");
     assertAgentRunnable(agent);
+    assertValidInput(request);
     const body = bodyOf(request);
     const requestedVersion = stringBody(body, "versionId");
     const version = requestedVersion ? await repos.getAgentVersion(requestedVersion) : agent.published_version_id ? await repos.getAgentVersion(agent.published_version_id) : await repos.getPublishedVersion(agent.id);

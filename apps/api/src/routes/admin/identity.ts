@@ -79,11 +79,12 @@ export default async function adminIdentityRoutes(app: FastifyInstance): Promise
   });
 
   // Updates role / dataScope / status only; body.orgUnitId is ignored (a user cannot be moved to another department here).
-  app.patch("/admin/api/users/:id", async (request) => {
+  app.patch("/admin/api/users/:id", { schema: ROUTE_SCHEMAS.userPatch, attachValidation: true }, async (request) => {
     const session = await admin(request, "user.manage");
     const body = bodyOf(request);
     const target = await loadVisibleUserOr404(session.principal, param(request, "id"));
     assertCanManageUser(session.principal, target);
+    assertValidInput(request);
     const role = stringBody(body, "role", target.role);
     if (!Object.keys(ROLE_PERMISSIONS).includes(role)) throw errors.invalid("非法角色");
     const dataScope = stringBody(body, "dataScope") || grantDefaultDataScope(session.principal, role as Role);
@@ -113,8 +114,9 @@ export default async function adminIdentityRoutes(app: FastifyInstance): Promise
     return { items: await repos.listRoleMappings() };
   });
 
-  app.post("/admin/api/role-mappings", async (request) => {
+  app.post("/admin/api/role-mappings", { schema: ROUTE_SCHEMAS.roleMappingUpsert, attachValidation: true }, async (request) => {
     const session = await admin(request, "sso.manage");
+    assertValidInput(request);
     const body = bodyOf(request);
     await repos.upsertRoleMapping(requireBodyString(body, "agentRoleCode"), stringBody(body, "agentRoleName"), requireBodyString(body, "localRole"));
     await writeAudit(session, "role_mapping.upsert", "oidc_role_mapping", null, maskArgsDeep(body));

@@ -12,6 +12,7 @@ import {
   writeAudit,
   requireBodyString,
 } from "../../plugins/http-helpers.js";
+import { ROUTE_SCHEMAS, assertValidInput } from "../../plugins/input-schema.js";
 
 // P0-03 / U-15: MCP servers, Skills, tool sources, plugins and LLM Providers/Models have no department column, so they
 // are platform-wide (org = null) and only a dataScope=all principal may write them, whatever its role permissions.
@@ -42,9 +43,10 @@ export default async function adminModelRoutes(app: FastifyInstance): Promise<vo
     return { items };
   });
 
-  app.post("/admin/api/providers", async (request) => {
+  app.post("/admin/api/providers", { schema: ROUTE_SCHEMAS.providerCreate, attachValidation: true }, async (request) => {
     const session = await admin(request, "model.manage");
     await assertOrgWritable(session.principal, null, PLATFORM_WRITE_MESSAGE); // P0-03 / U-15: platform-wide resource (no department column)
+    assertValidInput(request);
     const body = bodyOf(request);
     const key = requireBodyString(body, "key");
     if (await repos.getProviderByKey(key)) throw errors.conflict("Provider key 已存在");
@@ -65,11 +67,12 @@ export default async function adminModelRoutes(app: FastifyInstance): Promise<vo
     return { id: providerId };
   });
 
-  app.post("/admin/api/providers/:id/models", async (request) => {
+  app.post("/admin/api/providers/:id/models", { schema: ROUTE_SCHEMAS.modelCreate, attachValidation: true }, async (request) => {
     const session = await admin(request, "model.manage");
     await assertOrgWritable(session.principal, null, PLATFORM_WRITE_MESSAGE); // P0-03 / U-15: platform-wide resource (no department column)
     const provider = await repos.getProviderById(param(request, "id"));
     if (!provider) throw errors.notFound("Provider 不存在");
+    assertValidInput(request);
     const body = bodyOf(request);
     const modelId = await repos.createModel({
       providerId: provider.id,
@@ -85,11 +88,12 @@ export default async function adminModelRoutes(app: FastifyInstance): Promise<vo
     return { id: modelId };
   });
 
-  app.patch("/admin/api/providers/:id", async (request) => {
+  app.patch("/admin/api/providers/:id", { schema: ROUTE_SCHEMAS.providerPatch, attachValidation: true }, async (request) => {
     const session = await admin(request, "model.manage");
     await assertOrgWritable(session.principal, null, PLATFORM_WRITE_MESSAGE); // P0-03 / U-15: platform-wide resource (no department column)
     const provider = await repos.getProviderById(param(request, "id"));
     if (!provider) throw errors.notFound("Provider 不存在");
+    assertValidInput(request);
     const body = bodyOf(request);
     const fields: Record<string, unknown> = {};
     if (body.name !== undefined) fields.name = stringBody(body, "name");
@@ -108,11 +112,12 @@ export default async function adminModelRoutes(app: FastifyInstance): Promise<vo
     return { ok: true };
   });
 
-  app.patch("/admin/api/models/:id", async (request) => {
+  app.patch("/admin/api/models/:id", { schema: ROUTE_SCHEMAS.modelPatch, attachValidation: true }, async (request) => {
     const session = await admin(request, "model.manage");
     await assertOrgWritable(session.principal, null, PLATFORM_WRITE_MESSAGE); // P0-03 / U-15: platform-wide resource (no department column)
     const model = await repos.getModelById(param(request, "id"));
     if (!model) throw errors.notFound("模型不存在");
+    assertValidInput(request);
     const body = bodyOf(request);
     const fields: Record<string, unknown> = {};
     if (body.displayName !== undefined) fields.display_name = stringBody(body, "displayName");

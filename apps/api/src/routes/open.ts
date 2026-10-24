@@ -21,6 +21,7 @@ import {
   presentRun,
   streamRun,
 } from "../plugins/http-helpers.js";
+import { ROUTE_SCHEMAS, assertValidInput } from "../plugins/input-schema.js";
 
 interface AppContext {
   principal: Principal;
@@ -82,11 +83,12 @@ export default async function openRoutes(app: FastifyInstance): Promise<void> {
     return { key: agent.key, name: agent.name, description: agent.description, version: version?.version ?? null };
   });
 
-  app.post("/open/v1/agents/:key/runs", async (request, reply) => {
+  app.post("/open/v1/agents/:key/runs", { schema: ROUTE_SCHEMAS.openRun, attachValidation: true }, async (request, reply) => {
     const context = await openApp(request, "runs:create");
     const agent = await repos.getAgentByKey(param(request, "key"));
     if (!agent || !agent.api_enabled || !agent.published_version_id || !(await appCanAccessAgent(context.app, agent))) throw errors.notFound("Agent 不存在");
     assertAgentRunnable(agent);
+    assertValidInput(request);
     const appOrg = context.app.owner_org_unit_id ? String(context.app.owner_org_unit_id) : null;
     const runCount = await repos.countAppRunsToday(String(context.app.id));
     if (runCount >= Number(context.app.daily_quota ?? 1000)) throw new ForgeError("OPN-4501", "应用今日配额已用完", 429);
@@ -120,11 +122,12 @@ export default async function openRoutes(app: FastifyInstance): Promise<void> {
     return result.body;
   });
 
-  app.post("/open/v1/agents/:key/invoke", async (request, reply) => {
+  app.post("/open/v1/agents/:key/invoke", { schema: ROUTE_SCHEMAS.openRun, attachValidation: true }, async (request, reply) => {
     const context = await openApp(request, "runs:create");
     const agent = await repos.getAgentByKey(param(request, "key"));
     if (!agent || !agent.api_enabled || !agent.published_version_id || !(await appCanAccessAgent(context.app, agent))) throw errors.notFound("Agent 不存在");
     assertAgentRunnable(agent);
+    assertValidInput(request);
     const versionId = agent.published_version_id;
     const appOrg = context.app.owner_org_unit_id ? String(context.app.owner_org_unit_id) : null;
     const runCount = await repos.countAppRunsToday(String(context.app.id));

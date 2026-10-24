@@ -3,6 +3,7 @@ import { errors, ForgeError, ROLE_PERMISSIONS, type Principal } from "@forge/cor
 import { inOrgScope, orgScopeIds } from "@forge/governance";
 import { repos, type ServiceAccountRow } from "@forge/store";
 import { bodyOf, param, stringBody, admin, writeAudit, requireBodyString } from "../../plugins/http-helpers.js";
+import { ROUTE_SCHEMAS, assertValidInput } from "../../plugins/input-schema.js";
 
 // Service accounts (permissions.md §3.4): machine identities for schedules/integrations.
 // Independent role + data scope, cannot log in. Disabling one pauses its schedules (SCD-4801).
@@ -47,8 +48,9 @@ export default async function adminServiceAccountRoutes(app: FastifyInstance): P
     return { items: rows.filter((row) => serviceAccountVisible(scopeIds, row)).map(presentServiceAccount) };
   });
 
-  app.post("/admin/api/service-accounts", async (request) => {
+  app.post("/admin/api/service-accounts", { schema: ROUTE_SCHEMAS.serviceAccountCreate, attachValidation: true }, async (request) => {
     const session = await admin(request, "service_account.manage");
+    assertValidInput(request);
     const body = bodyOf(request);
     const name = requireBodyString(body, "name");
     const key = stringBody(body, "key", `svc-${Date.now()}`);
@@ -76,10 +78,11 @@ export default async function adminServiceAccountRoutes(app: FastifyInstance): P
     return presentServiceAccount(row);
   });
 
-  app.patch("/admin/api/service-accounts/:id", async (request) => {
+  app.patch("/admin/api/service-accounts/:id", { schema: ROUTE_SCHEMAS.serviceAccountPatch, attachValidation: true }, async (request) => {
     const session = await admin(request, "service_account.manage");
     const row = await repos.getServiceAccount(param(request, "id"));
     if (!serviceAccountVisible(await orgScopeIds(session.principal), row)) throw errors.notFound("服务账号不存在");
+    assertValidInput(request);
     const body = bodyOf(request);
     const role = stringBody(body, "role", row.role);
     const dataScope = stringBody(body, "dataScope", row.data_scope);

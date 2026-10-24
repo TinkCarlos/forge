@@ -13,6 +13,7 @@ import {
   writeAudit,
   requireBodyString,
 } from "../../plugins/http-helpers.js";
+import { ROUTE_SCHEMAS, assertValidInput } from "../../plugins/input-schema.js";
 
 /** Webhook URL from the body, statically checked by the outbound guard (S-46); empty -> null. */
 function webhookUrlOf(body: Record<string, unknown>): string | null {
@@ -77,8 +78,9 @@ export default async function adminAppRoutes(app: FastifyInstance): Promise<void
     };
   });
 
-  app.post("/admin/api/apps", async (request) => {
+  app.post("/admin/api/apps", { schema: ROUTE_SCHEMAS.appCreate, attachValidation: true }, async (request) => {
     const session = await admin(request, "apikey.manage");
+    assertValidInput(request);
     const body = bodyOf(request);
     const key = requireBodyString(body, "key");
     const webhookSecret = stringBody(body, "webhookSecret");
@@ -98,11 +100,12 @@ export default async function adminAppRoutes(app: FastifyInstance): Promise<void
     return { id: appId };
   });
 
-  app.patch("/admin/api/apps/:id", async (request) => {
+  app.patch("/admin/api/apps/:id", { schema: ROUTE_SCHEMAS.appPatch, attachValidation: true }, async (request) => {
     const session = await admin(request, "apikey.manage");
     const app = await repos.getApiApp(param(request, "id"));
     if (!app) throw errors.notFound("应用不存在");
     await assertOrgWritable(session.principal, app.owner_org_unit_id as string | null);
+    assertValidInput(request);
     const body = bodyOf(request);
     const fields: Record<string, unknown> = {};
     if (body.name !== undefined) fields.name = stringBody(body, "name");
@@ -118,11 +121,12 @@ export default async function adminAppRoutes(app: FastifyInstance): Promise<void
     return { ok: true };
   });
 
-  app.post("/admin/api/apps/:id/keys", async (request) => {
+  app.post("/admin/api/apps/:id/keys", { schema: ROUTE_SCHEMAS.apiKeyCreate, attachValidation: true }, async (request) => {
     const session = await admin(request, "apikey.manage");
     const app = await repos.getApiApp(param(request, "id"));
     if (!app) throw errors.notFound("应用不存在");
     await assertOrgWritable(session.principal, app.owner_org_unit_id as string | null);
+    assertValidInput(request);
     const body = bodyOf(request);
     const rawKey = `fsk_${randomBytes(32).toString("base64url")}`;
     const prefix = rawKey.slice(0, 16);

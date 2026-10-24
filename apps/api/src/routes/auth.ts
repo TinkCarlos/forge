@@ -19,6 +19,7 @@ import {
   sessionPayload,
 } from "../plugins/http-helpers.js";
 import { RETURN_TO_FALLBACK, safeReturnTo } from "../plugins/return-to.js";
+import { ROUTE_SCHEMAS, assertValidInput } from "../plugins/input-schema.js";
 
 /** AD: a full-page SSO navigation blocked by the outbound guard lands on the sign-in page, never on a JSON error. */
 const SSO_ERROR_PAGE = "/next/sign-in";
@@ -43,8 +44,9 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
     ssoMode: config.SSO_MODE,
   }));
 
-  app.post("/auth/local/login", async (request, reply) => {
+  app.post("/auth/local/login", { schema: ROUTE_SCHEMAS.localLogin, attachValidation: true }, async (request, reply) => {
     const body = bodyOf(request);
+    assertValidInput(request);
     const email = requireBodyString(body, "email");
     const password = requireBodyString(body, "password");
     const principal = await loginLocal(email, password);

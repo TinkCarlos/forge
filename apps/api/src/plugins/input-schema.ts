@@ -49,6 +49,17 @@ const scheduleProps = {
   serviceAccountId: str(ID_MAX),
 } as const;
 
+// F1 (P1) helpers. Numeric fields keep the old Number(...) leniency (number, numeric string, null) but are bounded;
+// JSON fields accept an object or JSON text (jsonBody parses strings); run input may also be an array.
+const MIB = 1_048_576;
+const num = { type: ["number", "string", "null"], maxLength: 32 } as const;
+const bool = { type: "boolean" } as const;
+const jsonObject = (maxLength: number) => ({ type: ["object", "string"], maxLength }) as const;
+const runInput = { type: ["object", "array", "string"], maxLength: MIB, maxItems: 1000 } as const;
+const arr = <T extends object>(maxItems: number, items: T) => ({ type: "array", maxItems, items }) as const;
+const obj = <T extends Record<string, object>>(properties: T) => ({ type: "object", properties }) as const;
+const capabilities = { type: ["array", "string"], maxLength: 4096, maxItems: 32, items: str(64) } as const;
+
 export const ROUTE_SCHEMAS = {
   agentCreate: { body: { type: "object", properties: { key: str(64), ...agentProps } } },
   agentPatch: { body: { type: "object", properties: agentProps } },
@@ -78,6 +89,75 @@ export const ROUTE_SCHEMAS = {
   auditList: { querystring: limitQuery(500) },
   scheduleCreate: { body: { type: "object", properties: { key: str(64), ...scheduleProps } } },
   schedulePatch: { body: { type: "object", properties: { ...scheduleProps, status: { type: "string", maxLength: 16, enum: SCHEDULE_STATUSES } } } },
+  // F1 (P1): every write route that reads a body declares its schema (tests/route-body-schema-guard.test.ts).
+  // agent_versions: version VARCHAR(32), changelog VARCHAR(2048), instructions MEDIUMTEXT
+  agentVersionCreate: { body: obj({ version: str(32), instructions: str(MIB), spec: jsonObject(MIB), publish: bool, changelog: str(2048) }) },
+  agentPublish: { body: obj({ versionId: str(ID_MAX) }) },
+  agentRun: { body: obj({ versionId: str(ID_MAX), text: str(MIB), input: runInput, threadId: str(ID_MAX) }) },
+  // api_apps: key 64, name 128, description 1024, status 16, webhook_url 2048; api_keys.name 128
+  appCreate: {
+    body: obj({ key: str(64), name: str(128), description: str(1024), scopes: arr(32, str(64)), webhookUrl: str(2048), webhookSecret: str(4096), rateLimitPerMinute: num, dailyQuota: num }),
+  },
+  appPatch: {
+    body: obj({ name: str(128), description: str(1024), status: str(16), scopes: arr(32, str(64)), webhookUrl: str(2048), webhookSecret: str(4096), rateLimitPerMinute: num, dailyQuota: num }),
+  },
+  apiKeyCreate: { body: obj({ name: str(128) }) },
+  // service_accounts: key 64, name 128, description 1024, role 32, data_scope 32, status 16
+  serviceAccountCreate: { body: obj({ key: str(64), name: str(128), description: str(1024), role: str(32), dataScope: str(32) }) },
+  serviceAccountPatch: { body: obj({ name: str(128), description: str(1024), role: str(32), dataScope: str(32), status: str(16) }) },
+  // users: role 32, data_scope 16, status 16 (orgUnitId is ignored by the route)
+  userPatch: { body: obj({ role: str(32), dataScope: str(16), status: str(16), orgUnitId: str(ID_MAX) }) },
+  // oidc_role_mappings: agent_role_code 100, agent_role_name 100, local_role 32
+  roleMappingUpsert: { body: obj({ agentRoleCode: str(100), agentRoleName: str(100), localRole: str(32) }) },
+  // mcp_servers: key 64, name 128, transport 16, url 2048, status 16
+  mcpCreate: { body: obj({ key: str(64), name: str(128), url: str(2048), headers: jsonObject(65_536), transport: str(16) }) },
+  mcpPatch: { body: obj({ name: str(128), url: str(2048), headers: jsonObject(65_536), status: str(16) }) },
+  // skills: key 64, name 128, description 1024, status 16; skill_versions: version 32, content_md MEDIUMTEXT
+  skillCreate: { body: obj({ key: str(64), name: str(128), description: str(1024), content: str(MIB), version: str(32), publish: bool }) },
+  skillPatch: { body: obj({ name: str(128), description: str(1024), status: str(16) }) },
+  skillVersionCreate: { body: obj({ version: str(32), content: str(MIB), publish: bool }) },
+  // tool_sources: key 64, name 128, base_url 2048
+  toolSourceImport: { body: obj({ key: str(64), name: str(128), baseUrl: str(2048), spec: jsonObject(MIB), headers: jsonObject(65_536) }) },
+  // llm_providers: key 64, name 128, protocol 32, base_url 2048, status 16; llm_models: key 128, display_name 128
+  providerCreate: {
+    body: obj({ key: str(64), name: str(128), protocol: str(32), baseUrl: str(2048), apiKey: str(4096), headers: jsonObject(65_536), timeoutMs: num }),
+  },
+  providerPatch: {
+    body: obj({ name: str(128), protocol: str(32), baseUrl: str(2048), apiKey: str(4096), headers: jsonObject(65_536), timeoutMs: num, status: str(16) }),
+  },
+  modelCreate: {
+    body: obj({ key: str(128), displayName: str(128), capabilities, contextWindow: num, maxOutputTokens: num, inputPrice: num, outputPrice: num }),
+  },
+  modelPatch: {
+    body: obj({ displayName: str(128), capabilities, contextWindow: num, maxOutputTokens: num, inputPrice: num, outputPrice: num, status: str(16) }),
+  },
+  // plugins: key 128, version 32, type 32, name 128; nested resources bounded per kind (100 each)
+  pluginInstall: {
+    body: obj({
+      key: str(128),
+      version: str(32),
+      type: str(32),
+      name: str(128),
+      manifest: jsonObject(65_536),
+      resources: obj({
+        agents: arr(100, obj({ key: str(64), name: str(128), description: str(1024), version: str(32), instructions: str(MIB), spec: jsonObject(MIB) })),
+        skills: arr(100, obj({ key: str(64), name: str(128), description: str(1024), content: str(MIB) })),
+        mcp: arr(100, obj({ key: str(64), name: str(128), url: str(2048), headers: jsonObject(65_536) })),
+        providers: arr(
+          100,
+          obj({
+            key: str(64), name: str(128), protocol: str(32), baseUrl: str(2048), apiKey: str(4096), headers: jsonObject(65_536),
+            models: arr(100, obj({ key: str(128), displayName: str(128), capabilities })),
+          }),
+        ),
+      }),
+    }),
+  },
+  // runs: input JSON; threads.id CHAR(26); agents.key 64
+  integrationRun: { body: obj({ agentKey: str(64), text: str(MIB), input: runInput }) },
+  openRun: { body: obj({ text: str(MIB), input: runInput, threadId: str(ID_MAX) }) },
+  // users.email 255; password bounded at 256 like userCreate
+  localLogin: { body: obj({ email: str(255), password: str(256) }) },
 } as const;
 
 /** Messages that differ from the generic ones (kept from the previous checks). */

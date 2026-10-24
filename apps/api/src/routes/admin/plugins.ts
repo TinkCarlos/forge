@@ -12,6 +12,7 @@ import {
   writeAudit,
   requireBodyString,
 } from "../../plugins/http-helpers.js";
+import { ROUTE_SCHEMAS, assertValidInput } from "../../plugins/input-schema.js";
 
 // P0-03 / U-15: MCP servers, Skills, tool sources, plugins and LLM Providers/Models have no department column, so they
 // are platform-wide (org = null) and only a dataScope=all principal may write them, whatever its role permissions.
@@ -23,9 +24,10 @@ export default async function adminPluginRoutes(app: FastifyInstance): Promise<v
     return { items: await repos.listPlugins() };
   });
 
-  app.post("/admin/api/plugins/install", async (request) => {
+  app.post("/admin/api/plugins/install", { schema: ROUTE_SCHEMAS.pluginInstall, attachValidation: true }, async (request) => {
     const session = await admin(request, "plugin.install");
     await assertOrgWritable(session.principal, null, PLATFORM_WRITE_MESSAGE); // P0-03 / U-15: platform-wide resource (no department column)
+    assertValidInput(request);
     const body = bodyOf(request);
     const resources = asRecord(body.resources);
     // Outbound guard (S-46): check every URL in the package before creating anything (static: scheme, IP literals, localhost).
