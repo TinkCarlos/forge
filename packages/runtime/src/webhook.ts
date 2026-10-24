@@ -1,6 +1,7 @@
 import { createHmac } from "node:crypto";
 import { assertOutboundAllowed, config, decryptSecret, ForgeError, OUTBOUND_BLOCKED_CODE, safeFetch } from "@forge/core";
 import { parseJsonValue, repos, type RunRow } from "@forge/store";
+import { describeTickError } from "./tick-guard.js";
 
 export const WEBHOOK_RETRY_MS = [60_000, 5 * 60_000, 30 * 60_000, 2 * 60 * 60_000, 6 * 60 * 60_000];
 
@@ -120,7 +121,8 @@ export async function deliverDueWebhooks(fetchImpl: typeof fetch = guardedFetch)
     try {
       await deliverOne(row, fetchImpl);
     } catch (error) {
-      console.error("Webhook delivery failed", error);
+      // P2 (QA 714b3f3): never the raw error object (its properties may carry the target URL with credentials).
+      console.error(`Webhook delivery failed: ${describeTickError(error)}`);
     }
   }
   return due.length;

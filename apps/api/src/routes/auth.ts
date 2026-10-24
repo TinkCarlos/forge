@@ -10,6 +10,7 @@ import {
   pendingOidcReturnTo,
 } from "@forge/identity";
 import { repos } from "@forge/store";
+import { logSafeError } from "@forge/runtime";
 import {
   bodyOf,
   readSession,
@@ -70,7 +71,7 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
     if (session) {
       await repos
         .audit({ actorType: "user", actorId: session.userId, action: "auth.logout", resourceType: "user", resourceId: session.userId })
-        .catch((error: unknown) => request.log.warn({ err: error }, "auth.logout audit failed"));
+        .catch((error: unknown) => request.log.warn({ err: logSafeError(error) }, "auth.logout audit failed"));
     }
     return { ok: true };
   });

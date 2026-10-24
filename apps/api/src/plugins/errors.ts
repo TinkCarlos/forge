@@ -1,5 +1,6 @@
 import { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { ForgeError } from "@forge/core";
+import { logSafeError } from "@forge/runtime";
 import { reqId } from "./http-helpers.js";
 
 // Installed directly on the root instance (not via register) so every route context inherits it.
@@ -28,13 +29,14 @@ export function installErrorHandler(app: FastifyInstance): void {
     // P1-10 / S-25: a unique-key collision is a client conflict. The driver error (code, index, value, SQL) goes
     // to the log only; the response says nothing about tables, indexes or values.
     if (isDuplicateKey(error)) {
-      request.log.warn({ err: error, dbCode: "ER_DUP_ENTRY" }, "unique key conflict -> 409");
+      request.log.warn({ err: logSafeError(error), dbCode: "ER_DUP_ENTRY" }, "unique key conflict -> 409");
       reply.status(409).send({
         error: { code: "CFG-8503", message: "资源已存在（唯一字段重复）", requestId: reqId(request), details: null, retryable: false },
       });
       return;
     }
-    request.log.error(error);
+    // P2 (QA 714b3f3): log type/code and the redacted message and stack, never the raw error object.
+    request.log.error({ err: logSafeError(error) }, "unhandled error");
     reply.status(500).send({
       error: { code: "SYS-9001", message: "内部错误", requestId: reqId(request), retryable: false },
     });

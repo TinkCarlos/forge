@@ -9,5 +9,5 @@ export { buildScheduleIdentity, resolveScheduleIdentity, tickSchedules, triggerS
 export { idempotencyRequestHash, resolveIdempotentCreate } from "./idempotency.js";
 export { mapLimit, nextToolAttempt, requiresApproval, toolFailureRetryable, toolIdempotencyKey, withToolRetries } from "./tools.js";
 export { deliverDueWebhooks, webhookRetryDelayMs, webhookShouldRetry } from "./webhook.js";
-export { describeTickError, guardTick, tickBackoffMs, TICK_BACKOFF_MAX_MS, TICK_BACKOFF_MIN_MS, type GuardedTick, type TickGuardOptions, type TickGuardState } from "./tick-guard.js";
+export { describeTickError, guardTick, logSafeError, redactCredentials, tickBackoffMs, TICK_BACKOFF_MAX_MS, TICK_BACKOFF_MIN_MS, type GuardedTick, type TickGuardOptions, type TickGuardState } from "./tick-guard.js";
 export { startRuntime, stopRuntime } from "./worker.js";
