@@ -7,12 +7,14 @@ import { describe, expect, it } from 'vitest'
  *   policy 或 reason 缺失（老后端）和原来一样，不显示徽标。
  * - 过期时间沿用 fmt（本地时间），没有 expires_at 显示「—」。
  * - 批准 / 驳回收到 409 APR-2104（审批已处理或已过期）或 APR-2103（并发决定）：弹专门提示「该审批已失效，请刷新后处理新的审批」，
- *   关掉确认框并自动刷新列表；其他 409（RUN-7005、通用冲突 CFG-8503）和 500 照旧走 errorText，不刷新、确认框保留。
+ *   关掉确认框并自动刷新列表；409 RUN-7005（审批仍 pending 但 Run 已结束）同样关框并刷新，文案固定为「Run 已结束，此审批已失效」；
+ *   其他 409（通用冲突 CFG-8503）和 500 照旧走 errorText，不刷新、确认框保留；审批以外的操作（如取消 Run）收到 RUN-7005 照旧走 errorText。
  * - 所有后端字段都要转义，不能拼出 HTML。
  */
 const APP = readFileSync(new URL('../../public/app.js', import.meta.url), 'utf8')
 const STALE = '该审批已失效，请刷新后处理新的审批'
 const BADGE = '执行中断，可能已执行过'
+const RUN_FINISHED = 'Run 已结束，此审批已失效'
 
 function fnSource(name: string): string {
   const m = APP.match(new RegExp(`^(?:async )?function ${name}\\([\\s\\S]*?^\\}`, 'm'))
@@ -89,16 +91,17 @@ function harness(routes: Record<string, Resp | Resp[]>) {
     setTimeout: () => 0, clearTimeout: () => {},
     FormData: class { constructor(public f: El) {} get(k: string) { return this.f?._data?.[k] ?? null } },
     idSeg: (s: string) => encodeURIComponent(s), fmt: (v: unknown) => (v ? `T(${String(v)})` : '—'),
-    handleSessionExpired: () => {}, showLogin: () => {},
+    handleSessionExpired: () => {}, showLogin: () => {}, renderRuns: async () => { calls.push('renderRuns') },
   }
   const names = Object.keys(deps)
   const fns = ['esc', 'errorText', 'toast', 'api', 'statusPill', 'empty', 'textarea', 'openModal', 'renderApprovals']
   const optional = ['approvalReason', 'attemptText', 'approvalReasonHtml'].filter(hasFn)
-  const consts = ['APPROVAL_STALE_CODES', 'APPROVAL_STALE_TEXT', 'INTERRUPTED_BADGE_TEXT'].map(constLine).join('\n')
-  const src = `${consts}\n${[...fns, ...optional].map(fnSource).join('\n')}\nreturn { renderApprovals, ${method('decideApproval')} };`
+  const consts = ['APPROVAL_STALE_CODES', 'APPROVAL_STALE_TEXT', 'APPROVAL_RUN_FINISHED_TEXT', 'INTERRUPTED_BADGE_TEXT'].map(constLine).join('\n')
+  const src = `${consts}\n${[...fns, ...optional].map(fnSource).join('\n')}\nreturn { renderApprovals, ${method('decideApproval')}, ${method('cancelRun')} };`
   const app = new Function(...names, src)(...names.map((n) => deps[n])) as {
     renderApprovals(): Promise<void>
     decideApproval(id: string, decision: string): Promise<void>
+    cancelRun(id: string): Promise<void>
   }
   return {
     app, els, modal, calls, state,
@@ -220,14 +223,47 @@ describe('R9 批准/驳回：409 APR-2104 / APR-2103 专门提示并刷新', () 
     expect(h.listCalls()).toBe(1)
   })
 
-  it('其他 409（RUN-7005）：照旧走 errorText，不刷新，确认框保留', async () => {
-    const h = harness({ [LIST]: list(approval()), [DECIDE]: { status: 409, body: { error: { code: 'RUN-7005', message: 'Run 已结束，审批不可操作' } } } })
+  const runFinished409: Resp = { status: 409, body: { error: { code: 'RUN-7005', message: 'Run 已结束，审批不可操作', requestId: 'r', details: null, retryable: false } } }
+
+  it('批准收到 409 RUN-7005（审批仍 pending，Run 已结束）：弹「Run 已结束，此审批已失效」，关确认框，自动刷新列表', async () => {
+    const h = harness({ [LIST]: [list(approval()), list()], [DECIDE]: runFinished409 })
     await h.app.renderApprovals()
     await h.app.decideApproval(APR_ID, 'approved')
     await h.submit()
-    expect(h.toasts()).toEqual(['Run 已结束，审批不可操作（错误码 RUN-7005）'])
+    expect(h.toasts()).toEqual([`${RUN_FINISHED}（错误码 RUN-7005）`])
+    expect(h.els['#toast'].className).toBe('toast error')
+    expect(h.toasts().join()).not.toContain(STALE)
+    expect(h.toasts().join()).not.toContain('审批不可操作')
+    expect(h.listCalls()).toBe(2)
+    expect(h.modal.open).toBe(false)
+  })
+
+  it('驳回收到 409 RUN-7005：同样弹「Run 已结束，此审批已失效」并刷新', async () => {
+    const h = harness({ [LIST]: [list(approval({ reason: 'interrupted', attempt: 1 })), list()], [DECIDE]: runFinished409 })
+    await h.app.renderApprovals()
+    await h.app.decideApproval(APR_ID, 'rejected')
+    await h.submit()
+    expect(h.toasts()).toEqual([`${RUN_FINISHED}（错误码 RUN-7005）`])
+    expect(h.listCalls()).toBe(2)
+    expect(h.modal.open).toBe(false)
+  })
+
+  it('护栏：非 409 的 RUN-7005 不当作审批失效', async () => {
+    const h = harness({ [LIST]: list(approval()), [DECIDE]: { status: 400, body: { error: { code: 'RUN-7005', message: '参数错误' } } } })
+    await h.app.renderApprovals()
+    await h.app.decideApproval(APR_ID, 'approved')
+    await h.submit()
+    expect(h.toasts()).toEqual(['参数错误（错误码 RUN-7005）'])
     expect(h.listCalls()).toBe(1)
     expect(h.modal.open).toBe(true)
+  })
+
+  it('护栏：审批以外的操作（取消 Run）收到 409 RUN-7005 照旧走 errorText，不弹「已失效」', async () => {
+    const h = harness({ '/admin/api/runs/run_01M5PK6G1GPZ3APBN3QNXR/cancel': { status: 409, body: { error: { code: 'RUN-7005', message: 'Run 已结束，不能取消' } } } })
+    await h.app.cancelRun(RUN_ID)
+    expect(h.toasts()).toEqual(['Run 已结束，不能取消（错误码 RUN-7005）'])
+    expect(h.toasts().join()).not.toContain('已失效')
+    expect(h.calls).not.toContain('renderRuns')
   })
 
   it('500：照旧走 errorText，不刷新，确认框保留', async () => {
