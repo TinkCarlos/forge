@@ -177,3 +177,43 @@ export async function partialRequest(port: number, path: string, headers: Record
     },
   };
 }
+
+export interface RawConnection {
+  /** Everything the server sent on this connection so far. */
+  data: () => string;
+  write: (text: string) => void;
+  /** Resolves with everything received once the server (or the client) closed the connection. */
+  closed: Promise<string>;
+  /** Resolves once the first complete response head and its Content-Length body arrived. */
+  response: (fromOffset?: number) => Promise<string>;
+}
+
+/** A plain TCP connection to the API, like a browser or a proxy keeps open between requests. */
+export async function rawConnection(port: number): Promise<RawConnection> {
+  const socket = connect({ host: "127.0.0.1", port });
+  let data = "";
+  socket.on("data", (chunk: Buffer) => (data += chunk.toString("utf8")));
+  socket.on("error", () => undefined);
+  const closed = new Promise<string>((resolve) => socket.once("close", () => resolve(data)));
+  await new Promise<void>((resolve, reject) => {
+    socket.once("connect", () => resolve());
+    socket.once("error", reject);
+  });
+  const response = async (fromOffset = 0): Promise<string> => {
+    for (;;) {
+      const text = data.slice(fromOffset);
+      const headEnd = text.indexOf("\r\n\r\n");
+      if (headEnd >= 0) {
+        const length = Number(/content-length:\s*(\d+)/i.exec(text.slice(0, headEnd))?.[1] ?? 0);
+        if (text.length >= headEnd + 4 + length) return text.slice(0, headEnd + 4 + length);
+      }
+      if (socket.destroyed) throw new Error(`connection closed before a full response: ${JSON.stringify(text.slice(0, 200))}`);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+  };
+  return { data: () => data, write: (text) => void socket.write(text), closed, response };
+}
+
+/** A keep-alive GET request as a browser or proxy sends it. */
+export const keepAliveGet = (path: string, headers: Record<string, string> = {}): string =>
+  [`GET ${path} HTTP/1.1`, "Host: 127.0.0.1", "Connection: keep-alive", ...Object.entries(headers).map(([k, v]) => `${k}: ${v}`)].join("\r\n") + "\r\n\r\n";

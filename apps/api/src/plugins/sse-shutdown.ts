@@ -1,4 +1,5 @@
 import type { ServerResponse } from "node:http";
+import type { Socket } from "node:net";
 import type { FastifyInstance } from "fastify";
 import { ForgeError } from "@forge/core";
 
@@ -13,6 +14,10 @@ import { ForgeError } from "@forge/core";
 //     end: no completed or shutdown event, the response is just finished.
 //  3. Idle keep-alive sockets left by the ended streams are closed so server.close() can complete; every response
 //     sent while draining carries Connection: close. In-flight requests finish, then the process exits 0.
+// Connections that are open but have not sent a single byte yet (browser preconnect, a proxy's spare upstream
+// connection) are closed in step 2 as well: Node 22's closeIdleConnections() (called by Fastify's
+// forceCloseConnections: 'idle' and by server.close()) does not count them as idle, so server.close() waited for them
+// until the 10 s backstop fired (exit 1) even with no SSE stream open (IDLE-02).
 
 declare module "fastify" {
   interface FastifyInstance {
@@ -58,6 +63,23 @@ export function installSseShutdown(app: FastifyInstance): void {
   const registry: SseRegistry = { draining: false, streams: new Map() };
   app.decorate("forgeSse", registry);
 
+  const sockets = new Set<Socket>();
+  app.server.on("connection", (socket: Socket) => {
+    sockets.add(socket);
+    socket.once("close", () => sockets.delete(socket));
+  });
+  /** Step 2: closes connections that never sent a byte (no request started, nothing to answer). */
+  const closeUnusedConnections = (): number => {
+    let closed = 0;
+    for (const socket of sockets) {
+      if (socket.bytesRead === 0 && !socket.destroyed) {
+        socket.destroy();
+        closed += 1;
+      }
+    }
+    return closed;
+  };
+
   app.addHook("onRequest", async (request, reply) => {
     if (!registry.draining) return;
     if (request.routeOptions?.config?.sse === true) throw sseShuttingDown();
@@ -84,6 +106,7 @@ export function installSseShutdown(app: FastifyInstance): void {
         setImmediate(endStreams);
         return;
       }
+      closeUnusedConnections();
       for (const [raw, end] of [...registry.streams]) {
         registry.streams.delete(raw);
         raw.once("finish", () => setImmediate(() => server.closeIdleConnections?.()));
