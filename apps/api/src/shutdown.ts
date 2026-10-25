@@ -4,8 +4,12 @@ import { nextPhaseSeq } from "./phase-seq.js";
 export interface ShutdownDeps {
   /** Stop taking requests and wait for in-flight ones (Fastify app.close). */
   close: () => Promise<void>;
-  /** Stop the worker / scheduler ticks (no-op when the runtime is not embedded). */
-  stopRuntime: () => void;
+  /**
+   * r5 §4: stop the worker / scheduler ticks and drain the Runs in progress (no new claims from the first moment;
+   * model calls aborted, tool calls allowed to finish, leases released). Resolves with timedOut when
+   * WORKER_DRAIN_TIMEOUT_MS ran out and the rest was aborted.
+   */
+  drainRuntime: () => Promise<{ timedOut: boolean; runIds: string[]; ms: number }>;
   /** Close the DB connection pool. */
   closePool: () => Promise<void>;
   exit: (code: number) => void;
@@ -38,12 +42,12 @@ function countResources(names: string[]): Record<string, number> {
 }
 
 /**
- * close -> stopRuntime -> closePool -> exit line -> logger flush -> exit(code). A failing step is logged, the later
- * steps still run and the exit code is 1; the returned promise never rejects. A second call (second signal) returns
- * the first shutdown. A Run in progress is not awaited: its lease is released by runClaimed if possible, otherwise it
- * expires and is reclaimed.
+ * drain (started first, so nothing new is claimed) -> close -> wait for the drain -> closePool -> exit line -> logger
+ * flush -> exit(code). A failing step is logged, the later steps still run and the exit code is 1; the returned
+ * promise never rejects. A Run drain that timed out logs phase=drain_timeout with the Run ids and the exit is 1 (those
+ * Runs are taken over after their lease expires). A second call (second signal) returns the first shutdown.
  *
- * Exit and the 10 s limit (timeoutMs): the drain (close, stopRuntime, closePool) has until timeoutMs - 1000. If it is
+ * Exit and the 10 s limit (timeoutMs): the drain (Run drain, close, closePool) has until timeoutMs - 1000. If it is
  * not done by then the backstop logs drain_timeout, flushes for at most BACKSTOP_FLUSH_MS and exits 1. Otherwise the
  * flush after the exit line gets FLUSH_TIMEOUT_MS, cut to what is left before timeoutMs - EXIT_MARGIN_MS. A flush that
  * does not call back in time writes one `flush_timeout` JSON line straight to stderr and the exit code stays the
@@ -134,6 +138,13 @@ export function createShutdown(deps: ShutdownDeps): (signal: string) => Promise<
         step("exit", exitFields(1));
         void finish(1, BACKSTOP_FLUSH_MS);
       }, drainDeadlineMs);
+      let drain: Promise<{ timedOut: boolean; runIds: string[]; ms: number }>;
+      try {
+        drain = deps.drainRuntime();
+      } catch (error) {
+        drain = Promise.reject(error);
+      }
+      drain.catch(() => undefined);
       try {
         await deps.close();
       } catch (error) {
@@ -142,10 +153,14 @@ export function createShutdown(deps: ShutdownDeps): (signal: string) => Promise<
       }
       step("app_close");
       try {
-        deps.stopRuntime();
+        const result = await drain;
+        if (result.timedOut) {
+          code = 1;
+          step("drain_timeout", { runIds: result.runIds, drainMs: result.ms });
+        }
       } catch (error) {
         code = 1;
-        deps.log(`shutdown (${signal}): stopping the runtime failed`, error);
+        deps.log(`shutdown (${signal}): draining the runtime failed`, error);
       }
       step("stop_runtime");
       try {

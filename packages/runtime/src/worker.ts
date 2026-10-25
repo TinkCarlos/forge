@@ -1,6 +1,7 @@
 import { config } from "@forge/core";
 import { repos, type ClaimedRun } from "@forge/store";
 import { AUTH_GC_INTERVAL_MS, collectExpiredAuth } from "./auth-gc.js";
+import { drainRuns, isDraining, resetDrain, type DrainResult } from "./drain.js";
 import { claimNext, claimRun, currentWorkerId } from "./lease.js";
 import { leaseTiming } from "./lease-timing.js";
 import { runClaimed } from "./loop.js";
@@ -24,8 +25,8 @@ function launch(claimed: ClaimedRun, workerId: string): void {
 }
 
 /** Claims queued runs up to MAX_CONCURRENT_RUNS. Errors propagate to the tick guard (logged + backoff). */
-async function claimRuns(workerId: string): Promise<void> {
-  while (active < config.MAX_CONCURRENT_RUNS) {
+export async function claimRuns(workerId: string): Promise<void> {
+  while (active < config.MAX_CONCURRENT_RUNS && !isDraining()) {
     const claimed = await claimNext(workerId);
     if (!claimed) break;
     launch(claimed, workerId);
@@ -39,10 +40,10 @@ async function claimRuns(workerId: string): Promise<void> {
  */
 export async function sweepExpiredApprovals(workerId: string): Promise<void> {
   const room = config.MAX_CONCURRENT_RUNS - active;
-  if (room <= 0) return;
+  if (room <= 0 || isDraining()) return;
   const runIds = await repos.listRunsWithExpiredApprovals(room);
   for (const runId of runIds) {
-    if (active >= config.MAX_CONCURRENT_RUNS) break;
+    if (active >= config.MAX_CONCURRENT_RUNS || isDraining()) break;
     const claimed = await claimRun(runId, workerId, true);
     if (claimed) launch(claimed, workerId);
   }
@@ -50,7 +51,8 @@ export async function sweepExpiredApprovals(workerId: string): Promise<void> {
 
 export function startRuntime(): void {
   if (workerTimer) return;
-  leaseTiming(config.LEASE_TTL_SECONDS); // P3-09: a TTL leaving no heartbeat tolerance fails at startup
+  leaseTiming(config.LEASE_TTL_SECONDS);
+  resetDrain(); // P3-09: a TTL leaving no heartbeat tolerance fails at startup
   const workerId = currentWorkerId();
   // K-20 / OPS-010: all ticks share guardTick (catch + log + exponential backoff 1s..30s, reset on success).
   const webhookTick: GuardedTick = guardTick("webhook", () => deliverDueWebhooks());
@@ -81,4 +83,15 @@ export function stopRuntime(): void {
   workerTimer = null;
   schedulerTimer = null;
   authGcTimer = null;
+}
+
+/**
+ * r5 §4 graceful drain (API with the embedded worker and the standalone worker): stop the ticks and claiming, abort
+ * model calls, let tool calls finish, release the leases (`run.released {reason:"drain"}`), at most `timeoutMs`
+ * (WORKER_DRAIN_TIMEOUT_MS). On timeout the remaining Runs are aborted (rows left as they are, leases released best
+ * effort) and `timedOut` is true: the caller logs phase=drain_timeout and exits 1.
+ */
+export async function drainRuntime(timeoutMs: number = config.WORKER_DRAIN_TIMEOUT_MS): Promise<DrainResult> {
+  stopRuntime();
+  return drainRuns(timeoutMs);
 }

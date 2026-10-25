@@ -1,5 +1,5 @@
 import { config, setOutboundLogger } from "@forge/core";
-import { logSafeError, startRuntime, stopRuntime } from "@forge/runtime";
+import { drainRuntime, logSafeError, startRuntime } from "@forge/runtime";
 import { pool } from "@forge/store";
 import { writeSync } from "node:fs";
 import { buildApp } from "./app.js";
@@ -15,11 +15,12 @@ await app.listen({ port, host: config.HOST });
 if (config.EMBEDDED_WORKER) startRuntime();
 console.log(`Forge API listening on ${config.FORGE_PUBLIC_URL} (local http://localhost:${port})`);
 
-// P3-07: close the server, stop runtime ticks, close the DB pool, flush the log (r4, at most 2 s), then exit (0, or 1
-// when a step failed / the drain did not finish); the process is gone within 10 s.
+// P3-07 / r5 §4: drain the runtime (no new claims; tool calls in flight finish), close the server, close the DB pool,
+// flush the log (r4, at most 2 s), then exit (0, or 1 when a step failed / a drain did not finish); the process is gone
+// within 10 s.
 const shutdown = createShutdown({
   close: () => app.close(),
-  stopRuntime,
+  drainRuntime: () => drainRuntime(),
   closePool: () => pool.end(),
   exit: (code) => process.exit(code),
   log: (message, error) => app.log.error(error === undefined ? {} : { err: logSafeError(error) }, message),

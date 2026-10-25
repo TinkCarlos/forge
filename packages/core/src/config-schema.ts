@@ -130,6 +130,13 @@ const envSchema = z.object({
     .min(60, "APPROVAL_EXPIRED_GRACE_SECONDS must be an integer number of seconds between 60 and 86400")
     .max(86400, "APPROVAL_EXPIRED_GRACE_SECONDS must be an integer number of seconds between 60 and 86400")
     .default(900),
+  /** r5 §4: how long a stopping worker waits for its Runs (tool calls in flight) before aborting them; 0..300000 ms. */
+  WORKER_DRAIN_TIMEOUT_MS: z.coerce
+    .number({ error: "WORKER_DRAIN_TIMEOUT_MS must be an integer number of milliseconds between 0 and 300000" })
+    .int("WORKER_DRAIN_TIMEOUT_MS must be an integer number of milliseconds between 0 and 300000")
+    .min(0, "WORKER_DRAIN_TIMEOUT_MS must be an integer number of milliseconds between 0 and 300000")
+    .max(300000, "WORKER_DRAIN_TIMEOUT_MS must be an integer number of milliseconds between 0 and 300000")
+    .default(35000),
   SCHEDULER_POLL_MS: z.coerce.number().int().positive().default(15000),
   MAX_CONCURRENT_RUNS: z.coerce.number().int().positive().default(2),
   LEASE_TTL_SECONDS: z.coerce.number().int().positive().default(30),

@@ -1,17 +1,17 @@
 import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-// P3-07 (pure): SIGTERM / SIGINT -> stop taking requests (app.close) -> stop runtime ticks -> close the DB pool ->
-// exit 0. A failing step is logged and the exit code is non-zero (no unhandled rejection); a hard timeout forces
-// exit 1. A second signal while shutting down does not start a second shutdown. A Run in progress is not awaited: its
-// lease is released by runClaimed if it can, otherwise it expires and another worker reclaims the Run (P3-09 / X-01).
+// P3-07 (pure): SIGTERM / SIGINT -> start the runtime drain (stops claiming at once, r5 §4) -> stop taking requests
+// (app.close) -> wait for the drain -> close the DB pool -> exit 0. A failing step is logged and the exit code is
+// non-zero (no unhandled rejection); a hard timeout forces exit 1. A drain that ran out of WORKER_DRAIN_TIMEOUT_MS
+// logs phase=drain_timeout with the Run ids and exits 1. A second signal does not start a second shutdown.
 const { createShutdown } = await import("../apps/api/src/shutdown.js");
 
 function deps(over: Partial<Record<string, unknown>> = {}) {
   const order: string[] = [];
   const d = {
     close: vi.fn(async () => { order.push("close"); }),
-    stopRuntime: vi.fn(() => { order.push("stopRuntime"); }),
+    drainRuntime: vi.fn(async () => { order.push("drain"); return { timedOut: false, runIds: [], ms: 0 }; }),
     closePool: vi.fn(async () => { order.push("closePool"); }),
     exit: vi.fn((code: number) => { order.push(`exit:${code}`); }),
     log: vi.fn(),
@@ -29,17 +29,17 @@ function flushDeps(over: Partial<Record<string, unknown>> = {}, flush = vi.fn((_
 afterEach(() => vi.useRealTimers());
 
 describe("P3-07 graceful shutdown", () => {
-  it("close -> stopRuntime -> closePool -> exit 0", async () => {
+  it("drain (started first) -> close -> closePool -> exit 0", async () => {
     const { d, order } = deps();
     await createShutdown(d as never)("SIGTERM");
-    expect(order).toEqual(["close", "stopRuntime", "closePool", "exit:0"]);
+    expect(order).toEqual(["drain", "close", "closePool", "exit:0"]);
     expect(d.log).not.toHaveBeenCalled();
   });
 
   it("app.close throws -> logged, runtime and pool still stopped, exit non-zero, no rejection", async () => {
     const { d, order } = deps({ close: vi.fn(async () => { throw new Error("close failed"); }) });
     await expect(createShutdown(d as never)("SIGTERM")).resolves.toBeUndefined();
-    expect(order).toEqual(["stopRuntime", "closePool", "exit:1"]);
+    expect(order).toEqual(["drain", "closePool", "exit:1"]);
     expect(d.log).toHaveBeenCalledTimes(1);
   });
 
@@ -177,6 +177,39 @@ describe("P3-07 graceful shutdown", () => {
     expect(nextPhaseSeq()).toBe(seqs.at(-1)! + 1);
   });
 
+  it("the pool is closed only after the drain settles (in-flight tool results are stored first)", async () => {
+    let finish = () => undefined as void;
+    const { d, order } = deps({
+      drainRuntime: vi.fn(() => new Promise((resolve) => { finish = () => resolve({ timedOut: false, runIds: [], ms: 5 }); })),
+    });
+    const done = createShutdown(d as never)("SIGTERM");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(order).toEqual(["close"]);
+    finish();
+    await done;
+    expect(order).toEqual(["close", "closePool", "exit:0"]);
+  });
+
+  it("drain timed out -> phase drain_timeout with the Run ids, pool still closed, exit 1", async () => {
+    const info = vi.fn();
+    const { d, order } = deps({
+      info,
+      drainRuntime: vi.fn(async () => ({ timedOut: true, runIds: ["r-1", "r-2"], ms: 35_000 })),
+    });
+    await createShutdown(d as never)("SIGTERM");
+    expect(order).toEqual(["close", "closePool", "exit:1"]);
+    const phases = info.mock.calls.map(([, fields]) => (fields as { phase: string }).phase);
+    expect(phases).toEqual(["signal", "app_close", "drain_timeout", "stop_runtime", "pool_end", "exit"]);
+    expect(info.mock.calls[2]![1]).toMatchObject({ phase: "drain_timeout", runIds: ["r-1", "r-2"] });
+  });
+
+  it("drainRuntime rejects -> logged, pool still closed, exit 1", async () => {
+    const { d, order } = deps({ drainRuntime: vi.fn(async () => { throw new Error("drain"); }) });
+    await expect(createShutdown(d as never)("SIGTERM")).resolves.toBeUndefined();
+    expect(order).toEqual(["close", "closePool", "exit:1"]);
+    expect(d.log).toHaveBeenCalledTimes(1);
+  });
+
   it("a second signal does not run a second shutdown", async () => {
     const { d } = deps();
     const shutdown = createShutdown(d as never);
@@ -188,7 +221,10 @@ describe("P3-07 graceful shutdown", () => {
   it("server.ts wires it for SIGINT and SIGTERM, with no bare `void` handler", () => {
     const src = readFileSync(new URL("../apps/api/src/server.ts", import.meta.url), "utf8");
     expect(src).toContain("createShutdown(");
-    expect(src).toMatch(/stopRuntime/);
+    expect(src).toMatch(/drainRuntime/);
+    expect(src).not.toMatch(/stopRuntime/);
+    // r4: the process limit stays 10 s (backstop at 9 s), whatever WORKER_DRAIN_TIMEOUT_MS is.
+    expect(src).toMatch(/timeoutMs: 10_000,/);
     expect(src).toMatch(/pool\.end\(\)/);
     expect(src).not.toMatch(/=>\s*void\s+shutdown/);
     expect(src).toMatch(/process\.on\("SIGTERM"/);
@@ -207,5 +243,16 @@ describe("P3-07 graceful shutdown", () => {
       const src = readFileSync(new URL(name, dir), "utf8");
       expect(src, name).not.toMatch(/stuck-flush|slow-threadpool|preload-|UV_THREADPOOL_SIZE|tests\/helpers/);
     }
+  });
+
+  it("the standalone worker drains, logs drain_timeout, closes the pool and exits 1 on timeout", () => {
+    const src = readFileSync(new URL("../apps/worker/src/main.ts", import.meta.url), "utf8");
+    expect(src).toMatch(/drainRuntime\(/);
+    expect(src).not.toMatch(/stopRuntime/);
+    expect(src).toContain('"drain_timeout"');
+    expect(src).toMatch(/pool\.end\(\)/);
+    expect(src).toMatch(/WORKER_DRAIN_TIMEOUT_MS \+ 5_?000/);
+    expect(src).toMatch(/if \(result\.timedOut\) \{\s*code = 1;/);
+    expect(src).toMatch(/process\.exit\(code\)/);
   });
 });
