@@ -29,7 +29,7 @@ export default defineConfig({
     hookTimeout: 30000,
     pool: "forks",
     // vitest 4: poolOptions.forks.singleFork 已移除。maxWorkers: 1 让测试文件按顺序跑（共用一个测试库），isolate 保持默认 true，
-    // 每个文件仍是干净的模块环境，和 v3 的 singleFork 行为一致。
+    // 每个文件跑在新的子进程里，隔离不弱于 v3 的 singleFork（v3 是同一进程里每个文件重置模块）。
     maxWorkers: 1,
   },
 });

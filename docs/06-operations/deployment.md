@@ -36,7 +36,7 @@ minio:9000/9001
 
 | 资源 | 副本 | 说明 |
 | --- | --- | --- |
-| `forge-api` Deployment | 2+ | ClusterIP；`/healthz`、`/readyz`；SSE 关闭代理缓冲 |
+| `forge-api` Deployment | 1（见 §14） | ClusterIP；`/healthz`、`/readyz`；SSE 关闭代理缓冲。会话、OIDC 登录状态和 RPM 计数都存在进程内存里，共享存储做好之前只跑 1 个副本 |
 | `forge-worker-llm` Deployment | 1–3 | `llm`/`main` 队列；按模型并发扩 |
 | `forge-worker-tools` Deployment | 2+ | `http`/`mcp`/`docparse`/`browser`；按资源拆 |
 | `forge-migrate` Job | 1 | 发布时运行；备份后执行；不自动重跑 |
@@ -265,4 +265,5 @@ minio:9000/9001
 
 ## 14. 已知风险
 
+- **会话存在 API 进程内存里**（`packages/identity/src/index.ts:35` 的会话和 OIDC state，`apps/api/src/routes/open.ts` 的 RPM 计数）：API 一重启，所有人都要重新登录；跑多个副本时，请求落到别的副本就会 401，SSO 回调也会失败，RPM 上限按副本数放大。所以 `forge-api` 目前只跑 1 个副本，不能靠加副本扩容。发布时尽量放在低峰，并提前通知用户需要重新登录。控制台 SSE 断线后自动重连 3 次，大约能撑 9 秒，停机超过这个时间，用户要手动点刷新。
 - **测试依赖的已知漏洞（1.2 已解决）**：1.1 用的 vitest 3 依赖链上有 tinypool（GHSA-5gmw-xhrv-c9v3、GHSA-85c8-ppgw-ccpr）和 vitest / @vitest/mocker（GHSA-82fw-gwwq-j7x9、GHSA-qxg6-89mg-rqv8）的漏洞，都是 devDependencies，不进生产运行时。1.2 升级到 vitest 4.1.12 后不再依赖 tinypool，`pnpm audit --dev` 没有已知漏洞。还停在 1.1 的环境不要对不可信分支直接跑测试。
