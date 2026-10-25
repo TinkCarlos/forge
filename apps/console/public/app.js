@@ -650,7 +650,8 @@ function openModal(title, body, onSubmit, submitLabel = "保存", danger = false
     event.preventDefault();
     submit.disabled = true;
     try {
-      await onSubmit(new FormData(form));
+      // onSubmit 返回 false 表示表单内校验未通过：保持弹窗打开（例如试运行输入为空）。
+      if ((await onSubmit(new FormData(form))) === false) return;
       dialog.close();
     } catch (error) {
       toast(errorText(error), "error");
@@ -679,8 +680,25 @@ function field(label, name, value = "", type = "text", extra = "") {
   return `<label>${label}<input name="${esc(name)}" type="${type}" value="${esc(value)}" ${extra} /></label>`;
 }
 
-function textarea(label, name, value = "", rows = 6) {
-  return `<label>${label}<textarea name="${esc(name)}" rows="${rows}">${esc(value)}</textarea></label>`;
+function textarea(label, name, value = "", rows = 6, extra = "") {
+  return `<label>${label}<textarea name="${esc(name)}" rows="${rows}"${extra ? ` ${extra}` : ""}>${esc(value)}</textarea></label>`;
+}
+
+/** 表单内字段提示：文案走 textContent，显示提示、标记 aria-invalid 并聚焦；用户改动输入后提示消失。 */
+function showFieldError(name, errorId, message) {
+  const input = $("#modal-body").querySelector(`[name="${name}"]`);
+  const error = $(`#${errorId}`);
+  if (error) {
+    error.textContent = message;
+    error.hidden = false;
+  }
+  if (!input) return;
+  input.setAttribute("aria-invalid", "true");
+  input.addEventListener("input", () => {
+    input.removeAttribute("aria-invalid");
+    if (error) error.hidden = true;
+  }, { once: true });
+  input.focus();
 }
 
 function select(label, name, options, value = "") {
@@ -854,8 +872,15 @@ const app = {
 
   openAgentRun(id) {
     const name = agentNameById(id);
-    openModal(`试运行 ${name}`, `${textarea("输入", "text", "你好，介绍一下 Forge。", 5)}`, async (data) => {
-      const result = await api(`/admin/api/agents/${idSeg(id)}/run`, { method: "POST", body: { input: { text: data.get("text") } } });
+    const errorId = "agent-run-text-error";
+    openModal(`试运行 ${name}`, `${textarea("输入", "text", "你好，介绍一下 Forge。", 5, `aria-required="true" aria-describedby="${errorId}"`)}<p class="hint" id="${errorId}" role="alert" hidden></p>`, async (data) => {
+      // P3：输入必填。空或只有空白时不发请求；有内容时 text 原样发送（不 trim）。
+      const text = data.get("text");
+      if (typeof text !== "string" || !text.trim()) {
+        showFieldError("text", errorId, "请输入内容");
+        return false;
+      }
+      const result = await api(`/admin/api/agents/${idSeg(id)}/run`, { method: "POST", body: { input: { text } } });
       toast(`Run 已创建：${result.runId}`);
       state.tab = "runs";
       await switchTab("runs");
