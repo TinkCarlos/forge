@@ -8,6 +8,7 @@ export const INTERRUPTED_BADGE = '执行中断，可能已执行过'
 /**
  * 批准/驳回一条已处理、已被接手替换、已过期或并发输掉的审批：409 + 其中一个码（APR-2104 审批已处理或已过期，APR-2103 并发决定）。
  * 码集合只在这一行定义；CFG-8503 是通用「资源状态冲突」，不在集合里，照普通错误提示。
+ * 后端统一用 APR-2104，APR-2103 仅作兜底。
  */
 export const APPROVAL_STALE_CODES: ReadonlySet<string> = new Set(['APR-2104', 'APR-2103'])
 export const APPROVAL_STALE_TOAST = '该审批已失效，请刷新后处理新的审批'
@@ -18,11 +19,11 @@ export function approvalReason(a: { reason?: unknown }): ApprovalReason {
   return a.reason === 'interrupted' ? 'interrupted' : 'policy'
 }
 
-/** 中断审批的徽标和「第 N 次尝试」（attempt 不是正整数时为 null）；policy 返回 null，和原来一样不显示。 */
+/** 中断审批的徽标和「第 N 次执行被中断」（N = attempt，被中断那次执行的序号，不加 1；不是正整数时为 null）；policy 返回 null，和原来一样不显示。 */
 export function approvalTakeover(a: { reason?: unknown; attempt?: unknown }): { badge: string; attempt: string | null } | null {
   if (approvalReason(a) !== 'interrupted') return null
   const n = a.attempt
-  return { badge: INTERRUPTED_BADGE, attempt: typeof n === 'number' && Number.isInteger(n) && n > 0 ? `第 ${n} 次尝试` : null }
+  return { badge: INTERRUPTED_BADGE, attempt: typeof n === 'number' && Number.isInteger(n) && n > 0 ? `第 ${n} 次执行被中断` : null }
 }
 
 /**

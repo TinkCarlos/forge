@@ -537,6 +537,7 @@ async function renderRuns() {
 const INTERRUPTED_BADGE_TEXT = "执行中断，可能已执行过";
 // 批准/驳回一条已处理、已被接手替换、已过期或并发输掉的审批：409 + 其中一个码（APR-2104 审批已处理或已过期，APR-2103 并发决定）。
 // 码集合只在这一行定义；CFG-8503 是通用「资源状态冲突」，不在集合里，照普通错误提示。
+// 后端统一用 APR-2104，APR-2103 仅作兜底。
 const APPROVAL_STALE_CODES = new Set(["APR-2104", "APR-2103"]);
 const APPROVAL_STALE_TEXT = "该审批已失效，请刷新后处理新的审批";
 
@@ -544,9 +545,9 @@ function approvalReason(approval) {
   return approval?.reason === "interrupted" ? "interrupted" : "policy";
 }
 
-/** attempt 是正整数时返回「第 N 次尝试」，null / 缺失 / 非法值返回空串。 */
+/** attempt = 被中断那次执行的序号（从 1 开始）；正整数时返回「第 N 次执行被中断」，null / 缺失 / 非法值返回空串。 */
 function attemptText(attempt) {
-  return Number.isInteger(attempt) && attempt > 0 ? `第 ${attempt} 次尝试` : "";
+  return Number.isInteger(attempt) && attempt > 0 ? `第 ${attempt} 次执行被中断` : "";
 }
 
 /** 审批列表「风险」列里追加的中断徽标；policy 返回空串（和原来一样）。 */
@@ -1336,12 +1337,15 @@ function runFailureText(code, message) {
   return code ? `${text}（错误码 ${code}）` : text;
 }
 
-/** SSE tool.interrupted 的可读记录；只用工具名、动作和次数，不显示参数和结果。 */
+/**
+ * SSE tool.interrupted 的可读记录；只用工具名、动作和次数，不显示参数和结果。
+ * attempt = 被中断那次执行的序号（从 1 开始）：rerun 的重跑是第 attempt+1 次，confirm 写被中断的第 attempt 次。
+ */
 function toolInterruptedText(data) {
   const tool = String(data?.tool ?? "") || "未知工具";
-  if (data?.action === "confirm") return `工具 ${tool} 执行中断，已转人工确认`;
-  const attempt = Number.isInteger(data?.attempt) && data.attempt > 0 ? `（第 ${data.attempt} 次）` : "";
-  if (data?.action === "rerun") return `工具 ${tool} 执行中断，已自动重跑${attempt}`;
+  const attempt = Number.isInteger(data?.attempt) && data.attempt > 0 ? data.attempt : null;
+  if (data?.action === "confirm") return attempt ? `工具 ${tool} 第 ${attempt} 次执行被中断，需重新确认` : `工具 ${tool} 执行被中断，需重新确认`;
+  if (data?.action === "rerun") return `工具 ${tool} 执行中断，已自动重跑${attempt ? `（第 ${attempt + 1} 次）` : ""}`;
   return `工具 ${tool} 执行中断`;
 }
 
