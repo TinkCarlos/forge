@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { expectHandoffMapping } from "./helpers/run-handoff.js";
 
 // P3-07 (pure): SIGTERM / SIGINT -> start the runtime drain (stops claiming at once, r5 §4) -> stop taking requests
 // (app.close) -> wait for the drain -> close the DB pool -> exit 0. A failing step is logged and the exit code is
@@ -145,10 +146,11 @@ describe("P3-07 graceful shutdown", () => {
     vi.useFakeTimers();
     const { d, writeStderrSync } = flushDeps({ close: vi.fn(() => new Promise<void>((resolve) => setTimeout(resolve, 8_000))) });
     void createShutdown(d as never)("SIGTERM");
-    await vi.advanceTimersByTimeAsync(8_000 + 1_499);
+    // Ruling 15:39: the flush is cut to the 9000 ms deadline (was timeoutMs - EXIT_MARGIN_MS = 9500 in r4).
+    await vi.advanceTimersByTimeAsync(8_000 + 999);
     expect(d.exit).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
-    expect(JSON.parse(writeStderrSync.mock.calls[0]![0] as string)).toMatchObject({ phase: "flush_timeout", timeoutMs: 1500, code: 0 });
+    expect(JSON.parse(writeStderrSync.mock.calls[0]![0] as string)).toMatchObject({ phase: "flush_timeout", timeoutMs: 1000, code: 0 });
     expect(d.exit).toHaveBeenCalledWith(0);
 
     const latePhases: string[] = [];
@@ -271,5 +273,98 @@ describe("P3-07 graceful shutdown", () => {
     expect(src).toMatch(/WORKER_DRAIN_TIMEOUT_MS \+ 5_?000/);
     expect(src).toMatch(/if \(result\.timedOut\) \{\s*code = 1;/);
     expect(src).toMatch(/process\.exit\(code\)/);
+  });
+});
+
+// Ruling 15:39: one deadline, 9000 ms from the signal. Each step waits min(its own cap, time left): Run drain
+// min(WORKER_DRAIN_TIMEOUT_MS, 5000) (then run_drain_timeout), lease release 1000, flush 2000. One run_handoff line per
+// Run after run_drain_timeout and before exit.
+describe("shutdown deadline budget (ruling 15:39)", () => {
+  type Budget = { drainMs: number; releaseMs: number; deadlineAt: number };
+  it("the drain gets min(WORKER_DRAIN_TIMEOUT_MS, 5000) and the release 1000, against a deadline 9000 ms after the signal", async () => {
+    for (const [configured, expected] of [[35_000, 5000], [1500, 1500], [0, 0]] as const) {
+      const seen: Budget[] = [];
+      const { d } = deps({ runDrainTimeoutMs: configured, drainRuntime: vi.fn(async (budget: Budget) => { seen.push(budget); return { timedOut: false, runIds: [], ms: 0, handoffs: [] }; }) });
+      const before = Date.now();
+      await createShutdown(d as never)("SIGTERM");
+      expect(seen).toHaveLength(1);
+      expect(seen[0]!.drainMs).toBe(expected);
+      expect(seen[0]!.releaseMs).toBe(1000);
+      expect(seen[0]!.deadlineAt).toBeGreaterThanOrEqual(before + 9000);
+      expect(seen[0]!.deadlineAt).toBeLessThanOrEqual(Date.now() + 9000);
+    }
+  });
+
+  it("run_handoff lines: one per Run, after run_drain_timeout (and release_timeout), before exit; fields as told to ops", async () => {
+    const info = vi.fn();
+    const handoffs = [
+      { runId: "r-1", takeover: "released", reason: "drained" },
+      { runId: "r-2", takeover: "lease_expiry", reason: "tool_inflight" },
+      { runId: "r-3", takeover: "lease_expiry", reason: "release_timeout" },
+    ];
+    const { d } = deps({ info, runDrainTimeoutMs: 35_000, drainRuntime: vi.fn(async () => ({ timedOut: true, runIds: ["r-2", "r-3"], ms: 5000, handoffs, releaseTimedOut: true, releaseMs: 1000 })) });
+    await createShutdown(d as never)("SIGTERM");
+    const lines = info.mock.calls.map(([, fields]) => fields as Record<string, unknown>);
+    expect(lines.map((line) => line.phase)).toEqual(["signal", "app_close", "run_drain_timeout", "release_timeout", "run_handoff", "run_handoff", "run_handoff", "stop_runtime", "pool_end", "exit"]);
+    expect(lines.find((line) => line.phase === "release_timeout")).toMatchObject({ runIds: ["r-3"], releaseMs: 1000 });
+    const handoffLines = lines.filter((line) => line.phase === "run_handoff");
+    expect(handoffLines.map(({ phase, runId, takeover, reason }) => ({ phase, runId, takeover, reason }))).toEqual(handoffs.map((h) => ({ phase: "run_handoff", ...h })));
+    expectHandoffMapping(handoffLines as never);
+    expect(lines.at(-1)).toMatchObject({ phase: "exit", code: 1 });
+  });
+
+  it("drained Runs only: run_handoff released/drained, no run_drain_timeout, exit 0", async () => {
+    const info = vi.fn();
+    const { d } = deps({ info, drainRuntime: vi.fn(async () => ({ timedOut: false, runIds: [], ms: 30, handoffs: [{ runId: "r-9", takeover: "released", reason: "drained" }], releaseTimedOut: false, releaseMs: 5 })) });
+    await createShutdown(d as never)("SIGTERM");
+    const lines = info.mock.calls.map(([, fields]) => fields as Record<string, unknown>);
+    expect(lines.map((line) => line.phase)).toEqual(["signal", "app_close", "run_handoff", "stop_runtime", "pool_end", "exit"]);
+    expect(lines.at(-1)).toMatchObject({ phase: "exit", code: 0 });
+  });
+
+  it("worst case (drain, release and flush all hang): exit at ~8000 ms with code 1, before 9000, no drain_timeout, exit last", async () => {
+    vi.useFakeTimers();
+    const info = vi.fn();
+    // A drain that uses its whole budget: drainMs then releaseMs (what drainRuns does when both steps hang).
+    const drainRuntime = vi.fn((budget: Budget) => new Promise((resolve) => setTimeout(() => resolve({
+      timedOut: true, runIds: ["r-1"], ms: budget.drainMs, releaseTimedOut: true, releaseMs: budget.releaseMs,
+      handoffs: [{ runId: "r-1", takeover: "lease_expiry", reason: "tool_inflight" }],
+    }), budget.drainMs + budget.releaseMs)));
+    const { d, writeStderrSync } = flushDeps({ info, runDrainTimeoutMs: 35_000, drainRuntime });
+    void createShutdown(d as never)("SIGTERM");
+    await vi.advanceTimersByTimeAsync(7_999);
+    expect(d.exit).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(d.exit).toHaveBeenCalledWith(1);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(d.exit).toHaveBeenCalledTimes(1);
+    const phases = info.mock.calls.map(([, fields]) => (fields as { phase: string }).phase);
+    expect(phases).not.toContain("drain_timeout");
+    expect(phases.at(-1)).toBe("exit");
+    expect(JSON.parse(writeStderrSync.mock.calls[0]![0] as string)).toMatchObject({ phase: "flush_timeout", timeoutMs: 2000, code: 1 });
+  });
+
+  it("the flush gets min(2000, time left before the 9000 ms deadline)", async () => {
+    vi.useFakeTimers();
+    const { d, writeStderrSync } = flushDeps({ close: vi.fn(() => new Promise<void>((resolve) => setTimeout(resolve, 8_000))) });
+    void createShutdown(d as never)("SIGTERM");
+    await vi.advanceTimersByTimeAsync(8_999);
+    expect(d.exit).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(JSON.parse(writeStderrSync.mock.calls[0]![0] as string)).toMatchObject({ phase: "flush_timeout", timeoutMs: 1000, code: 0 });
+    expect(d.exit).toHaveBeenCalledWith(0);
+  });
+
+  it("server.ts passes WORKER_DRAIN_TIMEOUT_MS and the budget through to drainRuntime", () => {
+    const src = readFileSync(new URL("../apps/api/src/server.ts", import.meta.url), "utf8");
+    expect(src).toMatch(/runDrainTimeoutMs: config\.WORKER_DRAIN_TIMEOUT_MS/);
+    expect(src).toMatch(/drainRuntime: \(budget\) => drainRuntime\(budget\.drainMs, budget\)/);
+  });
+
+  it("the standalone worker logs one run_handoff line per Run after run_drain_timeout, before it exits", () => {
+    const src = readFileSync(new URL("../apps/worker/src/main.ts", import.meta.url), "utf8");
+    expect(src).toMatch(/phase: "run_handoff", signal, runId: handoff\.runId, takeover: handoff\.takeover, reason: handoff\.reason/);
+    expect(src.indexOf('"run_drain_timeout"')).toBeLessThan(src.indexOf('"run_handoff"'));
+    expect(src.indexOf('"run_handoff"')).toBeLessThan(src.lastIndexOf("process.exit(code)"));
   });
 });

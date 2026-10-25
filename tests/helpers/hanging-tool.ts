@@ -113,9 +113,10 @@ export function hangingTools(options: HangingToolOptions): Map<string, ResolvedT
 
 /**
  * Env for a child started with `node --import tsx ...`: a generated tsconfig (temp dir) maps @forge/capabilities to
- * hanging-tool-capabilities.ts, and the options travel in FORGE_TEST_HANGING_TOOLS. Call ensureStubEffectsTable() first.
+ * hanging-tool-capabilities.ts, and the options travel in FORGE_TEST_HANGING_TOOLS (several stubs: pass an array, one
+ * key each). Call ensureStubEffectsTable() first.
  */
-export function hangingToolChildEnv(options: HangingToolOptions): Record<string, string> {
+export function hangingToolChildEnv(options: HangingToolOptions | HangingToolOptions[]): Record<string, string> {
   const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
   const base = JSON.parse(readFileSync(join(root, "tsconfig.json"), "utf8")) as { compilerOptions: { paths: Record<string, string[]> } };
   const paths = { ...base.compilerOptions.paths, "@forge/capabilities": ["tests/helpers/hanging-tool-capabilities.ts"] };

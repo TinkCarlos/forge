@@ -1,15 +1,39 @@
 // P3-07: process shutdown on SIGTERM / SIGINT. Pure module (dependencies injected) so it is unit-testable.
 import { nextPhaseSeq } from "./phase-seq.js";
 
+export interface DrainBudget {
+  drainMs: number;
+  releaseMs: number;
+  /** Absolute time (ms) of the shutdown deadline. */
+  deadlineAt: number;
+}
+
+/** Ruling 15:39 run_handoff fields (told to ops; names and values fixed). */
+export type RunHandoffLine =
+  | { runId: string; takeover: "released"; reason: "drained" }
+  | { runId: string; takeover: "lease_expiry"; reason: "tool_inflight" | "release_timeout" | "release_error" };
+
+export interface DrainOutcome {
+  timedOut: boolean;
+  runIds: string[];
+  ms: number;
+  handoffs?: RunHandoffLine[];
+  releaseTimedOut?: boolean;
+  releaseMs?: number;
+}
+
 export interface ShutdownDeps {
   /** Stop taking requests and wait for in-flight ones (Fastify app.close). */
   close: () => Promise<void>;
   /**
    * r5 §4: stop the worker / scheduler ticks and drain the Runs in progress (no new claims from the first moment;
-   * model calls aborted, tool calls allowed to finish, leases released). Resolves with timedOut when
-   * WORKER_DRAIN_TIMEOUT_MS ran out and the rest was aborted.
+   * model calls aborted, tool calls allowed to finish). Resolves with timedOut when `drainMs` ran out and the rest was
+   * aborted, then releases the leases that may be released within `releaseMs` (ruling 15:39); neither step waits
+   * past `deadlineAt`. `handoffs`: one per Run, logged as run_handoff.
    */
-  drainRuntime: () => Promise<{ timedOut: boolean; runIds: string[]; ms: number }>;
+  drainRuntime: (budget: DrainBudget) => Promise<DrainOutcome>;
+  /** WORKER_DRAIN_TIMEOUT_MS; the Run drain gets min(this, RUN_DRAIN_CAP_MS). Default: the cap. */
+  runDrainTimeoutMs?: number;
   /** Close the DB connection pool. */
   closePool: () => Promise<void>;
   exit: (code: number) => void;
@@ -33,6 +57,10 @@ export const FLUSH_TIMEOUT_MS = 2000;
 export const BACKSTOP_FLUSH_MS = 500;
 /** r4: time kept free before timeoutMs for process.exit itself (pino's exit hook, libuv teardown). */
 const EXIT_MARGIN_MS = 500;
+/** Ruling 15:39: cap of the API's Run drain (WORKER_DRAIN_TIMEOUT_MS above it is cut to this). */
+export const RUN_DRAIN_CAP_MS = 5000;
+/** Ruling 15:39: cap of the lease release step. */
+export const RELEASE_CAP_MS = 1000;
 
 /** Counts of each resource type, e.g. { TCPSocketWrap: 1, Timeout: 2 }. */
 function countResources(names: string[]): Record<string, number> {
@@ -45,14 +73,18 @@ function countResources(names: string[]): Record<string, number> {
  * drain (started first, so nothing new is claimed) -> close -> wait for the drain -> closePool -> exit line -> logger
  * flush -> exit(code). A failing step is logged, the later steps still run and the exit code is 1; the returned
  * promise never rejects. A Run drain that timed out logs phase=run_drain_timeout with runIds and drainMs, the close
- * continues and the exit is 1 (those Runs are taken over by another worker: their lease is released best effort,
- * otherwise after it expires). A second call (second signal) returns the first shutdown.
+ * continues and the exit is 1 (those Runs are taken over by another worker: after the release step when all their
+ * tool calls have ended, otherwise after the lease expires). A second call (second signal) returns the first shutdown.
  *
- * Exit and the 10 s limit (timeoutMs): the drain (Run drain, close, closePool) has until timeoutMs - 1000. If it is
- * not done by then the backstop logs drain_timeout, flushes for at most BACKSTOP_FLUSH_MS and exits 1. Otherwise the
- * flush after the exit line gets FLUSH_TIMEOUT_MS, cut to what is left before timeoutMs - EXIT_MARGIN_MS. A flush that
- * does not call back in time writes one `flush_timeout` JSON line straight to stderr and the exit code stays the
- * drain's (0, or 1 when a step failed). Only one of the two paths exits.
+ * Ruling 15:39, one deadline: timeoutMs - 1000 (9 s) after the signal. Each step waits min(its cap, time left before
+ * the deadline): Run drain min(runDrainTimeoutMs, RUN_DRAIN_CAP_MS) (then run_drain_timeout), lease release
+ * RELEASE_CAP_MS (release_timeout when it ran out), flush FLUSH_TIMEOUT_MS; 8 s together, 1 s left for closing
+ * connections. After the drain one run_handoff line per Run {runId, takeover, reason}, before stop_runtime and exit.
+ *
+ * Backstop (r4): if the drain (Run drain, close, closePool) is not done by the deadline the backstop logs
+ * drain_timeout, flushes for at most BACKSTOP_FLUSH_MS and exits 1. A flush that does not call back in time writes
+ * one `flush_timeout` JSON line straight to stderr and the exit code stays the drain's (0, or 1 when a step failed).
+ * Only one of the two paths exits.
  */
 export function createShutdown(deps: ShutdownDeps): (signal: string) => Promise<void> {
   let running: Promise<void> | null = null;
@@ -140,9 +172,15 @@ export function createShutdown(deps: ShutdownDeps): (signal: string) => Promise<
         step("exit", exitFields(1));
         void finish(1, BACKSTOP_FLUSH_MS);
       }, drainDeadlineMs);
-      let drain: Promise<{ timedOut: boolean; runIds: string[]; ms: number }>;
+      const deadlineAt = startedAt + drainDeadlineMs;
+      const budget: DrainBudget = {
+        drainMs: Math.max(0, Math.min(deps.runDrainTimeoutMs ?? RUN_DRAIN_CAP_MS, RUN_DRAIN_CAP_MS, deadlineAt - Date.now())),
+        releaseMs: RELEASE_CAP_MS,
+        deadlineAt,
+      };
+      let drain: Promise<DrainOutcome>;
       try {
-        drain = deps.drainRuntime();
+        drain = deps.drainRuntime(budget);
       } catch (error) {
         drain = Promise.reject(error);
       }
@@ -160,6 +198,10 @@ export function createShutdown(deps: ShutdownDeps): (signal: string) => Promise<
           code = 1;
           step("run_drain_timeout", { runIds: result.runIds, drainMs: result.ms });
         }
+        const handoffs = result.handoffs ?? [];
+        const releaseTimedOut = handoffs.filter((handoff) => handoff.reason === "release_timeout").map((handoff) => handoff.runId);
+        if (releaseTimedOut.length > 0) step("release_timeout", { runIds: releaseTimedOut, releaseMs: result.releaseMs });
+        for (const handoff of handoffs) step("run_handoff", { runId: handoff.runId, takeover: handoff.takeover, reason: handoff.reason });
       } catch (error) {
         code = 1;
         deps.log(`shutdown (${signal}): draining the runtime failed`, error);
@@ -176,7 +218,7 @@ export function createShutdown(deps: ShutdownDeps): (signal: string) => Promise<
       if (finishing) return finishing;
       clearTimeout(timer);
       step("exit", exitFields(code));
-      const flushLimitMs = Math.max(0, Math.min(FLUSH_TIMEOUT_MS, startedAt + deps.timeoutMs - EXIT_MARGIN_MS - Date.now()));
+      const flushLimitMs = Math.max(0, Math.min(FLUSH_TIMEOUT_MS, deadlineAt - Date.now()));
       return finish(code, flushLimitMs);
     })();
     return running;
