@@ -1,5 +1,5 @@
 import { ulidWithPrefix } from "@forge/core";
-import { execute, one, query } from "../db.js";
+import { execute, one, query, transaction } from "../db.js";
 import type { ServiceAccountRow, UserFilter, UserRow } from "../types.js";
 
 /** Escapes a literal for LIKE ... ESCAPE '!' ("!" rather than "\\" so the SQL does not depend on NO_BACKSLASH_ESCAPES). */
@@ -75,6 +75,15 @@ export const identityRepo = {
     if (fields.displayName) { sets.push("display_name = ?"); params.push(fields.displayName); }
     if (!sets.length) return;
     params.push(id);
+    if (fields.status && fields.status !== "active") {
+      // Session store (007): a user who is no longer active is logged out everywhere at once. The status change and the
+      // session delete commit together, so a failed delete leaves the user active with the sessions intact.
+      await transaction(async (conn) => {
+        await conn.execute(`UPDATE users SET ${sets.join(", ")} WHERE id = ?`, params as never[]);
+        await conn.execute("DELETE FROM auth_sessions WHERE user_id = ?", [id]);
+      });
+      return;
+    }
     await execute(`UPDATE users SET ${sets.join(", ")} WHERE id = ?`, params);
   },
   async getOrgUnit(id: string): Promise<Record<string, unknown> | null> {
