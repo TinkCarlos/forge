@@ -163,6 +163,36 @@ async function applyScheduleIdentity(conn: Connection): Promise<void> {
   }
 }
 
+// 007 (session store): server-side sessions and OIDC login state move from process memory to MySQL so forge-api can
+// run more than one replica. Additive only (CREATE TABLE IF NOT EXISTS), so a re-run or a code-only rollback is safe.
+// Keep in sync with packages/store/src/schema.sql.
+const AUTH_SESSIONS_DDL = `CREATE TABLE IF NOT EXISTS auth_sessions (
+  token_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
+  user_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  csrf_token VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  last_seen_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  expires_at DATETIME(3) NOT NULL,
+  KEY idx_auth_sessions_user (user_id),
+  KEY idx_auth_sessions_expires (expires_at),
+  CONSTRAINT fk_auth_sessions_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci`;
+
+const AUTH_OIDC_STATES_DDL = `CREATE TABLE IF NOT EXISTS auth_oidc_states (
+  state_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
+  verifier VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  nonce VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  return_to VARCHAR(2048) NOT NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  expires_at DATETIME(3) NOT NULL,
+  KEY idx_auth_oidc_states_expires (expires_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci`;
+
+async function applyAuthSessions(conn: Connection): Promise<void> {
+  await conn.query(AUTH_SESSIONS_DDL);
+  await conn.query(AUTH_OIDC_STATES_DDL);
+}
+
 try {
   await connection.query(
     "CREATE TABLE IF NOT EXISTS schema_migrations (version VARCHAR(128) NOT NULL PRIMARY KEY, applied_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
@@ -217,6 +247,14 @@ try {
     console.log("Migration 006_audit_org_unit applied");
   } else {
     console.log("Migration 006_audit_org_unit already applied");
+  }
+
+  if (!applied.has("007_auth_sessions")) {
+    await applyAuthSessions(connection);
+    await connection.query("INSERT INTO schema_migrations (version) VALUES (?)", ["007_auth_sessions"]);
+    console.log("Migration 007_auth_sessions applied");
+  } else {
+    console.log("Migration 007_auth_sessions already applied");
   }
 } finally {
   await connection.end();

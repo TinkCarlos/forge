@@ -503,6 +503,29 @@ CREATE TABLE IF NOT EXISTS files (
   KEY idx_files_owner (owner_type, owner_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+-- 007_auth_sessions (session store): keep in sync with scripts/migrate.ts.
+CREATE TABLE IF NOT EXISTS auth_sessions (
+  token_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
+  user_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  csrf_token VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  last_seen_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  expires_at DATETIME(3) NOT NULL,
+  KEY idx_auth_sessions_user (user_id),
+  KEY idx_auth_sessions_expires (expires_at),
+  CONSTRAINT fk_auth_sessions_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS auth_oidc_states (
+  state_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
+  verifier VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  nonce VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  return_to VARCHAR(2048) NOT NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  expires_at DATETIME(3) NOT NULL,
+  KEY idx_auth_oidc_states_expires (expires_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 CREATE TABLE IF NOT EXISTS schema_migrations (
   version VARCHAR(128) NOT NULL PRIMARY KEY,
   applied_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
