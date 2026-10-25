@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 /**
  * R9：Worker 接手中断后的审批（旧版控制台 public/app.js）。
- * - 审批列表：reason=interrupted 显示「执行中断，可能已执行过」徽标，attempt 是正整数时旁边写「第 N 次尝试」；
+ * - 审批列表：reason=interrupted 显示「执行中断，可能已执行过」徽标，attempt（被中断那次执行的序号，从 1 开始）是正整数时旁边写「第 N 次执行被中断」（不加 1）；
  *   policy 或 reason 缺失（老后端）和原来一样，不显示徽标。
  * - 过期时间沿用 fmt（本地时间），没有 expires_at 显示「—」。
  * - 批准 / 驳回收到 409 APR-2104（审批已处理或已过期）或 APR-2103（并发决定）：弹专门提示「该审批已失效，请刷新后处理新的审批」，
@@ -115,26 +115,34 @@ function harness(routes: Record<string, Resp | Resp[]>) {
 const list = (...items: unknown[]): Resp => ({ status: 200, body: { items } })
 
 describe('R9 审批列表：中断徽标与尝试次数', () => {
-  it('reason=interrupted、attempt=2：显示徽标和「第 2 次尝试」', async () => {
-    const h = harness({ [LIST]: list(approval({ reason: 'interrupted', attempt: 2 })) })
+  it('reason=interrupted、attempt=3：显示徽标和「第 3 次执行被中断」', async () => {
+    const h = harness({ [LIST]: list(approval({ reason: 'interrupted', attempt: 3 })) })
     await h.app.renderApprovals()
     expect(h.content()).toContain(BADGE)
     expect(h.content()).toMatch(/class="pill warn">执行中断，可能已执行过</)
-    expect(h.content()).toContain('第 2 次尝试')
+    expect(h.content()).toContain('第 3 次执行被中断')
+    expect(h.content()).not.toContain('次尝试')
   })
 
-  it('reason=interrupted、attempt=null：有徽标，不显示「第 N 次尝试」', async () => {
+  it('reason=interrupted、attempt=1：「第 1 次执行被中断」（不加 1）', async () => {
+    const h = harness({ [LIST]: list(approval({ reason: 'interrupted', attempt: 1 })) })
+    await h.app.renderApprovals()
+    expect(h.content()).toContain('第 1 次执行被中断')
+    expect(h.content()).not.toContain('第 2 次')
+  })
+
+  it('reason=interrupted、attempt=null：有徽标，不显示「第 N 次执行被中断」', async () => {
     const h = harness({ [LIST]: list(approval({ reason: 'interrupted', attempt: null })) })
     await h.app.renderApprovals()
     expect(h.content()).toContain(BADGE)
-    expect(h.content()).not.toContain('次尝试')
+    expect(h.content()).not.toContain('次执行被中断')
   })
 
   it('reason=policy：和原来一样，没有徽标', async () => {
     const h = harness({ [LIST]: list(approval({ reason: 'policy', attempt: null })) })
     await h.app.renderApprovals()
     expect(h.content()).not.toContain(BADGE)
-    expect(h.content()).not.toContain('次尝试')
+    expect(h.content()).not.toContain('次执行被中断')
     expect(h.content()).toMatch(/<td><span class="pill ">high<\/span><\/td>/)
   })
 
@@ -162,7 +170,7 @@ describe('R9 审批列表：中断徽标与尝试次数', () => {
     expect(h.content()).not.toContain('<img')
     expect(h.content()).toContain('&lt;img src=x onerror=alert(1)&gt;')
     expect(h.content().split(BADGE).length - 1).toBe(1)
-    expect(h.content()).not.toContain('次尝试')
+    expect(h.content()).not.toContain('次执行被中断')
   })
 })
 
