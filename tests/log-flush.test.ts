@@ -39,6 +39,33 @@ describe("flushLogger", () => {
     expect(done).toHaveBeenCalledTimes(2);
   });
 
+  it("the destination has no _writing field (another sonic-boom version / stream type): falls back to flush(cb) alone, no throw", () => {
+    const stream = new EventEmitter(); // no _writing
+    const once = vi.spyOn(stream, "once");
+    const logger = { flush: vi.fn((cb: () => void) => cb()), [pino.symbols.streamSym]: stream };
+    const done = vi.fn();
+    expect(() => flushLogger(logger as never, done)).not.toThrow();
+    expect(done).toHaveBeenCalledTimes(1);
+    expect(once).not.toHaveBeenCalled();
+    // _writing of another type (not a boolean) is treated the same way.
+    const odd = { flush: vi.fn((cb: () => void) => cb()), [pino.symbols.streamSym]: Object.assign(new EventEmitter(), { _writing: "yes" }) };
+    flushLogger(odd as never, done);
+    expect(done).toHaveBeenCalledTimes(2);
+  });
+
+  it("guard: the default destination of a real pino logger, and of Fastify's logger, still has a boolean _writing (sonic-boom 4.2.1)", async () => {
+    // If a pino / sonic-boom upgrade drops the field, flushLogger silently stops waiting for the write in flight and
+    // SIG-09 can reorder again: this test turns red first.
+    const logger = pino({ level: "silent" });
+    const stream = (logger as unknown as Record<symbol, { _writing?: unknown }>)[pino.symbols.streamSym];
+    expect(typeof stream?._writing).toBe("boolean");
+    const { default: Fastify } = await import("fastify");
+    const app = Fastify({ logger: { level: "silent" } });
+    const appStream = (app.log as unknown as Record<symbol, { _writing?: unknown }>)[pino.symbols.streamSym];
+    expect(typeof appStream?._writing).toBe("boolean");
+    await app.close();
+  });
+
   it("a real pino logger on its default-style async destination: all lines written, in order, when done runs", async () => {
     const { mkdtempSync, readFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");

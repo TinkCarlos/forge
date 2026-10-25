@@ -4,9 +4,21 @@ import pino from "pino";
 interface FlushableLogger {
   flush?: (cb?: (err?: Error) => void) => void;
 }
-interface InFlightStream {
+interface DestinationStream {
   _writing?: unknown;
   once?: (event: "drain", listener: () => void) => unknown;
+}
+
+/**
+ * The only place that reads sonic-boom's private `_writing` field (true while an fs.write is in flight). The API's
+ * main-thread destination is pino 9.14's sonic-boom 4.2.1; the sonic-boom 5.0.2 also in the repo is pino-pretty's (it
+ * writes inside the transport worker, not here). Returns undefined when the field is not there (another stream type,
+ * or a sonic-boom version without it): the caller then relies on flush(cb) alone. tests/log-flush.test.ts checks the
+ * field is still a boolean on a real pino logger, so an upgrade that drops it turns that test red.
+ */
+function writeInFlight(stream: DestinationStream | undefined): boolean | undefined {
+  const writing = stream?._writing;
+  return typeof writing === "boolean" ? writing : undefined;
 }
 
 /**
@@ -22,14 +34,14 @@ interface InFlightStream {
  */
 export function flushLogger(logger: object, done: () => void): void {
   // Fastify's logger type (FastifyBaseLogger) does not declare flush; the instance is pino's, which has it.
-  const flushable = logger as FlushableLogger & Record<symbol, InFlightStream | undefined>;
+  const flushable = logger as FlushableLogger & Record<symbol, DestinationStream | undefined>;
   if (typeof flushable.flush !== "function") {
     done();
     return;
   }
   flushable.flush(() => {
     const stream = flushable[pino.symbols.streamSym];
-    if (stream?._writing === true && typeof stream.once === "function") stream.once("drain", done);
+    if (writeInFlight(stream) === true && typeof stream?.once === "function") stream.once("drain", done);
     else done();
   });
 }
