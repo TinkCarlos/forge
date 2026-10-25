@@ -187,6 +187,7 @@ CREATE TABLE IF NOT EXISTS mcp_tools (
   enabled TINYINT(1) NOT NULL DEFAULT 1,
   created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  read_only TINYINT(1) NOT NULL DEFAULT 0,
   UNIQUE KEY uk_mcp_tools (server_id, name),
   CONSTRAINT fk_mcp_tools_server FOREIGN KEY (server_id) REFERENCES mcp_servers (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
@@ -217,6 +218,7 @@ CREATE TABLE IF NOT EXISTS tools (
   risk_level VARCHAR(16) NOT NULL DEFAULT 'low',
   enabled TINYINT(1) NOT NULL DEFAULT 1,
   created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  read_only TINYINT(1) NOT NULL DEFAULT 0,
   UNIQUE KEY uk_tools (source_id, name),
   CONSTRAINT fk_tools_source FOREIGN KEY (source_id) REFERENCES tool_sources (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
@@ -340,6 +342,10 @@ CREATE TABLE IF NOT EXISTS tool_calls (
   error_code VARCHAR(16) NULL,
   created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  read_only TINYINT(1) NOT NULL DEFAULT 0,
+  call_id VARCHAR(191) NULL,
+  model_step INT UNSIGNED NULL,
+  step_index INT UNSIGNED NULL,
   UNIQUE KEY uk_tool_calls_run_idem (run_id, idempotency_key),
   KEY idx_tool_calls_run (run_id, created_at),
   CONSTRAINT fk_tool_calls_run FOREIGN KEY (run_id) REFERENCES runs (id) ON DELETE CASCADE
@@ -375,6 +381,7 @@ CREATE TABLE IF NOT EXISTS approvals (
   decided_at DATETIME(3) NULL,
   comment VARCHAR(1024) NULL,
   created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  reason VARCHAR(16) NOT NULL DEFAULT 'policy',
   KEY idx_approvals_status (status, expires_at),
   KEY idx_approvals_run (run_id),
   CONSTRAINT fk_approvals_run FOREIGN KEY (run_id) REFERENCES runs (id) ON DELETE CASCADE
