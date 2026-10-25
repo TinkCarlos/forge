@@ -67,8 +67,9 @@
 | `files:write` | 上传/删除文件（未实现） |
 | `threads:read` / `threads:write` | Thread API（P1，未实现） |
 
-- 标「未实现」的 Scope 目前没有任何接口使用：应用的 `scopes` 可以写入这些值（只校验是不超过 64 字符的字符串），但它们不放行、也不拦截任何请求。在已有 Thread 上续接会话只需 `runs:create`（见第 7 节 `threadId`）。
+- 标「未实现」的 Scope 目前没有任何接口使用：应用的 `scopes` 可以写入这些值（只校验是不超过 64 字符、不含 `*` 的字符串），但它们不放行、也不拦截任何请求。在已有 Thread 上续接会话只需 `runs:create`（见第 7 节 `threadId`）。
 
+- 没有通配符：Scope 必须逐条列出。应用的 `scopes` 里任何一项含 `*`（如 `*`、`runs:*`）时，建应用、改应用返回 `400 CFG-8501`（`details.field` 为 `scopes.{序号}`），不保存；升级前库里已存的 `*` 也不当作全开，按普通字符串比对，等于没有这个 Scope。
 - 缺 Scope → `403` + `POL-2001`，所需 Scope 写在 `message` 里：`应用缺少 Scope: {scope}`（例如 `应用缺少 Scope: runs:create`）；`details` 为 `null`，不返回 `details.requiredScope`。
 - 应用被停用、Key 过期/吊销 → `401`。
 - Agent 未开放或未授权给应用 → `404`（不暴露存在性）。

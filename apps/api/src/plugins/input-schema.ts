@@ -84,6 +84,11 @@ const obj = <T extends Record<string, object>>(properties: T) => ({ type: "objec
  * (tests/body-additional-properties.test.ts). Nested free-form objects (plugin resources, JSON specs) stay open.
  */
 const body = <T extends object>(schema: T) => ({ ...schema, additionalProperties: false }) as T & { readonly additionalProperties: false };
+/**
+ * P2 (architect on e2d2c5f): app scopes are listed one by one. assertScope never treats `*` as a wildcard, so a scope
+ * containing `*` ("*", "runs:*") would look like "everything" and grant nothing: 400 CFG-8501 (field scopes.N).
+ */
+const APP_SCOPES = arr(32, { type: "string", maxLength: 64, pattern: "^[^*]*$" } as const);
 const capabilities = { type: ["array", "string"], maxLength: 4096, maxItems: 32, items: str(64) } as const;
 
 export const ROUTE_SCHEMAS = {
@@ -125,10 +130,10 @@ export const ROUTE_SCHEMAS = {
   agentRun: { body: body(obj({ versionId: str(ID_MAX), text: str(MIB), input: runInput, threadId: str(ID_MAX) })) },
   // api_apps: key 64, name 128, description 1024, status 16, webhook_url 2048; api_keys.name 128
   appCreate: {
-    body: body(obj({ key: str(64), name: str(128), description: str(1024), scopes: arr(32, str(64)), webhookUrl: str(2048), webhookSecret: str(4096), rateLimitPerMinute: RATE_LIMIT_PER_MINUTE, dailyQuota: DAILY_QUOTA })),
+    body: body(obj({ key: str(64), name: str(128), description: str(1024), scopes: APP_SCOPES, webhookUrl: str(2048), webhookSecret: str(4096), rateLimitPerMinute: RATE_LIMIT_PER_MINUTE, dailyQuota: DAILY_QUOTA })),
   },
   appPatch: {
-    body: body(obj({ name: str(128), description: str(1024), status: str(16), scopes: arr(32, str(64)), webhookUrl: str(2048), webhookSecret: str(4096), rateLimitPerMinute: RATE_LIMIT_PER_MINUTE, dailyQuota: DAILY_QUOTA })),
+    body: body(obj({ name: str(128), description: str(1024), status: str(16), scopes: APP_SCOPES, webhookUrl: str(2048), webhookSecret: str(4096), rateLimitPerMinute: RATE_LIMIT_PER_MINUTE, dailyQuota: DAILY_QUOTA })),
   },
   apiKeyCreate: { body: body(obj({ name: str(128) })) },
   // service_accounts: key 64, name 128, description 1024, role 32, data_scope 32, status 16
@@ -210,6 +215,7 @@ function messageFor(error: AjvError, field: string, limitMax: string | undefined
   if (field === "limit" && limitMax) return `limit 必须是 1-${limitMax} 之间的整数`;
   const custom = FIELD_MESSAGES[`${field}.${error.keyword}`];
   if (custom) return custom;
+  if (error.keyword === "pattern" && /^scopes\.\d+$/.test(field)) return `${field} 不能包含通配符 *，请逐条列出 Scope`;
   switch (error.keyword) {
     case "required":
       return `缺少字段: ${field}`;
