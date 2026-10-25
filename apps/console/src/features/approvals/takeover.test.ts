@@ -141,10 +141,10 @@ describe('码集合只定义一处', () => {
 })
 
 /**
- * SSE approval.resolved（Run 终态时后端把挂着的 pending 审批改成 expired）：/next/ 与旧版行为一致。
- * - status=expired：approvalId 在当前列表里 → 移除（或刷新）；该审批的确认框开着 → 关掉并给中性轻提示「此审批已失效」；
+ * SSE approval.resolved { approvalId, decision }（Run 终态时后端把挂着的 pending 审批改成 expired，发 decision:'expired'）：/next/ 与旧版行为一致。
+ * - decision=expired：approvalId 在当前列表里 → 移除（或刷新）；该审批的确认框开着 → 关掉并给中性轻提示「此审批已失效」；
  *   当前页面没有这个审批 → 静默忽略。不弹 error、不写 console.error。
- * - 其他 status 保持现状（不处理）；未知 status / 缺字段容错，不抛异常。
+ * - 其他 decision 保持现状（不处理）；未知值 / 缺字段容错，不抛异常；不兼容读 status（只带 status 的事件静默忽略）。
  * 注：/next/ 目前没有任何 SSE 订阅，这个处理函数先做成纯逻辑并测试，待确认是否在审批页新增订阅后再接线。
  */
 describe('handleApprovalResolved：approval.resolved 事件', () => {
@@ -175,7 +175,7 @@ describe('handleApprovalResolved：approval.resolved 事件', () => {
 
   it('expired 且在列表里：移除，不提示，不关框', () => {
     const on = setup([X, Y])
-    handle({ approvalId: X, status: 'expired' }, on)
+    handle({ approvalId: X, decision: 'expired' }, on)
     expect(on.remove).toHaveBeenCalledWith(X)
     expect(on.remove).toHaveBeenCalledTimes(1)
     expect(on.closeDialog).not.toHaveBeenCalled()
@@ -184,7 +184,7 @@ describe('handleApprovalResolved：approval.resolved 事件', () => {
 
   it('expired 且该审批的确认框开着：关框 + 中性轻提示「此审批已失效」（不是 error），并移除', () => {
     const on = setup([X], X)
-    handle({ approvalId: X, status: 'expired' }, on)
+    handle({ approvalId: X, decision: 'expired' }, on)
     expect(on.closeDialog).toHaveBeenCalledTimes(1)
     expect(on.remove).toHaveBeenCalledWith(X)
     expect(toastNeutral).toHaveBeenCalledWith('此审批已失效')
@@ -195,7 +195,7 @@ describe('handleApprovalResolved：approval.resolved 事件', () => {
 
   it('开着的是另一条的确认框：不关、不提示，只移除这一条', () => {
     const on = setup([X, Y], Y)
-    handle({ approvalId: X, status: 'expired' }, on)
+    handle({ approvalId: X, decision: 'expired' }, on)
     expect(on.closeDialog).not.toHaveBeenCalled()
     expect(on.remove).toHaveBeenCalledWith(X)
     noToast()
@@ -203,15 +203,15 @@ describe('handleApprovalResolved：approval.resolved 事件', () => {
 
   it('approvalId 不在当前页面：静默忽略', () => {
     const on = setup([Y])
-    handle({ approvalId: X, status: 'expired' }, on)
+    handle({ approvalId: X, decision: 'expired' }, on)
     expect(on.remove).not.toHaveBeenCalled()
     expect(on.closeDialog).not.toHaveBeenCalled()
     noToast()
   })
 
-  it.each(['approved', 'rejected', 'pending', 'weird-status'])('status=%s：保持现状，不处理', (status) => {
+  it.each(['approved', 'rejected', 'pending', 'weird-status'])('decision=%s：保持现状，不处理', (decision) => {
     const on = setup([X], X)
-    expect(() => handle({ approvalId: X, status }, on)).not.toThrow()
+    expect(() => handle({ approvalId: X, decision }, on)).not.toThrow()
     expect(on.remove).not.toHaveBeenCalled()
     expect(on.closeDialog).not.toHaveBeenCalled()
     noToast()
@@ -221,9 +221,11 @@ describe('handleApprovalResolved：approval.resolved 事件', () => {
     ['undefined', undefined],
     ['null', null],
     ['字符串', 'expired'],
-    ['缺 approvalId', { status: 'expired' }],
-    ['approvalId 不是字符串', { approvalId: 42, status: 'expired' }],
-    ['缺 status', { approvalId: X }],
+    ['缺 approvalId', { decision: 'expired' }],
+    ['approvalId 不是字符串', { approvalId: 42, decision: 'expired' }],
+    ['缺 decision', { approvalId: X }],
+    ['只有 status=expired、没有 decision（不兼容读 status）', { approvalId: X, status: 'expired' }],
+    ['decision=approved + status=expired（以 decision 为准）', { approvalId: X, decision: 'approved', status: 'expired' }],
   ])('data=%s：不抛异常，不处理', (_label, data) => {
     const on = setup([X], X)
     expect(() => handle(data, on)).not.toThrow()
