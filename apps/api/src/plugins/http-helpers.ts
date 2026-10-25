@@ -12,7 +12,7 @@ import {
 } from "@forge/core";
 import { assertOrgWritable, assertPermission, maskArgsDeep, visibleAgentOrgIds } from "@forge/governance";
 import { sessionCookieOptions } from "./session-cookie.js";
-import { oidcConfigured, readSignedSessionCookie, readStoredSessionCookie, sessionCookieValue, type Session, type StoredSession } from "@forge/identity";
+import { oidcConfigured, readStoredSessionCookie, sessionCookieValue, sessionWithPrincipal, type Session, type StoredSession } from "@forge/identity";
 import {
   assertDeleteAuditOrgUnit,
   parseJsonValue,
@@ -139,14 +139,23 @@ export function jsonObjectBody<T>(body: Record<string, unknown>, key: string, fa
   return parsed as Record<string, unknown>;
 }
 
-/** Session with the principal re-read from the database (one query); null when missing/expired or the user is no longer usable. */
+/** Session with the principal re-read from the database; null when missing/expired or the user is no longer usable. */
 export async function readSession(request: FastifyRequest): Promise<Session | null> {
-  return readSignedSessionCookie(request.cookies.forge_session);
+  return sessionWithPrincipal(await readStoredSession(request));
 }
 
-/** Stored session only (no database access): for the CSRF check and logout. */
-export function readStoredSession(request: FastifyRequest): StoredSession | null {
-  return readStoredSessionCookie(request.cookies.forge_session);
+// Session store: the auth_sessions lookup is done once per request (CSRF hook + handler share it). Request-scoped only:
+// the entry dies with the request object, nothing is cached across requests or instances.
+const storedSessionOfRequest = new WeakMap<FastifyRequest, Promise<StoredSession | null>>();
+
+/** Stored session only (auth_sessions lookup, no principal re-read): for the CSRF check and logout. */
+export async function readStoredSession(request: FastifyRequest): Promise<StoredSession | null> {
+  let lookup = storedSessionOfRequest.get(request);
+  if (!lookup) {
+    lookup = readStoredSessionCookie(request.cookies.forge_session);
+    storedSessionOfRequest.set(request, lookup);
+  }
+  return lookup;
 }
 
 export async function admin(request: FastifyRequest, permission?: string): Promise<Session> {

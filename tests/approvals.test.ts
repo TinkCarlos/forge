@@ -60,7 +60,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  for (const session of sessions) destroySession(session.token);
+  for (const session of sessions) await destroySession(session.token);
   await cleanupRealSessions();
   if (agentId) {
     await execute("DELETE FROM runs WHERE agent_id = ?", [agentId]);

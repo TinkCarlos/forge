@@ -34,8 +34,8 @@ async function makeUser(tag: string, orgUnitId: string, role = "user", dataScope
   return id;
 }
 
-function headersFor(principal: Principal): Record<string, string> {
-  const session = createSession(principal);
+async function headersFor(principal: Principal): Promise<Record<string, string>> {
+  const session = await createSession(principal);
   sessions.push(session);
   return { cookie: `forge_session=${sessionCookieValue(session)}`, "x-csrf-token": session.csrfToken };
 }
@@ -62,12 +62,12 @@ beforeAll(async () => {
   userB = await makeUser("b", ORG_B);
   platformAdminA = await makeUser("pa", ORG_A, "platform_admin", "all");
   peerOrgAdminA = await makeUser("oa2", ORG_A, "org_admin", "org");
-  orgAdminHeaders = headersFor({ type: "user", id: orgAdminId, name: "IT OrgAdmin A", role: "org_admin", orgUnitId: ORG_A, dataScope: "org" });
-  platformHeaders = headersFor({ type: "user", id: ADMIN_ID, name: "IT Platform", role: "platform_admin", orgUnitId: ROOT, dataScope: "all" });
+  orgAdminHeaders = await headersFor({ type: "user", id: orgAdminId, name: "IT OrgAdmin A", role: "org_admin", orgUnitId: ORG_A, dataScope: "org" });
+  platformHeaders = await headersFor({ type: "user", id: ADMIN_ID, name: "IT Platform", role: "platform_admin", orgUnitId: ROOT, dataScope: "all" });
 });
 
 afterAll(async () => {
-  for (const session of sessions) destroySession(session.token);
+  for (const session of sessions) await destroySession(session.token);
   for (const id of createdUsers) {
     await execute("DELETE FROM audit_logs WHERE resource_type = 'user' AND resource_id = ?", [id]);
     await execute("DELETE FROM users WHERE id = ?", [id]);

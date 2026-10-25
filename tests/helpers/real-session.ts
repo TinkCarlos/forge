@@ -19,7 +19,7 @@ export async function realSession(principal: Pick<Principal, "role" | "orgUnitId
   const name = principal.name ?? `IT ${principal.role}`;
   const id = await repos.createUser({ email: `it-rs-${tag}@forge.local`, username: `it-rs-${tag}`, displayName: name, role: principal.role, dataScope: principal.dataScope, orgUnitId: principal.orgUnitId });
   createdUsers.push(id);
-  const session = createSession({ type: "user", id, name, role: principal.role, orgUnitId: principal.orgUnitId, dataScope: principal.dataScope });
+  const session = await createSession({ type: "user", id, name, role: principal.role, orgUnitId: principal.orgUnitId, dataScope: principal.dataScope });
   sessions.push(session);
   return session;
 }
@@ -27,7 +27,7 @@ export async function realSession(principal: Pick<Principal, "role" | "orgUnitId
 export const sessionHeaders = (session: Session, cookieValue: string): Record<string, string> => ({ cookie: `forge_session=${cookieValue}`, "x-csrf-token": session.csrfToken });
 
 export async function cleanupRealSessions(): Promise<void> {
-  for (const session of sessions.splice(0)) destroySession(session.token);
+  for (const session of sessions.splice(0)) await destroySession(session.token);
   for (const id of createdUsers.splice(0)) {
     await execute("DELETE FROM audit_logs WHERE actor_id = ?", [id]);
     await execute("DELETE FROM users WHERE id = ?", [id]);

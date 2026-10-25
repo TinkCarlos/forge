@@ -44,13 +44,13 @@ beforeAll(async () => {
   await connectorApp.ready();
   const { hashPassword } = await import("@forge/core");
   userId = await repos.createUser({ email, username: `it-out-${suffix}`, displayName: "IT outage", role: "org_admin", dataScope: "org", orgUnitId: ROOT, passwordHash: hashPassword(PASSWORD), idpSubject: `it-out-sub-${suffix}` });
-  session = createSession(toPrincipal((await repos.getUserById(userId))!));
+  session = await createSession(toPrincipal((await repos.getUserById(userId))!));
   headers = { cookie: `forge_session=${sessionCookieValue(session)}`, "x-csrf-token": session.csrfToken };
 });
 
 afterAll(async () => {
   vi.restoreAllMocks();
-  destroySession(session?.token);
+  await destroySession(session?.token);
   await execute("DELETE FROM audit_logs WHERE actor_id = ?", [userId]);
   await execute("DELETE FROM users WHERE id = ?", [userId]);
   await app?.close();
@@ -78,7 +78,7 @@ describe("identity lookups when the database fails", () => {
     expect(res.statusCode).toBe(503);
     expect(errorOf(res).code).toBe("SYS-9003");
     expect(res.body).not.toContain("10.9.9.9");
-    expect(getSession(session.token)).not.toBeNull();
+    expect(await getSession(session.token)).not.toBeNull();
     expect((await app.inject({ method: "GET", url: "/admin/api/users", headers })).statusCode).toBe(200);
     expect((await app.inject({ method: "GET", url: "/auth/session", headers })).statusCode).toBe(200);
   });

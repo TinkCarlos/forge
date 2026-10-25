@@ -35,7 +35,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  if (builderSession) destroySession(builderSession.token);
+  if (builderSession) await destroySession(builderSession.token);
   await cleanupRealSessions();
   if (agentId) {
     // Runs created by manual-run tests: cancel still-queued ones so no worker picks them up, wait (bounded) for claimed ones.
@@ -276,8 +276,8 @@ describe("manual run respects schedule data scope", () => {
     sessions.push(session);
     return { cookie: `forge_session=${sessionCookieValue(session)}`, "x-csrf-token": session.csrfToken };
   };
-  afterAll(() => {
-    for (const session of sessions) destroySession(session.token);
+  afterAll(async () => {
+    for (const session of sessions) await destroySession(session.token);
   });
 
   it("operator with schedule.run in another org -> 404 (same as nonexistent); same org -> 200", async () => {
@@ -313,8 +313,8 @@ describe("every /admin/api/schedules/:id route loads through one data scope (inv
     sessions.push(session);
     return { cookie: `forge_session=${sessionCookieValue(session)}`, "x-csrf-token": session.csrfToken };
   };
-  afterAll(() => {
-    for (const session of sessions) destroySession(session.token);
+  afterAll(async () => {
+    for (const session of sessions) await destroySession(session.token);
   });
 
   const makeSchedule = async (orgUnitId: string, label: string): Promise<string> => {

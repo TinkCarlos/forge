@@ -32,7 +32,6 @@ export interface Session extends StoredSession {
   principal: Principal;
 }
 
-const sessions = new Map<string, StoredSession>();
 const oidcStates = new Map<string, { verifier: string; nonce: string; returnTo: string; expiresAt: number }>();
 
 export function toPrincipal(user: UserRow): Principal {
@@ -68,41 +67,65 @@ async function identityLookup<T>(lookup: () => Promise<T>): Promise<T> {
   }
 }
 
-/** Stores only `principal.id`; the returned session carries the given principal for the login response. */
-export function createSession(principal: Principal): Session {
+/** SHA-256 hex: the session store keeps only this digest of the cookie token (and of the OIDC state). */
+export function sha256Hex(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+/** last_seen_at is refreshed at most once per this interval (no sliding expiry: expires_at never moves). */
+export const SESSION_LAST_SEEN_THROTTLE_MS = 5 * 60 * 1000;
+
+/**
+ * Stores only `principal.id` (plus CSRF token and absolute expiry) in auth_sessions, keyed by the SHA-256 of the token.
+ * The returned session carries the given principal for the login response. A database failure is 503 SYS-9003.
+ */
+export async function createSession(principal: Principal): Promise<Session> {
   const token = randomBytes(32).toString("base64url");
   const csrfToken = randomBytes(24).toString("base64url");
+  const now = Date.now();
   const stored: StoredSession = {
     token,
     userId: principal.id,
     csrfToken,
-    expiresAt: Date.now() + config.SESSION_TTL_SECONDS * 1000, // N-01 (default 8h)
+    expiresAt: now + config.SESSION_TTL_SECONDS * 1000, // N-01 (default 8h), absolute
   };
-  sessions.set(token, stored);
+  await identityLookup(() =>
+    repos.createAuthSession({ tokenHash: sha256Hex(token), userId: principal.id, csrfToken, now: new Date(now), expiresAt: new Date(stored.expiresAt) }),
+  );
   return { ...stored, principal };
 }
 
-export function getSession(token: string | undefined): StoredSession | null {
+/** Live stored session for a token: expires_at > now is part of the query, so expiry holds without any cleanup run. */
+export async function getSession(token: string | undefined): Promise<StoredSession | null> {
   if (!token) return null;
-  const session = sessions.get(token);
-  if (!session) return null;
-  if (session.expiresAt < Date.now()) {
-    sessions.delete(token);
-    return null;
-  }
-  return session;
+  const tokenHash = sha256Hex(token);
+  const now = new Date();
+  return identityLookup(async () => {
+    const row = await repos.getAuthSession(tokenHash, now);
+    if (!row) {
+      await repos.deleteExpiredAuthSession(tokenHash, now);
+      return null;
+    }
+    if (new Date(row.last_seen_at).getTime() < now.getTime() - SESSION_LAST_SEEN_THROTTLE_MS) {
+      await repos.touchAuthSession(tokenHash, now, new Date(now.getTime() - SESSION_LAST_SEEN_THROTTLE_MS));
+    }
+    return { token, userId: row.user_id, csrfToken: row.csrf_token, expiresAt: new Date(row.expires_at).getTime() };
+  });
 }
 
-export function destroySession(token: string | undefined): void {
-  if (token) sessions.delete(token);
+export async function destroySession(token: string | undefined): Promise<void> {
+  if (token) await identityLookup(() => repos.deleteAuthSession(sha256Hex(token)));
 }
 
 export function sessionCookieValue(session: Session): string {
   return `${session.token}.${signSession(session.token, config.SESSION_SECRET)}`;
 }
 
-/** Signature check + stored session lookup, no database access (CSRF check, logout). */
-export function readStoredSessionCookie(value: string | undefined): StoredSession | null {
+/**
+ * Signature check first (no database access for a missing, malformed or tampered cookie), then the stored session
+ * lookup (CSRF check, logout). No principal re-read here.
+ */
+export async function readStoredSessionCookie(value: string | undefined): Promise<StoredSession | null> {
   if (!value) return null;
   const index = value.lastIndexOf(".");
   if (index < 1) return null;
@@ -117,11 +140,15 @@ export function readStoredSessionCookie(value: string | undefined): StoredSessio
  * When the user is no longer usable the stored session is destroyed and null is returned (callers answer 401 AUTH-1001).
  */
 export async function readSignedSessionCookie(value: string | undefined): Promise<Session | null> {
-  const stored = readStoredSessionCookie(value);
+  return sessionWithPrincipal(await readStoredSessionCookie(value));
+}
+
+/** The principal half of readSignedSessionCookie, for callers that already hold the stored session of this request. */
+export async function sessionWithPrincipal(stored: StoredSession | null): Promise<Session | null> {
   if (!stored) return null;
   const principal = await loadActivePrincipal(stored.userId);
   if (!principal) {
-    destroySession(stored.token);
+    await destroySession(stored.token);
     return null;
   }
   return { ...stored, principal };

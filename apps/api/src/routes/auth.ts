@@ -58,7 +58,7 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
     const email = requireBodyString(body, "email");
     const password = requireBodyString(body, "password");
     const principal = await loginLocal(email, password);
-    const session = createSession(principal);
+    const session = await createSession(principal);
     setSessionCookie(reply, session);
     await repos.audit({ actorType: "user", actorId: principal.id, action: "auth.login.local", resourceType: "user", resourceId: principal.id });
     return sessionPayload(session);
@@ -72,8 +72,8 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
 
   app.post("/auth/logout", { schema: ROUTE_SCHEMAS.noBody, attachValidation: true }, async (request, reply) => {
     assertValidInput(request); // P1: no body or {} only; a field -> 400, the session is kept
-    const session = readStoredSession(request);
-    if (session) destroySession(session.token);
+    const session = await readStoredSession(request);
+    if (session) await destroySession(session.token);
     reply.clearCookie("forge_session", { path: "/" });
     // Y (#9): only a real session is audited. The session is already gone; an audit write failure must not fail logout.
     if (session) {
@@ -123,7 +123,7 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
       return reply.redirect(ssoErrorLocation(pendingReturnTo, ssoCode));
     }
     const { principal, returnTo } = result;
-    const session = createSession(principal);
+    const session = await createSession(principal);
     setSessionCookie(reply, session);
     await repos.audit({ actorType: "user", actorId: principal.id, action: "auth.login.oidc", resourceType: "user", resourceId: principal.id });
     return reply.redirect(safeReturnTo(returnTo, config.FORGE_PUBLIC_URL));

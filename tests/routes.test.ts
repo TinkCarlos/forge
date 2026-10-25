@@ -80,7 +80,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  if (lowSession) destroySession(lowSession.token);
+  if (lowSession) await destroySession(lowSession.token);
   await cleanupRealSessions();
   if (adminCookie) await app.inject({ method: "POST", url: "/auth/logout", headers: { cookie: adminCookie } });
   if (openAppId) {

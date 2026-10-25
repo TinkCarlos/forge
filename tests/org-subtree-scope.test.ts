@@ -58,7 +58,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  for (const session of sessions) destroySession(session.token);
+  for (const session of sessions) await destroySession(session.token);
   await cleanupRealSessions();
   for (const id of schedules) {
     await execute("DELETE FROM audit_logs WHERE resource_type = 'schedule' AND resource_id = ?", [id]);
