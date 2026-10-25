@@ -68,7 +68,13 @@ export function installSseShutdown(app: FastifyInstance): void {
     sockets.add(socket);
     socket.once("close", () => sockets.delete(socket));
   });
-  /** Step 2: closes connections that never sent a byte (no request started, nothing to answer). */
+  /**
+   * Step 2: closes connections that never sent a byte (no request started, nothing to answer).
+   * Known limit (QA on ced7f76, 5/5): a connection that sent only part of its request headers and then stalls has
+   * bytesRead > 0, so it is not closed here, and Node does not count it as idle either. server.close() waits for it
+   * until the 10 s backstop in shutdown.ts fires and the process exits 1. Normal clients (browsers, proxies) send the
+   * whole header block at once, so this does not happen with them; it is left as is on purpose.
+   */
   const closeUnusedConnections = (): number => {
     let closed = 0;
     for (const socket of sockets) {
@@ -96,6 +102,8 @@ export function installSseShutdown(app: FastifyInstance): void {
   });
 
   // r4: one info line per shutdown step, ms since preClose (the first thing app.close() does after the signal).
+  // Not the same zero as shutdown.ts: its phases (signal, app_close, stop_runtime, pool_end, exit) count ms from
+  // the signal, these (readyz_not_ready, ..., on_close) from preClose, so the two ms series are not comparable as-is.
   let closeStartedAt = 0;
   const step = (phase: string, extra: Record<string, unknown> = {}): void =>
     app.log.info({ phase, ms: Date.now() - closeStartedAt, ...extra }, `shutdown: ${phase}`);

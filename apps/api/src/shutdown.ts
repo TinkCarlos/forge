@@ -35,10 +35,15 @@ export function createShutdown(deps: ShutdownDeps): (signal: string) => Promise<
   return (signal: string) => {
     running ??= (async () => {
       let code = 0;
+      // ms in these phase lines counts from the signal. plugins/sse-shutdown.ts logs its own phases with ms counted
+      // from Fastify's preClose hook instead (a few ms later), so the two ms series do not share a zero.
       const startedAt = Date.now();
       const step = (phase: string, extra: Record<string, unknown> = {}): void =>
         deps.info?.(`shutdown (${signal}): ${phase}`, { phase, ms: Date.now() - startedAt, ...extra });
       step("signal");
+      // Backstop. Also what ends a shutdown held by a connection that sent only part of its request headers and
+      // stalled: it is neither unused nor idle, so it is never closed (see closeUnusedConnections in
+      // plugins/sse-shutdown.ts) and the exit is 1 after timeoutMs. Normal clients never do this.
       const timer = setTimeout(() => {
         deps.log(`shutdown (${signal}) timed out after ${deps.timeoutMs} ms`);
         deps.exit(1);
