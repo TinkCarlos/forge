@@ -12,6 +12,17 @@ export interface ShutdownDeps {
   log: (message: string, error?: unknown) => void;
   /** Hard limit; when it passes the process exits 1 whatever is still pending. */
   timeoutMs: number;
+  /** r4: one info line per step with the time since the signal (ms), so a slow step shows up in the log. */
+  info?: (message: string, fields: Record<string, unknown>) => void;
+  /** r4: what is still open right before exit (process.getActiveResourcesInfo), logged with the exit step. */
+  activeResources?: () => string[];
+}
+
+/** Counts of each resource type, e.g. { TCPSocketWrap: 1, Timeout: 2 }. */
+function countResources(names: string[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const name of names) counts[name] = (counts[name] ?? 0) + 1;
+  return counts;
 }
 
 /**
@@ -24,6 +35,10 @@ export function createShutdown(deps: ShutdownDeps): (signal: string) => Promise<
   return (signal: string) => {
     running ??= (async () => {
       let code = 0;
+      const startedAt = Date.now();
+      const step = (phase: string, extra: Record<string, unknown> = {}): void =>
+        deps.info?.(`shutdown (${signal}): ${phase}`, { phase, ms: Date.now() - startedAt, ...extra });
+      step("signal");
       const timer = setTimeout(() => {
         deps.log(`shutdown (${signal}) timed out after ${deps.timeoutMs} ms`);
         deps.exit(1);
@@ -35,19 +50,23 @@ export function createShutdown(deps: ShutdownDeps): (signal: string) => Promise<
         code = 1;
         deps.log(`shutdown (${signal}): closing the HTTP server failed`, error);
       }
+      step("app_close");
       try {
         deps.stopRuntime();
       } catch (error) {
         code = 1;
         deps.log(`shutdown (${signal}): stopping the runtime failed`, error);
       }
+      step("stop_runtime");
       try {
         await deps.closePool();
       } catch (error) {
         code = 1;
         deps.log(`shutdown (${signal}): closing the database pool failed`, error);
       }
+      step("pool_end");
       clearTimeout(timer);
+      step("exit", { code, ...(deps.activeResources ? { activeResources: countResources(deps.activeResources()) } : {}) });
       deps.exit(code);
     })();
     return running;

@@ -5,7 +5,7 @@ import { sessionCookieValue } from "@forge/identity";
 import { execute, repos } from "@forge/store";
 import { buildApp } from "../apps/api/src/app.js";
 import { cleanupRealSessions, realSession, sessionHeaders } from "./helpers/real-session.js";
-import { freePort, openSse, partialRequest, probeNewConnection, startApiProcess, type ApiProcess } from "./helpers/sse-client.js";
+import { freePort, keepAliveGet, openSse, partialRequest, probeNewConnection, rawConnection, startApiProcess, type ApiProcess } from "./helpers/sse-client.js";
 
 // SIG-xx (r4 shutdown): on SIGTERM the API ends every open SSE stream itself (no completed / shutdown event, the
 // connection is simply finished, so EventSource reconnects with Last-Event-ID), stops listening BEFORE ending them
@@ -75,6 +75,55 @@ afterAll(async () => {
 });
 
 describe("SIG: SIGTERM with open SSE streams (API child process)", () => {
+  it("SIG-09: every shutdown step logs one info line with ms, in order; no timer is left at exit", { timeout: 60_000 }, async () => {
+    const proc = await startApiProcess({ LOG_LEVEL: "info" });
+    processes.push(proc);
+    const runId = await newRun();
+    await repos.addEvent(runId, "run.started", { n: 1 });
+    const stream = await openSse(proc.port, adminPath(runId), adminHeaders);
+    await stream.waitFor(1);
+    const idle = await rawConnection(proc.port);
+    idle.write(keepAliveGet("/healthz"));
+    await idle.response();
+    const unused = await rawConnection(proc.port);
+    const result = await sigterm(proc, 12_000);
+    expect(result.code, proc.output().slice(-800)).toBe(0);
+    expect(result.ms).toBeLessThan(2000);
+    await Promise.all([stream.finished, idle.closed, unused.closed]);
+
+    const steps = proc
+      .output()
+      .split("\n")
+      .filter((line) => line.startsWith("{") && line.includes('"phase"'))
+      .map((line) => JSON.parse(line) as { level: number; phase: string; ms: number; msg: string; [key: string]: unknown });
+    expect(steps.map((entry) => entry.phase)).toEqual([
+      "signal",
+      "readyz_not_ready",
+      "listener_closed",
+      "sse_ended",
+      "on_close",
+      "app_close",
+      "stop_runtime",
+      "pool_end",
+      "exit",
+    ]);
+    for (const entry of steps) {
+      expect(entry.level, entry.phase).toBe(30); // info
+      expect(typeof entry.ms, entry.phase).toBe("number");
+      expect(entry.ms, entry.phase).toBeLessThan(2000);
+    }
+    const byPhase = Object.fromEntries(steps.map((entry) => [entry.phase, entry]));
+    expect(byPhase.listener_closed).toMatchObject({ listening: false, unusedConnectionsClosed: 1 });
+    expect(byPhase.sse_ended).toMatchObject({ streams: 1 });
+    expect(byPhase.exit).toMatchObject({ code: 0 });
+    // At exit no timer is left (SSE poll interval, runtime tick, the 10 s backstop). Socket handles may still be
+    // closing: pool.end() resolves once QUIT is sent to each MySQL connection, and a closed or destroyed socket or
+    // listener releases its handle a loop turn later (listener_closed above already reports listening: false).
+    // process.exit() ends them, so they cannot hold the shutdown.
+    const left = byPhase.exit!.activeResources as Record<string, number>;
+    expect(Object.keys(left).filter((name) => !/^(PipeWrap|TTYWrap|FSReqCallback|ProcessWrap|SignalWrap|TCPSocketWrap|TCPServerWrap)$/.test(name)), JSON.stringify(left)).toEqual([]);
+  });
+
   it("SIG-01: one open SSE stream -> exit 0 within 2 s; the client sees a normal end with no extra event", { timeout: 60_000 }, async () => {
     const proc = await api();
     const runId = await newRun();

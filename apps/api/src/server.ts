@@ -21,6 +21,8 @@ const shutdown = createShutdown({
   exit: (code) => process.exit(code),
   log: (message, error) => app.log.error(error === undefined ? {} : { err: logSafeError(error) }, message),
   timeoutMs: 10_000,
+  info: (message, fields) => app.log.info(fields, message),
+  activeResources: () => process.getActiveResourcesInfo(),
 });
 const onSignal = (signal: string): void => {
   shutdown(signal).catch(() => process.exit(1));

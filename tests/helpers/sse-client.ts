@@ -34,10 +34,13 @@ export interface ApiProcess {
   output: () => string;
 }
 
-/** Starts apps/api/src/server.ts (tsx) on a free 127.0.0.1 port, embedded worker off, same test DB and secrets. */
-export async function startApiProcess(): Promise<ApiProcess> {
+/**
+ * Starts apps/api/src/server.ts (tsx) on a free 127.0.0.1 port, embedded worker off, same test DB and secrets.
+ * `extraEnv` can only raise the log level (LOG_LEVEL), nothing else.
+ */
+export async function startApiProcess(extraEnv: { LOG_LEVEL?: "info" } = {}): Promise<ApiProcess> {
   const port = await freePort();
-  const env: NodeJS.ProcessEnv = { ...process.env, PORT: String(port), HOST: "127.0.0.1", EMBEDDED_WORKER: "false", LOG_LEVEL: "warn" };
+  const env: NodeJS.ProcessEnv = { ...process.env, PORT: String(port), HOST: "127.0.0.1", EMBEDDED_WORKER: "false", LOG_LEVEL: "warn", ...extraEnv };
   const child = spawn(process.execPath, ["--import", "tsx", "apps/api/src/server.ts"], { cwd: ROOT, env, stdio: ["ignore", "pipe", "pipe"] });
   let out = "";
   child.stdout?.on("data", (chunk: Buffer) => (out += chunk.toString("utf8")));

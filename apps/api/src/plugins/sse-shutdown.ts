@@ -95,8 +95,20 @@ export function installSseShutdown(app: FastifyInstance): void {
     return payload;
   });
 
+  // r4: one info line per shutdown step, ms since preClose (the first thing app.close() does after the signal).
+  let closeStartedAt = 0;
+  const step = (phase: string, extra: Record<string, unknown> = {}): void =>
+    app.log.info({ phase, ms: Date.now() - closeStartedAt, ...extra }, `shutdown: ${phase}`);
+
+  app.addHook("onClose", (_instance, done) => {
+    step("on_close");
+    done();
+  });
+
   app.addHook("preClose", function (done) {
+    closeStartedAt = Date.now();
     registry.draining = true;
+    step("readyz_not_ready");
     done();
     const server = app.server;
     let turns = 0;
@@ -106,12 +118,14 @@ export function installSseShutdown(app: FastifyInstance): void {
         setImmediate(endStreams);
         return;
       }
-      closeUnusedConnections();
-      for (const [raw, end] of [...registry.streams]) {
+      step("listener_closed", { listening: server.listening, unusedConnectionsClosed: closeUnusedConnections() });
+      const streams = [...registry.streams];
+      for (const [raw, end] of streams) {
         registry.streams.delete(raw);
         raw.once("finish", () => setImmediate(() => server.closeIdleConnections?.()));
         end();
       }
+      step("sse_ended", { streams: streams.length });
     };
     setImmediate(endStreams);
   });
