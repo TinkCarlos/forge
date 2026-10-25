@@ -37,7 +37,7 @@ function assertNoPlaintext(raw: string): void {
 beforeAll(async () => {
   app = await buildApp({ logger: false });
   await app.ready();
-  session = createSession({ type: "user", id: ADMIN_ID, name: "IT Platform", role: "platform_admin", orgUnitId: ROOT, dataScope: "all" });
+  session = await createSession({ type: "user", id: ADMIN_ID, name: "IT Platform", role: "platform_admin", orgUnitId: ROOT, dataScope: "all" });
   headers = { cookie: `forge_session=${sessionCookieValue(session)}`, "x-csrf-token": session.csrfToken };
   agentId = await repos.createAgent({ key: `it-amsg-${suffix}`, name: "IT assistant mask", ownerOrgUnitId: ROOT, createdBy: ADMIN_ID });
   versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID });
@@ -51,7 +51,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  if (session) destroySession(session.token);
+  if (session) await destroySession(session.token);
   if (agentId) {
     await execute("DELETE FROM messages WHERE run_id IN (SELECT id FROM runs WHERE agent_id = ?)", [agentId]);
     await execute("DELETE FROM runs WHERE agent_id = ?", [agentId]);

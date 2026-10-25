@@ -26,7 +26,7 @@ async function makeUser(tag: string, orgUnitId: string | null, role = "org_admin
   return id;
 }
 async function login(userId: string): Promise<{ headers: Record<string, string>; session: Session }> {
-  const session = createSession(toPrincipal((await repos.getUserById(userId))!));
+  const session = await createSession(toPrincipal((await repos.getUserById(userId))!));
   sessions.push(session);
   return { session, headers: { cookie: `forge_session=${sessionCookieValue(session)}`, "x-csrf-token": session.csrfToken } };
 }
@@ -47,7 +47,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  for (const session of sessions) destroySession(session.token);
+  for (const session of sessions) await destroySession(session.token);
   for (const id of users) {
     await execute("DELETE FROM audit_logs WHERE actor_id = ?", [id]);
     await execute("DELETE FROM users WHERE id = ?", [id]);
@@ -143,18 +143,20 @@ describe("session principal is re-read on every request", () => {
     }
   });
 
-  it("authentication costs one query per request (GET /auth/session; mutating request incl. CSRF check)", async () => {
+  it("authentication costs two queries per request: session row + principal (GET /auth/session; mutating request incl. CSRF check)", async () => {
     const id = await makeUser("cnt", ORG_P, "user", "self");
     const { headers } = await login(id);
     const spy = vi.spyOn(pool, "query");
     const res = await app.inject({ method: "GET", url: "/auth/session", headers });
     expect(res.statusCode).toBe(200);
-    expect(spy).toHaveBeenCalledTimes(1);
+    // Session store (007): one auth_sessions lookup + one principal lookup.
+    expect(spy).toHaveBeenCalledTimes(2);
     spy.mockClear();
-    // CSRF check reads only the in-memory session; admin() does the single lookup, then 403 (role user lacks user.manage).
+    // The CSRF hook and admin() share the request's single auth_sessions lookup; then the principal, then 403 (role
+    // user lacks user.manage).
     const post = await app.inject({ method: "POST", url: "/admin/api/users", headers, payload: { email: `x-${suffix}@forge.local` } });
     expect(post.statusCode).toBe(403);
-    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledTimes(2);
     spy.mockRestore();
   });
 });

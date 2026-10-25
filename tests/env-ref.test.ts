@@ -23,7 +23,7 @@ beforeAll(async () => {
   app = await buildApp({ logger: false });
   await app.ready();
   const principal: Principal = { type: "user", id: ADMIN_ID, name: "admin", role: "platform_admin", orgUnitId: ROOT, dataScope: "all" };
-  session = createSession(principal);
+  session = await createSession(principal);
   h = { cookie: `forge_session=${sessionCookieValue(session)}`, "x-csrf-token": session.csrfToken };
 });
 
@@ -40,7 +40,7 @@ afterAll(async () => {
   for (const { id } of sources) await execute("DELETE FROM tool_sources WHERE id = ?", [id]);
   const agents = await query<{ id: string }>("SELECT id FROM agents WHERE `key` LIKE ?", [`it-envref-%-${suffix}`]);
   for (const { id } of agents) await execute("DELETE FROM agents WHERE id = ?", [id]);
-  destroySession(session.token);
+  await destroySession(session.token);
   await app.close();
 });
 

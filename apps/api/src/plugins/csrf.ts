@@ -35,7 +35,7 @@ export function isAdminApiRequest(request: Pick<FastifyRequest, "url" | "routeOp
 export function installCsrfHook(app: FastifyInstance): void {
   app.addHook("preHandler", async (request) => {
     if (isAdminApiRequest(request) && !["GET", "HEAD", "OPTIONS"].includes(request.method)) {
-      const session = readStoredSession(request);
+      const session = await readStoredSession(request);
       if (session && request.headers["x-csrf-token"] !== session.csrfToken) {
         throw errors.forbidden("CSRF Token 缺失或无效");
       }

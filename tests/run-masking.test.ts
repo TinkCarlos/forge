@@ -57,7 +57,7 @@ beforeAll(async () => {
     },
   });
   await connectorApp.ready();
-  session = createSession({ type: "user", id: ADMIN_ID, name: "IT Platform", role: "platform_admin", orgUnitId: ROOT, dataScope: "all" });
+  session = await createSession({ type: "user", id: ADMIN_ID, name: "IT Platform", role: "platform_admin", orgUnitId: ROOT, dataScope: "all" });
   headers = { cookie: `forge_session=${sessionCookieValue(session)}`, "x-csrf-token": session.csrfToken };
 
   agentId = await repos.createAgent({ key: `it-mask-agent-${suffix}`, name: "IT mask agent", ownerOrgUnitId: ROOT, createdBy: ADMIN_ID });
@@ -78,7 +78,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  if (session) destroySession(session.token);
+  if (session) await destroySession(session.token);
   await execute("DELETE FROM audit_logs WHERE actor_id = ? AND resource_id IN (?, ?)", [ADMIN_ID, mcpId, scheduleId]);
   await execute("DELETE FROM audit_logs WHERE action = 'role_mapping.upsert' AND JSON_UNQUOTE(JSON_EXTRACT(details_json, '$.agentRoleCode')) = ?", [roleCode]);
   await execute("DELETE FROM oidc_role_mappings WHERE agent_role_code = ?", [roleCode]);

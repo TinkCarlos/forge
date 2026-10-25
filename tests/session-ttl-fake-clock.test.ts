@@ -45,17 +45,17 @@ describe("I-G-03: session TTL (fake clock)", () => {
     const session = await admin();
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(session.expiresAt - 1000);
-    expect(getSession(session.token)?.userId).toBe(session.userId);
+    expect((await getSession(session.token))?.userId).toBe(session.userId);
     const res = await users(session);
     expect(res.statusCode).toBe(200);
   });
 
   it("past the TTL: getSession returns null", async () => {
     const session = await admin();
-    expect(getSession(session.token)).not.toBeNull();
+    expect(await getSession(session.token)).not.toBeNull();
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(session.expiresAt + 1000);
-    expect(getSession(session.token)).toBeNull();
+    expect(await getSession(session.token)).toBeNull();
   });
 
   it("past the TTL: the old (correctly signed) cookie -> 401, and it stays rejected after the clock is reset", async () => {
@@ -69,6 +69,6 @@ describe("I-G-03: session TTL (fake clock)", () => {
     vi.useRealTimers();
     // The expired session was dropped, not merely hidden by the clock.
     expect((await users(session)).statusCode).toBe(401);
-    expect(getSession(session.token)).toBeNull();
+    expect(await getSession(session.token)).toBeNull();
   });
 });

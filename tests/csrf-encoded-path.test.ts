@@ -18,7 +18,7 @@ beforeAll(async () => {
   app = await buildApp({ logger: false });
   await app.ready();
   const principal: Principal = { type: "user", id: ADMIN_ID, name: "admin", role: "platform_admin", orgUnitId: ROOT, dataScope: "all" };
-  session = createSession(principal);
+  session = await createSession(principal);
   cookieOnly = { cookie: `forge_session=${sessionCookieValue(session)}` };
 });
 
@@ -26,7 +26,7 @@ afterAll(async () => {
   // Only matters if the fix regresses (a write got through): list this run's rows, then delete them by id.
   const leaked = await query<{ id: string }>("SELECT id FROM users WHERE email LIKE ?", [`it-csrf-%-${suffix}@forge.local`]);
   for (const { id } of leaked) await execute("DELETE FROM users WHERE id = ?", [id]);
-  destroySession(session.token);
+  await destroySession(session.token);
   await app.close();
 });
 
