@@ -169,7 +169,9 @@ connector_instances（本实例运行状态）
 
 **过渡调度列（Temporal 之前）**：`claimed_by`、`lease_expires_at`、`heartbeat_at` 只用于 MySQL 队列认领与崩溃续跑，不是业务事实来源。Worker 认领 `queued`，或租约已过期的 `running`；进入 `waiting_approval` 或 Run 结束后清空租约。接上 Temporal 后这三列停止写入，不在同一版本删除。
 
-**0.1.x `run_steps`**：类型为 `prepare_context` / `compress` / `call_model` / `execute_tool` / `validate_output`。模型标识写入 `summary_json.modelKey`；目标字典中的 `model_id` 等外键留待模型目录接通后再填。`tool_calls.idempotency_key` 存 `runId:toolCallId`，与 `attempt` 一起用于崩溃后续跑时不重复插入已成功的调用。
+**0.1.x `run_steps`**：类型为 `prepare_context` / `compress` / `call_model` / `execute_tool` / `validate_output`。模型标识写入 `summary_json.modelKey`；目标字典中的 `model_id` 等外键留待模型目录接通后再填。`tool_calls.idempotency_key` 新记录存 `<runId>:s<model_step>:<step_index>`（r5，模型步骤序号与步内序号），与 `attempt` 一起用于崩溃后续跑时不重复插入已成功的调用；同键已存在但 `tool_key` 不同时报 `SYS-9001`。1.3 之前的旧记录不回填。
+
+**r5 迁移 008（只加列，全部 `ALGORITHM=INSTANT`，不加索引）**：`tools.read_only`、`mcp_tools.read_only`、`tool_calls.read_only`（`TINYINT(1)`，默认 0 = 有副作用；只有 `tools` 在新加列时按 HTTP 方法回填 GET/HEAD 为 1）；`approvals.reason`（`VARCHAR(16)`，默认 `policy`，接手产生的审批为 `interrupted`）；`tool_calls.call_id`（供应商调用 id，仅存档）、`model_step`、`step_index`（可空，不回填）。
 
 **0.1.x 幂等与 Webhook**：`idempotency_keys.scope` 目前是 API App id，保留 24 小时。`webhook_deliveries.app_id` 指向应用上的单个 Webhook URL；目标设计里的 `webhook_endpoints` 尚未拆出，因此没有 `endpoint_id`。投递状态为 `pending` / `delivered` / `failed`。
 
