@@ -1,4 +1,5 @@
 // P3-07: process shutdown on SIGTERM / SIGINT. Pure module (dependencies injected) so it is unit-testable.
+import { nextPhaseSeq } from "./phase-seq.js";
 
 export interface ShutdownDeps {
   /** Stop taking requests and wait for in-flight ones (Fastify app.close). */
@@ -38,8 +39,9 @@ export function createShutdown(deps: ShutdownDeps): (signal: string) => Promise<
       // ms in these phase lines counts from the signal. plugins/sse-shutdown.ts logs its own phases with ms counted
       // from Fastify's preClose hook instead (a few ms later), so the two ms series do not share a zero.
       const startedAt = Date.now();
+      // phaseSeq: shared with plugins/sse-shutdown.ts (phase-seq.ts), the order the phases were logged in.
       const step = (phase: string, extra: Record<string, unknown> = {}): void =>
-        deps.info?.(`shutdown (${signal}): ${phase}`, { phase, ms: Date.now() - startedAt, ...extra });
+        deps.info?.(`shutdown (${signal}): ${phase}`, { phase, phaseSeq: nextPhaseSeq(), ms: Date.now() - startedAt, ...extra });
       step("signal");
       // Backstop. Also what ends a shutdown held by a connection that sent only part of its request headers and
       // stalled: it is neither unused nor idle, so it is never closed (see closeUnusedConnections in

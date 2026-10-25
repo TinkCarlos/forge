@@ -53,6 +53,19 @@ describe("P3-07 graceful shutdown", () => {
     expect(d.exit).toHaveBeenCalledWith(1);
   });
 
+  it("phaseSeq: every phase line carries the next number of one shared counter (strictly increasing, none repeated)", async () => {
+    const lines: Array<Record<string, unknown>> = [];
+    const { d } = deps({ info: vi.fn((_message: string, fields: Record<string, unknown>) => lines.push(fields)) });
+    await createShutdown(d as never)("SIGTERM");
+    expect(lines.map((line) => line.phase)).toEqual(["signal", "app_close", "stop_runtime", "pool_end", "exit"]);
+    const seqs = lines.map((line) => line.phaseSeq as number);
+    expect(seqs.every((seq) => Number.isInteger(seq) && seq >= 1)).toBe(true);
+    for (let i = 1; i < seqs.length; i += 1) expect(seqs[i]).toBe(seqs[i - 1]! + 1);
+    // The counter is the module in apps/api/src/phase-seq.ts, also used by plugins/sse-shutdown.ts.
+    const { nextPhaseSeq } = await import("../apps/api/src/phase-seq.js");
+    expect(nextPhaseSeq()).toBe(seqs.at(-1)! + 1);
+  });
+
   it("a second signal does not run a second shutdown", async () => {
     const { d } = deps();
     const shutdown = createShutdown(d as never);

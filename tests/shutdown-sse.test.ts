@@ -91,11 +91,16 @@ describe("SIG: SIGTERM with open SSE streams (API child process)", () => {
     expect(result.ms).toBeLessThan(2000);
     await Promise.all([stream.finished, idle.closed, unused.closed]);
 
-    const steps = proc
+    const arrived = proc
       .output()
       .split("\n")
       .filter((line) => line.startsWith("{") && line.includes('"phase"'))
-      .map((line) => JSON.parse(line) as { level: number; phase: string; ms: number; msg: string; [key: string]: unknown });
+      .map((line) => JSON.parse(line) as { level: number; phase: string; phaseSeq: number; ms: number; msg: string; [key: string]: unknown });
+    // The order of the lines on stdout is not the order they were logged in (pino writes asynchronously, see
+    // apps/api/src/phase-seq.ts), so the order is checked by phaseSeq: one counter shared by shutdown.ts and
+    // plugins/sse-shutdown.ts, starting at 1, strictly increasing, no number used twice.
+    const steps = [...arrived].sort((a, b) => a.phaseSeq - b.phaseSeq);
+    expect(steps.map((entry) => entry.phaseSeq)).toEqual(steps.map((_entry, index) => index + 1));
     expect(steps.map((entry) => entry.phase)).toEqual([
       "signal",
       "readyz_not_ready",

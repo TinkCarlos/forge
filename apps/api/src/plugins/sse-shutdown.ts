@@ -2,6 +2,7 @@ import type { ServerResponse } from "node:http";
 import type { Socket } from "node:net";
 import type { FastifyInstance } from "fastify";
 import { ForgeError } from "@forge/core";
+import { nextPhaseSeq } from "../phase-seq.js";
 
 // r4 shutdown: SSE streams (streamRun) are hijacked responses that only end when the run ends, so app.close() used to
 // wait for them until the 10 s shutdown backstop fired (exit 1). Every stream is registered here; on close:
@@ -104,9 +105,10 @@ export function installSseShutdown(app: FastifyInstance): void {
   // r4: one info line per shutdown step, ms since preClose (the first thing app.close() does after the signal).
   // Not the same zero as shutdown.ts: its phases (signal, app_close, stop_runtime, pool_end, exit) count ms from
   // the signal, these (readyz_not_ready, ..., on_close) from preClose, so the two ms series are not comparable as-is.
+  // phaseSeq (one counter with shutdown.ts, see phase-seq.ts) gives the order across both.
   let closeStartedAt = 0;
   const step = (phase: string, extra: Record<string, unknown> = {}): void =>
-    app.log.info({ phase, ms: Date.now() - closeStartedAt, ...extra }, `shutdown: ${phase}`);
+    app.log.info({ phase, phaseSeq: nextPhaseSeq(), ms: Date.now() - closeStartedAt, ...extra }, `shutdown: ${phase}`);
 
   app.addHook("onClose", (_instance, done) => {
     step("on_close");
