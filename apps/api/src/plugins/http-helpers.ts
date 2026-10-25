@@ -12,6 +12,7 @@ import {
 } from "@forge/core";
 import { assertOrgWritable, assertPermission, maskArgsDeep, visibleAgentOrgIds } from "@forge/governance";
 import { sessionCookieOptions } from "./session-cookie.js";
+import { isDraining, registerSseStream, sseShuttingDown } from "./sse-shutdown.js";
 import { oidcConfigured, readStoredSessionCookie, sessionCookieValue, sessionWithPrincipal, type Session, type StoredSession } from "@forge/identity";
 import {
   assertDeleteAuditOrgUnit,
@@ -283,6 +284,8 @@ export function isStreamedEvent(type: string): boolean {
 }
 
 export async function streamRun(request: FastifyRequest, reply: FastifyReply, runId: string): Promise<void> {
+  // r4 shutdown: no new stream once app.close() started (plugins/sse-shutdown.ts); 503 SYS-9003 + Retry-After: 1.
+  if (isDraining(request.server)) throw sseShuttingDown();
   const header = request.headers["last-event-id"];
   let lastSeq = Number(Array.isArray(header) ? header[0] : header ?? 0) || 0;
   reply.hijack();
@@ -295,10 +298,19 @@ export async function streamRun(request: FastifyRequest, reply: FastifyReply, ru
   reply.raw.write(": forge stream\n\n");
   let closed = false;
   let heartbeat = 0;
+  /** Stops polling and finishes the response (run ended, read failed, or shutdown); nothing else is written. */
+  const finish = (): void => {
+    if (closed) return;
+    closed = true;
+    clearInterval(timer);
+    unregister();
+    reply.raw.end();
+  };
   const poll = async (): Promise<void> => {
     if (closed) return;
     try {
       const events = await repos.listEvents(runId, lastSeq);
+      if (closed) return; // ended (shutdown / client gone) while reading: lastSeq stays, the reconnect resends
       for (const event of events) lastSeq = Math.max(lastSeq, Number(event.seq));
       for (const event of events.filter((row) => isStreamedEvent(row.type))) {
         const data = JSON.stringify({
@@ -311,23 +323,20 @@ export async function streamRun(request: FastifyRequest, reply: FastifyReply, ru
         reply.raw.write(`id: ${event.seq}\nevent: ${event.type}\ndata: ${data}\n\n`);
       }
       const run = await repos.getRun(runId);
-      if (run && ["succeeded", "failed", "cancelled", "budget_exhausted"].includes(run.status) && events.length === 0) {
-        closed = true;
-        reply.raw.end();
-        clearInterval(timer);
-      }
+      if (closed) return;
+      if (run && ["succeeded", "failed", "cancelled", "budget_exhausted"].includes(run.status) && events.length === 0) finish();
     } catch {
-      closed = true;
-      reply.raw.end();
-      clearInterval(timer); // P3-06: no further polls after a failure
+      finish(); // P3-06: no further polls after a failure
     }
     heartbeat += 1;
     if (!closed && heartbeat % 15 === 0) reply.raw.write(": heartbeat\n\n");
   };
   const timer = setInterval(() => void poll(), 500);
+  const unregister = registerSseStream(request.server, reply.raw, finish);
   request.raw.on("close", () => {
     closed = true;
     clearInterval(timer);
+    unregister();
   });
   await poll();
 }

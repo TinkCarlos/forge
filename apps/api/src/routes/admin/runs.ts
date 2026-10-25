@@ -55,7 +55,7 @@ export default async function adminRunRoutes(app: FastifyInstance): Promise<void
     };
   });
 
-  app.get("/admin/api/runs/:id/events", async (request, reply) => {
+  app.get("/admin/api/runs/:id/events", { config: { sse: true } }, async (request, reply) => {
     const session = await admin(request, "run.view");
     const run = await repos.getRun(param(request, "id"));
     await assertRunAccess(session.principal, run);

@@ -10,6 +10,7 @@ import { frameworkErrorHandler, installErrorHandler } from "./plugins/errors.js"
 import { installCsrfHook } from "./plugins/csrf.js";
 import { installAdminMultipartGuard } from "./plugins/multipart-guard.js";
 import { installSecurityHeaders } from "./plugins/security-headers.js";
+import { installSseShutdown } from "./plugins/sse-shutdown.js";
 import { installSanitizedNotFoundHandler, requestLogSerializers } from "./plugins/log-sanitize.js";
 import { AJV_CUSTOM_OPTIONS } from "./plugins/input-schema.js";
 import healthRoutes from "./routes/health.js";
@@ -65,6 +66,8 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     ajv: { customOptions: AJV_CUSTOM_OPTIONS },
     // P2-01: a malformed URL gets the unified 400 body without echoing the path (Fastify's default repeats it).
     frameworkErrors: frameworkErrorHandler,
+    // r4 shutdown: answers while closing come from plugins/sse-shutdown.ts (SSE 503 SYS-9003, /readyz not_ready).
+    return503OnClosing: false,
   });
 
   // I-DOC-16: JSON is the only body type the routes read. Fastify's built-in text/plain parser handed the raw string to
@@ -79,6 +82,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   });
 
   installSecurityHeaders(app);
+  installSseShutdown(app);
   await app.register(cookie);
   await app.register(multipart, { limits: { fileSize: 20 * 1024 * 1024 } });
   await app.register(fastifyStatic, {

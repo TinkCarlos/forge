@@ -223,7 +223,7 @@ export default async function openRoutes(app: FastifyInstance): Promise<void> {
     return { runId: run.id, status: run.status, output: presentRunOutput(run.output_json), error: run.error_code ? { code: run.error_code, message: run.error_message } : null, usage: run.usage_json, completedAt: run.completed_at };
   });
 
-  app.get("/open/v1/runs/:id/events", async (request, reply) => {
+  app.get("/open/v1/runs/:id/events", { config: { sse: true } }, async (request, reply) => {
     const context = await openApp(request, "runs:read");
     const run = await repos.getRun(param(request, "id"));
     if (!run || run.app_id !== String(context.app.id)) throw errors.notFound("Run 不存在");
