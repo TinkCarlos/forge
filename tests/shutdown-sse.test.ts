@@ -122,8 +122,8 @@ describe("SIG: SIGTERM with open SSE streams (API child process)", () => {
       expect(entry.ms, entry.phase).toBeLessThan(2000);
     }
     const byPhase = Object.fromEntries(steps.map((entry) => [entry.phase, entry]));
-    expect(byPhase.listener_closed).toMatchObject({ listening: false, unusedConnectionsClosed: 1 });
-    expect(byPhase.sse_ended).toMatchObject({ streams: 1 });
+    expect(byPhase.listener_closed).toMatchObject({ listening: false, unusedConnectionsClosed: 1, count: 1 });
+    expect(byPhase.sse_ended).toMatchObject({ streams: 1, count: 1 });
     expect(byPhase.exit).toMatchObject({ code: 0 });
     // At exit no timer is left (SSE poll interval, runtime tick, the 10 s backstop). Socket handles may still be
     // closing: pool.end() resolves once QUIT is sent to each MySQL connection, and a closed or destroyed socket or

@@ -28,6 +28,7 @@ interface Phase {
   phaseSeq: number;
   ms: number;
   code?: number;
+  count?: number;
 }
 /** Phase lines from JSON output (NODE_ENV test / unset). */
 function jsonPhases(text: string): Phase[] {
@@ -48,7 +49,7 @@ function prettyPhases(text: string): Phase[] {
       const value = new RegExp(`^ {4}${name}: (\\d+)$`, "m").exec(block)?.[1];
       return value === undefined ? undefined : Number(value);
     };
-    phases.push({ phase, phaseSeq: field("phaseSeq") ?? Number.NaN, ms: field("ms") ?? Number.NaN, code: field("code") });
+    phases.push({ phase, phaseSeq: field("phaseSeq") ?? Number.NaN, ms: field("ms") ?? Number.NaN, code: field("code"), count: field("count") });
   }
   return phases;
 }
@@ -58,10 +59,18 @@ const flushTimeoutLines = (stderr: string): Array<Record<string, unknown>> =>
     .filter((line) => line.includes("flush_timeout"))
     .map((line) => JSON.parse(line) as Record<string, unknown>);
 
-// With no SSE stream and no open connection app.close() (and the pool) can finish before the setImmediate that logs
-// listener_closed / sse_ended (plugins/sse-shutdown.ts), so those two may come after exit (while the flush runs) or
-// not at all; only these are checked here. SIG-09 checks all nine, in order, with a stream open.
-const CORE_PHASES = ["signal", "readyz_not_ready", "on_close", "app_close", "stop_runtime", "pool_end", "exit"];
+// Every phase of a shutdown with nothing to drain, in the order they are logged.
+const ALL_PHASES = ["signal", "readyz_not_ready", "listener_closed", "sse_ended", "on_close", "app_close", "stop_runtime", "pool_end", "exit"];
+
+/** exit is the last phase: highest phaseSeq, nothing logged after it; listener_closed / sse_ended are there with count 0. */
+function expectExitLastNothingToDrain(phases: Phase[], output: string): void {
+  expect(phases.map((entry) => entry.phase), output.slice(-1500)).toEqual(ALL_PHASES);
+  const exit = phases.find((entry) => entry.phase === "exit")!;
+  expect(exit.phaseSeq).toBe(Math.max(...phases.map((entry) => entry.phaseSeq)));
+  expect(phases.at(-1)).toBe(exit);
+  expect(phases.find((entry) => entry.phase === "listener_closed")).toMatchObject({ count: 0 });
+  expect(phases.find((entry) => entry.phase === "sse_ended")).toMatchObject({ count: 0 });
+}
 
 describe("SIG-10: logger flush before exit, with a fixed 2000 ms limit", () => {
   it("SIG-10a: the flush never calls back -> after ~2000 ms one flush_timeout line on stderr, exit with the drain code (0), well before the 10 s backstop", { timeout: 30_000 }, async () => {
@@ -111,7 +120,22 @@ describe("SIG-10: logger flush before exit, with a fixed 2000 ms limit", () => {
       // Regression guard: the exit line always reaches stdout.
       expect(phases.filter((entry) => entry.phase === "exit"), proc.stdout().slice(-1200)).toHaveLength(1);
       expect(phases.map((entry) => entry.phaseSeq)).toEqual(phases.map((_entry, index) => index + 1));
-      expect(phases.map((entry) => entry.phase).filter((phase) => CORE_PHASES.includes(phase))).toEqual(CORE_PHASES);
+      expectExitLastNothingToDrain(phases, proc.output());
+    });
+  }
+});
+
+describe("SIG-11: exit is the last shutdown phase", () => {
+  // No connection at all: plugins/sse-shutdown.ts used to log listener_closed / sse_ended from a setImmediate after
+  // preClose, which could run after app.close() and the pool were done, so they came after exit (test) or were lost at
+  // process.exit (development).
+  for (const nodeEnv of ["test", "development"] as const) {
+    it(`SIG-11 (${nodeEnv}): SIGTERM with no connection -> exit has the highest phaseSeq and nothing follows it; listener_closed and sse_ended logged with count 0`, { timeout: 30_000 }, async () => {
+      const proc = await api({ nodeEnv });
+      const result = await sigterm(proc, 12_000);
+      expect(result.code, `signal ${String(result.signal)}\n${proc.output().slice(-1500)}`).toBe(0);
+      const phases = nodeEnv === "development" ? prettyPhases(proc.stdout()) : jsonPhases(proc.stdout());
+      expectExitLastNothingToDrain(phases, proc.output());
     });
   }
 });
