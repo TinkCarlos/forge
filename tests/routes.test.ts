@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -111,13 +111,12 @@ describe("route set", () => {
 });
 
 describe("new console at /next/", () => {
-  const distBuilt = existsSync(path.resolve(import.meta.dirname, "../apps/console/dist/index.html"));
-  it.skipIf(!distBuilt)("GET /next/ -> 200 html", async () => {
+  it("GET /next/ -> 200 html", async () => {
     const res = await app.inject({ method: "GET", url: "/next/" });
     expect(res.statusCode).toBe(200);
     expect(res.headers["content-type"]).toMatch(/text\/html/);
   });
-  it.skipIf(!distBuilt)("GET /next/agents/abc (SPA route) -> index.html fallback", async () => {
+  it("GET /next/agents/abc (SPA route) -> index.html fallback", async () => {
     const res = await app.inject({ method: "GET", url: "/next/agents/abc" });
     expect(res.statusCode).toBe(200);
     expect(res.headers["content-type"]).toMatch(/text\/html/);

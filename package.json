@@ -32,7 +32,8 @@
     "typecheck:console": "pnpm --filter @forge/console typecheck",
     "lint": "eslint apps/api apps/worker packages && pnpm --filter @forge/console lint",
     "test:console": "pnpm --filter @forge/console test",
-    "verify": "pnpm typecheck && pnpm typecheck:console && pnpm lint && pnpm test && pnpm test:console && pnpm build:console"
+    "verify": "pnpm typecheck && pnpm typecheck:console && pnpm lint && pnpm build:console && pnpm test && pnpm test:console",
+    "verify:envs": "node scripts/verify-envs.mjs"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",
