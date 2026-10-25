@@ -6,12 +6,15 @@ import { handleDialogServerError } from '@/lib/handle-server-error'
 export const INTERRUPTED_BADGE = '执行中断，可能已执行过'
 
 /**
- * 批准/驳回一条已处理、已被接手替换、已过期或并发输掉的审批：409 + 其中一个码（APR-2104 审批已处理或已过期，APR-2103 并发决定）。
- * 码集合只在这一行定义；CFG-8503 是通用「资源状态冲突」，不在集合里，照普通错误提示。
+ * 批准/驳回一条已处理、已被接手替换、已过期或并发输掉的审批：409 + 其中一个码（APR-2104 审批已处理或已过期，APR-2103 并发决定，
+ * RUN-7005 审批仍 pending 但所属 Run 已结束）。码集合只在这一行定义，只给审批操作（handleDecideError）用；
+ * 其他操作收到 RUN-7005 照旧走 handleServerError。CFG-8503 是通用「资源状态冲突」，不在集合里，照普通错误提示。
  * 后端统一用 APR-2104，APR-2103 仅作兜底。
  */
-export const APPROVAL_STALE_CODES: ReadonlySet<string> = new Set(['APR-2104', 'APR-2103'])
+export const APPROVAL_STALE_CODES: ReadonlySet<string> = new Set(['APR-2104', 'APR-2103', 'RUN-7005'])
 export const APPROVAL_STALE_TOAST = '该审批已失效，请刷新后处理新的审批'
+/** RUN-7005 的专门文案（和旧版控制台一致）。 */
+export const APPROVAL_RUN_FINISHED_TOAST = 'Run 已结束，此审批已失效'
 
 export type ApprovalReason = 'policy' | 'interrupted'
 
@@ -32,7 +35,7 @@ export function approvalTakeover(a: { reason?: unknown; attempt?: unknown }): { 
  */
 export function handleDecideError(error: unknown, on: { close: () => void; refresh: () => void }) {
   if (error instanceof ApiError && error.status === 409 && !!error.code && APPROVAL_STALE_CODES.has(error.code)) {
-    toast.error(APPROVAL_STALE_TOAST, { description: `错误码 ${error.code}`, duration: Infinity, closeButton: true })
+    toast.error(error.code === 'RUN-7005' ? APPROVAL_RUN_FINISHED_TOAST : APPROVAL_STALE_TOAST, { description: `错误码 ${error.code}`, duration: Infinity, closeButton: true })
     on.close()
     on.refresh()
     return

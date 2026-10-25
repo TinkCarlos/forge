@@ -223,12 +223,13 @@ describe('R9 Run 失败原因：SSE run.failed data.error.code', () => {
 })
 
 describe('R9 常量只定义一处', () => {
-  it('APR-2102 只在 RUN_APPROVAL_EXPIRED_CODE 一行；APR-2104 / APR-2103 只在 APPROVAL_STALE_CODES 一行；不碰 CFG-8503 / CFG-8504', () => {
+  it('APR-2102 只在 RUN_APPROVAL_EXPIRED_CODE 一行；APR-2104 / APR-2103 / RUN-7005 只在 APPROVAL_STALE_CODES 一行（RUN-7005 另用于选文案）；不碰 CFG-8503 / CFG-8504', () => {
     expect(APP.match(/APR-2102/g)).toHaveLength(1)
     expect(constLine('RUN_APPROVAL_EXPIRED_CODE')).toBe('const RUN_APPROVAL_EXPIRED_CODE = "APR-2102";')
     expect(APP.match(/"APR-2104"/g)).toHaveLength(1)
     expect(APP.match(/"APR-2103"/g)).toHaveLength(1)
-    expect(constLine('APPROVAL_STALE_CODES')).toBe('const APPROVAL_STALE_CODES = new Set(["APR-2104", "APR-2103"]);')
+    expect(constLine('APPROVAL_STALE_CODES')).toBe('const APPROVAL_STALE_CODES = new Set(["APR-2104", "APR-2103", "RUN-7005"]);')
+    expect(constLine('APPROVAL_RUN_FINISHED_TEXT')).toBe('const APPROVAL_RUN_FINISHED_TEXT = "Run 已结束，此审批已失效";')
     expect(APP).not.toMatch(/"CFG-8503"/)
     expect(APP).not.toMatch(/CFG-8504/)
   })
