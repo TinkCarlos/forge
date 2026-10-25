@@ -134,14 +134,17 @@ async function runLoop(run: RunRow, workerId: string, lease: AbortSignal): Promi
     let lastError: ForgeError | null = null;
     let index = 0;
     let attempt = 1;
+    let modelStep = 0;
     while (index < candidates.length) {
       const candidate = candidates[index];
       if (!candidate) break;
-      const stepId = await repos.addRunStep({
+      const step = await repos.addRunStepWithSeq({
         runId: fresh.id,
         type: "call_model",
         summary: { modelKey: `${candidate.provider}/${candidate.model}`, attempt },
       });
+      const stepId = step.id;
+      modelStep = step.seq; // the last attempt is the one whose result is used
       try {
         result = await callModel({
           providerKey: candidate.provider,
@@ -199,8 +202,9 @@ async function runLoop(run: RunRow, workerId: string, lease: AbortSignal): Promi
     }
 
     const updated = await addUsage(fresh, result.usage);
-    const toolCallIds = new Map<string, string>();
-    for (const call of result.toolCalls) {
+    // Q5: calls are identified by (model_step, index); the provider id is stored for audit only and never replayed.
+    const rowIds: string[] = [];
+    for (const [stepIndex, call] of result.toolCalls.entries()) {
       const resolved = tools.get(call.name);
       const definition = resolved?.definition;
       const risk = definition?.risk ?? "medium";
@@ -216,17 +220,20 @@ async function runLoop(run: RunRow, workerId: string, lease: AbortSignal): Promi
         args,
         risk,
         status: "pending",
-        idempotencyKey: toolIdempotencyKey(fresh.id, call.id),
+        idempotencyKey: toolIdempotencyKey(fresh.id, modelStep, stepIndex),
         attempt: 1,
         readOnly: resolved?.readOnly === true, // r5: snapshot; a takeover only looks at this
+        callId: call.id ?? null,
+        modelStep,
+        stepIndex,
       });
-      toolCallIds.set(call.id, rowId);
+      rowIds.push(rowId);
     }
 
     const assistantContent: Record<string, unknown> = { text: result.content };
     if (result.toolCalls.length) {
-      assistantContent.tool_calls = result.toolCalls.map((call) => ({
-        id: toolCallIds.get(call.id) ?? call.id,
+      assistantContent.tool_calls = result.toolCalls.map((call, stepIndex) => ({
+        id: rowIds[stepIndex],
         type: "function",
         function: { name: call.name, arguments: call.arguments },
       }));

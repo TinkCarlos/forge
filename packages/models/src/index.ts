@@ -21,7 +21,8 @@ export interface LlmUsage {
 }
 
 export interface LlmToolCall {
-  id: string;
+  /** The provider's id, if it sent a non-empty one. Audit only: the runtime keys and replays calls by its own row id. */
+  id?: string;
   name: string;
   arguments: string;
 }
@@ -198,9 +199,9 @@ async function callOpenAiCompatible(
       for (const part of parts) await apply(part);
     }
     if (buffer.trim()) await apply(buffer);
-    const toolCalls = state.toolCalls.flatMap((call, index) => {
+    const toolCalls = state.toolCalls.flatMap((call) => {
       if (!call?.name) return [];
-      return [{ id: call.id || `call_${index}`, name: call.name, arguments: call.arguments || "{}" }];
+      return [{ ...(call.id ? { id: call.id } : {}), name: call.name, arguments: call.arguments || "{}" }];
     });
     const usage = state.usage
       ? usageFor(model, Number(state.usage.prompt_tokens ?? 0), Number(state.usage.completion_tokens ?? 0))
@@ -236,11 +237,11 @@ function parseOpenAiJson(text: string, model: ModelRow, onDelta?: (delta: string
   const choice = (Array.isArray(payload.choices) ? payload.choices[0] : undefined) as Record<string, unknown> | undefined;
   const message = (choice?.message ?? {}) as Record<string, unknown>;
   const toolCalls: LlmToolCall[] = Array.isArray(message.tool_calls)
-    ? message.tool_calls.map((raw, index) => {
+    ? message.tool_calls.map((raw) => {
         const item = raw as Record<string, unknown>;
         const fn = (item.function ?? {}) as Record<string, unknown>;
         return {
-          id: typeof item.id === "string" ? item.id : `call_${index}`,
+          ...(typeof item.id === "string" && item.id ? { id: item.id } : {}),
           name: String(fn.name ?? ""),
           arguments: typeof fn.arguments === "string" ? fn.arguments : JSON.stringify(fn.arguments ?? {}),
         };
