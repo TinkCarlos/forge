@@ -219,7 +219,7 @@ async function init() {
     await api("/auth/logout", { method: "POST", auth: "probe" }).catch(() => {});
     showLogin();
   });
-  $("#refresh").addEventListener("click", () => renderCurrent());
+  $("#refresh").addEventListener("click", () => refreshCurrent());
   bindAgentActions();
   window.addEventListener("hashchange", onHashChange);
   try {
@@ -336,6 +336,14 @@ async function renderCurrent() {
     case "sso": return renderSso();
     default: return renderDashboard();
   }
+}
+
+/**
+ * 页面上的「刷新 / 重试」（顶栏 #refresh、加载失败卡片的重试、运行中心和待审批的刷新）：失败不留未捕获的 rejection。
+ * 会话过期已由 handleSessionExpired 提示过一次（errorText 返回空，toast 不弹）；其他错误照常弹错误 toast。
+ */
+function refreshCurrent() {
+  return renderCurrent().catch((error) => toast(errorText(error), "error"));
 }
 
 function errorCard(error) {
@@ -759,7 +767,8 @@ function parseJsonField(data, key, fallback) {
 
 const app = {
   switchTab,
-  renderCurrent,
+  // 内联 onclick="app.renderCurrent()" 走带 catch 的版本（同 #refresh）
+  renderCurrent: refreshCurrent,
 
   openAgentCreate() {
     const spec = JSON.stringify({ model: { provider: "mock", model: "mock-1", temperature: 0.2 }, toolsets: [{ builtin: ["current_time", "echo"] }], limits: { maxSteps: 4, maxCostUsd: 1 } }, null, 2);
@@ -1255,9 +1264,13 @@ const app = {
   },
 
   async showPermissionMatrix() {
-    const data = await api("/admin/api/permissions");
-    const roles = Object.keys(data.roles ?? {});
-    openModal("功能权限矩阵", `<div class="table-wrap"><table><thead><tr><th>角色</th><th>权限</th></tr></thead><tbody>${roles.map((role) => `<tr><td><strong>${esc(role)}</strong></td><td class="mono">${esc((data.roles[role] ?? []).join(", "))}</td></tr>`).join("")}</tbody></table></div>`, async () => {}, "关闭");
+    try {
+      const data = await api("/admin/api/permissions");
+      const roles = Object.keys(data.roles ?? {});
+      openModal("功能权限矩阵", `<div class="table-wrap"><table><thead><tr><th>角色</th><th>权限</th></tr></thead><tbody>${roles.map((role) => `<tr><td><strong>${esc(role)}</strong></td><td class="mono">${esc((data.roles[role] ?? []).join(", "))}</td></tr>`).join("")}</tbody></table></div>`, async () => {}, "关闭");
+    } catch (error) {
+      toast(errorText(error), "error");
+    }
   },
 
   openRoleMapping() {
