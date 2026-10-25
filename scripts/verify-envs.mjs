@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 // Gate: run `pnpm verify` once per NODE_ENV setting (development, test, unset).
-// A setting passes only if verify exits 0 AND no test was skipped (gate = 0 skip).
+// A setting passes only if verify exits 0 AND no test was skipped or left as todo (gate = 0 skip).
 // Every setting runs even after a failure so the report is complete; the script
 // exits 1 if any setting failed. Other env vars (DATABASE_URL etc.) pass through.
 //
 // Before each setting the console build output (apps/console/dist) is deleted so
 // verify always starts clean. The path is derived from this script's own location
-// (<repo root>/scripts/verify-envs.mjs), so only the worktree being verified is touched.
+// (<repo root>/scripts/verify-envs.mjs), so only the worktree being verified is touched; the
+// script refuses to run unless that root's package.json is named "forge".
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, rmSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -21,7 +22,7 @@ if (!existsSync(pkgPath) || JSON.parse(readFileSync(pkgPath, "utf8")).name !== "
 }
 const consoleDir = join(repoRoot, "apps", "console");
 const distDir = join(consoleDir, "dist");
-if (!existsSync(join(consoleDir, "package.json")) || !distDir.startsWith(repoRoot + sep)) {
+if (!existsSync(join(consoleDir, "package.json"))) {
   console.error(`verify:envs: unexpected console path ${distDir}; refusing to run`);
   process.exit(2);
 }
@@ -32,6 +33,11 @@ const SETTINGS = [
   { key: "unset", label: "NODE_ENV unset", value: undefined },
 ];
 const only = process.argv.slice(2);
+const unknown = only.filter((a) => !SETTINGS.some((s) => s.key === a));
+if (unknown.length > 0) {
+  console.error(`verify:envs: unknown argument(s) ${unknown.join(", ")}; use development, test or unset`);
+  process.exit(2);
+}
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 
 function envFor(s) {
@@ -77,12 +83,16 @@ for (const s of SETTINGS) {
   const { code, output } = await runVerify(env);
   const plain = output.replace(/\x1b\[[0-9;]*m/g, "");
   const summaries = [...plain.matchAll(/^\s*Tests\s+(.*)$/gm)].map((m) => m[1]);
-  const skipped = summaries.reduce((n, line) => n + Number((line.match(/(\d+)\s+skipped/) ?? [0, 0])[1]), 0);
+  // Skipped and todo tests both count against the 0-skip gate.
+  const countIn = (line) => [...line.matchAll(/(\d+)\s+(?:skipped|todo)/g)].reduce((n, m) => n + Number(m[1]), 0);
+  const skipped = summaries.reduce((n, line) => n + countIn(line), 0);
   let skippedNames = [];
   if (skipped > 0) {
     // summaries[0] is the root suite, summaries[1] the console suite (verify order).
-    if (/\d+\s+skipped/.test(summaries[0] ?? "")) skippedNames.push(...listSkipped(env, []));
-    if (/\d+\s+skipped/.test(summaries[1] ?? "")) skippedNames.push(...listSkipped(env, ["--filter", "@forge/console"]));
+    // Listing names re-runs the affected suite with the JSON reporter (about 80s for the root suite);
+    // this only happens when the gate is already failing.
+    if (countIn(summaries[0] ?? "") > 0) skippedNames.push(...listSkipped(env, []));
+    if (countIn(summaries[1] ?? "") > 0) skippedNames.push(...listSkipped(env, ["--filter", "@forge/console"]));
   }
   results.push({ label: s.label, code, skipped, skippedNames, seconds: Math.round((Date.now() - started) / 1000) });
 }
