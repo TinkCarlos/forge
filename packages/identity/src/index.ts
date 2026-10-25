@@ -32,7 +32,6 @@ export interface Session extends StoredSession {
   principal: Principal;
 }
 
-const oidcStates = new Map<string, { verifier: string; nonce: string; returnTo: string; expiresAt: number }>();
 
 export function toPrincipal(user: UserRow): Principal {
   return {
@@ -236,10 +235,19 @@ async function oidcFetch(url: string, init?: Parameters<typeof safeFetch>[1]): P
   }
 }
 
-/** The returnTo saved with a pending OIDC state (without consuming it), so a failed callback can keep it. */
-export function pendingOidcReturnTo(state: string): string | null {
-  const saved = oidcStates.get(state);
-  return saved && saved.expiresAt >= Date.now() ? saved.returnTo : null;
+/** OIDC login state lifetime (auth_oidc_states.expires_at). */
+export const OIDC_STATE_TTL_MS = 10 * 60 * 1000;
+
+/**
+ * The returnTo saved with a pending OIDC state (without consuming it), so a failed callback can keep it. Best effort:
+ * a store failure gives null here (the callback itself then answers 503 SYS-9003).
+ */
+export async function pendingOidcReturnTo(state: string): Promise<string | null> {
+  try {
+    return await repos.peekOidcStateReturnTo(sha256Hex(state), new Date());
+  } catch {
+    return null;
+  }
 }
 
 async function discovery(): Promise<Discovery> {
@@ -260,7 +268,10 @@ export async function buildOidcAuthorizeUrl(returnTo = "/"): Promise<string> {
   const challenge = createHash("sha256").update(verifier).digest("base64url");
   const state = randomBytes(24).toString("base64url");
   const nonce = randomBytes(24).toString("base64url");
-  oidcStates.set(state, { verifier, nonce, returnTo, expiresAt: Date.now() + 10 * 60 * 1000 });
+  const now = Date.now();
+  await identityLookup(() =>
+    repos.createOidcState({ stateHash: sha256Hex(state), verifier, nonce, returnTo, now: new Date(now), expiresAt: new Date(now + OIDC_STATE_TTL_MS) }),
+  );
   const redirectUri = config.OIDC_REDIRECT_URI ?? `${config.FORGE_PUBLIC_URL}/auth/oidc/callback`;
   const params = new URLSearchParams({
     response_type: "code",
@@ -276,9 +287,10 @@ export async function buildOidcAuthorizeUrl(returnTo = "/"): Promise<string> {
 }
 
 export async function handleOidcCallback(code: string, state: string): Promise<{ principal: Principal; returnTo: string }> {
-  const saved = oidcStates.get(state);
-  if (!saved || saved.expiresAt < Date.now()) throw new ForgeError("SSO-1203", "登录状态已过期，请重试", 400);
-  oidcStates.delete(state);
+  // One-time, cross-instance consumption before the token exchange (a replay or a concurrent twin gets SSO-1203).
+  const row = await identityLookup(() => repos.consumeOidcState(sha256Hex(state), new Date()));
+  if (!row) throw new ForgeError("SSO-1203", "登录状态已过期，请重试", 400);
+  const saved = { verifier: row.verifier, nonce: row.nonce, returnTo: row.return_to };
   const doc = await discovery();
   const redirectUri = config.OIDC_REDIRECT_URI ?? `${config.FORGE_PUBLIC_URL}/auth/oidc/callback`;
   const body = new URLSearchParams({

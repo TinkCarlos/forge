@@ -101,7 +101,7 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
     const query = request.query as Record<string, unknown>;
     const code = typeof query.code === "string" ? query.code : "";
     const state = typeof query.state === "string" ? query.state : "";
-    const pendingReturnTo = state ? pendingOidcReturnTo(state) : null;
+    const pendingReturnTo = state ? await pendingOidcReturnTo(state) : null;
     let result: Awaited<ReturnType<typeof handleOidcCallback>>;
     try {
       // P3-04: the IdP's own error (error=access_denied ...) is one fixed code; error_description is never used.

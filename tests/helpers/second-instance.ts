@@ -10,6 +10,7 @@ export interface SecondInstance {
   app: FastifyInstance;
   pool: { end: () => Promise<void> };
   identity: typeof import("@forge/identity");
+  core: typeof import("@forge/core");
   close: () => Promise<void>;
 }
 
@@ -18,12 +19,14 @@ export async function secondInstance(): Promise<SecondInstance> {
   const { buildApp } = await import("../../apps/api/src/app.js");
   const store = await import("@forge/store");
   const identity = await import("@forge/identity");
+  const core = await import("@forge/core");
   const app = await buildApp({ logger: false });
   await app.ready();
   return {
     app,
     pool: store.pool,
     identity,
+    core,
     close: async () => {
       await app.close();
       await store.pool.end();
