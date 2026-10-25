@@ -6,10 +6,14 @@ export type Approval = {
   run_id: string
   agent_name: string
   risk_level: string
-  expires_at: string
+  expires_at: string | null
   created_at: string
   tool_name?: string | null
   args_preview?: string | null
+  /** R9：policy = 策略审批；interrupted = Worker 接手时执行中断、转人工确认。老后端不返回，按 policy 处理。 */
+  reason?: 'policy' | 'interrupted'
+  /** interrupted 时是该调用已开始执行的次数；policy 时为 null。 */
+  attempt?: number | null
 }
 
 type Page = { items: Approval[]; page?: number; pageSize?: number; total?: number }
