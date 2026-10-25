@@ -368,3 +368,19 @@ describe("approval expiry", () => {
     expect(downstream).toHaveLength(0);
   });
 });
+
+describe("approvals list (contract §2)", () => {
+  it("each pending approval carries reason; attempt = the interrupted attempt for interrupted, null for policy", async () => {
+    resetNet();
+    const interrupted = await seedWaitingInterrupted();
+    const { runId: policyRun } = await newRun();
+    modelReplies.push(() => reply({ content: "", tool_calls: [call(SEND, { to: "y" })] }));
+    await executeRun(policyRun, `w-list-${suffix}`);
+    const [policy] = await approvals(policyRun);
+    const res = await app.inject({ method: "GET", url: "/admin/api/approvals?pageSize=100", headers });
+    expect(res.statusCode, res.body).toBe(200);
+    const items = (res.json() as { items: Array<Record<string, unknown>> }).items;
+    expect(items.find((item) => item.id === interrupted.approvalId)).toMatchObject({ reason: "interrupted", attempt: 1, tool_call_id: interrupted.rowId, tool_name: WRITE });
+    expect(items.find((item) => item.id === policy!.id)).toMatchObject({ reason: "policy", attempt: null, tool_name: SEND });
+  });
+});
