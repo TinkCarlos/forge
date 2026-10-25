@@ -3,6 +3,7 @@ import path from "node:path";
 import mysql, { type Connection } from "mysql2/promise";
 import { config } from "@forge/core";
 import { requireScriptDatabase } from "./db-guard.js";
+import { applyToolSideEffects } from "./migrate-008.js";
 
 // OPS-026: writing to a database not named *_test / *_ux needs --confirm-db=<name>.
 requireScriptDatabase(config.DATABASE_URL, "migrate");
@@ -255,6 +256,15 @@ try {
     console.log("Migration 007_auth_sessions applied");
   } else {
     console.log("Migration 007_auth_sessions already applied");
+  }
+
+  // 008 (r5 worker takeover): tool read-only declaration + snapshot, approvals.reason, tool_calls Q5 columns.
+  if (!applied.has("008_tool_side_effects")) {
+    await applyToolSideEffects(connection);
+    await connection.query("INSERT INTO schema_migrations (version) VALUES (?)", ["008_tool_side_effects"]);
+    console.log("Migration 008_tool_side_effects applied");
+  } else {
+    console.log("Migration 008_tool_side_effects already applied");
   }
 } finally {
   await connection.end();

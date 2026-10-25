@@ -23,6 +23,11 @@ export interface ToolContext {
 }
 export interface ResolvedTool {
   definition: ToolDefinition;
+  /**
+   * r5: true only when the tool is declared read-only; absent/false = has side effects. Kept off ToolDefinition so it is
+   * never sent to the model. Snapshotted into tool_calls.read_only when the call is created.
+   */
+  readOnly?: boolean;
   execute: (args: Record<string, unknown>, context?: ToolContext) => Promise<ToolResult>;
 }
 
@@ -30,6 +35,19 @@ export interface ResolvedTool {
 function callSignal(timeoutMs: number, signal?: AbortSignal): AbortSignal {
   const timeout = AbortSignal.timeout(timeoutMs);
   return signal ? AbortSignal.any([timeout, signal]) : timeout;
+}
+
+/** r5: an OpenAPI operation is read-only only for GET / HEAD. */
+export function isReadOnlyHttpMethod(method: string): boolean {
+  const upper = method.toUpperCase();
+  return upper === "GET" || upper === "HEAD";
+}
+
+/** r5: an MCP tool is read-only only with readOnlyHint === true and destructiveHint !== true (self-reported, see docs). */
+export function isReadOnlyMcpTool(annotations: unknown): boolean {
+  if (!annotations || typeof annotations !== "object") return false;
+  const hints = annotations as Record<string, unknown>;
+  return hints.readOnlyHint === true && hints.destructiveHint !== true;
 }
 
 function toolNameFor(kind: string, source: string, name: string): string {
@@ -83,6 +101,7 @@ export function builtinTools(): Map<string, ResolvedTool> {
       parameters: { type: "object", properties: {}, additionalProperties: false },
       risk: "low",
     },
+    readOnly: true,
     execute: async () => ({ ok: true, content: new Date().toISOString() }),
   });
   map.set("echo", {
@@ -97,6 +116,7 @@ export function builtinTools(): Map<string, ResolvedTool> {
       },
       risk: "low",
     },
+    readOnly: true,
     execute: async (args) => ({ ok: true, content: String(args.text ?? "") }),
   });
   map.set("web_fetch", {
@@ -111,6 +131,7 @@ export function builtinTools(): Map<string, ResolvedTool> {
       },
       risk: "medium",
     },
+    readOnly: true, // always GET
     execute: async (args, context) => {
       try {
         // Outbound guard (S-46): scheme + DNS check, socket pinned to the checked address, every redirect re-checked.
@@ -128,7 +149,7 @@ export function builtinTools(): Map<string, ResolvedTool> {
   return map;
 }
 
-export async function discoverMcpTools(server: Record<string, unknown>): Promise<Array<{ name: string; description: string; inputSchema: unknown; risk: string }>> {
+export async function discoverMcpTools(server: Record<string, unknown>): Promise<Array<{ name: string; description: string; inputSchema: unknown; risk: string; readOnly: boolean }>> {
   const url = String(server.url);
   const headers = envHeaders(server.headers_json, { table: "mcp_servers", column: "headers_json", id: String(server.id) });
   let sessionId: string | null = null;
@@ -176,6 +197,7 @@ export async function discoverMcpTools(server: Record<string, unknown>): Promise
       description: String(tool.description ?? ""),
       inputSchema: tool.inputSchema ?? { type: "object", properties: {} },
       risk,
+      readOnly: isReadOnlyMcpTool(annotations),
     };
   });
 }
@@ -232,12 +254,12 @@ export async function callMcpTool(server: Record<string, unknown>, toolName: str
   };
 }
 
-export function parseOpenApi(spec: Record<string, unknown>, fallbackBaseUrl?: string): { baseUrl: string; tools: Array<{ name: string; operationId: string; method: string; path: string; description: string; inputSchema: unknown; risk: string }> } {
+export function parseOpenApi(spec: Record<string, unknown>, fallbackBaseUrl?: string): { baseUrl: string; tools: Array<{ name: string; operationId: string; method: string; path: string; description: string; inputSchema: unknown; risk: string; readOnly: boolean }> } {
   const servers = Array.isArray(spec.servers) ? spec.servers : [];
   const firstServer = servers[0] as Record<string, unknown> | undefined;
   const baseUrl = fallbackBaseUrl || (typeof firstServer?.url === "string" ? firstServer.url : "");
   const paths = (spec.paths ?? {}) as Record<string, Record<string, unknown>>;
-  const tools: Array<{ name: string; operationId: string; method: string; path: string; description: string; inputSchema: unknown; risk: string }> = [];
+  const tools: Array<{ name: string; operationId: string; method: string; path: string; description: string; inputSchema: unknown; risk: string; readOnly: boolean }> = [];
   for (const [path, methods] of Object.entries(paths)) {
     for (const [method, raw] of Object.entries(methods)) {
       if (!["get", "post", "put", "patch", "delete"].includes(method)) continue;
@@ -274,6 +296,7 @@ export function parseOpenApi(spec: Record<string, unknown>, fallbackBaseUrl?: st
         description: String(operation.description ?? operation.summary ?? `${method.toUpperCase()} ${path}`),
         inputSchema: { type: "object", properties, required },
         risk,
+        readOnly: isReadOnlyHttpMethod(method),
       });
     }
   }
@@ -364,6 +387,7 @@ export async function resolveTools(spec: AgentSpec): Promise<Map<string, Resolve
             parameters: parseJsonValue(row.input_schema_json, { type: "object", properties: {} }),
             risk: (String(row.risk_level) as ToolDefinition["risk"]) ?? "medium",
           },
+          readOnly: Number(row.read_only) === 1,
           execute: async (args, context) => callMcpTool(server, name, args, context?.signal),
         });
       }
@@ -384,6 +408,7 @@ export async function resolveTools(spec: AgentSpec): Promise<Map<string, Resolve
             parameters: parseJsonValue(row.input_schema_json, { type: "object", properties: {} }),
             risk: String(row.risk_level) as ToolDefinition["risk"],
           },
+          readOnly: Number(row.read_only) === 1,
           execute: async (args, context) => executeOpenApiTool({ source, tool: row, args, signal: context?.signal }),
         });
       }

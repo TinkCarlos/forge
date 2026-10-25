@@ -201,7 +201,8 @@ async function runLoop(run: RunRow, workerId: string, lease: AbortSignal): Promi
     const updated = await addUsage(fresh, result.usage);
     const toolCallIds = new Map<string, string>();
     for (const call of result.toolCalls) {
-      const definition = tools.get(call.name)?.definition;
+      const resolved = tools.get(call.name);
+      const definition = resolved?.definition;
       const risk = definition?.risk ?? "medium";
       let args: unknown = {};
       try {
@@ -217,6 +218,7 @@ async function runLoop(run: RunRow, workerId: string, lease: AbortSignal): Promi
         status: "pending",
         idempotencyKey: toolIdempotencyKey(fresh.id, call.id),
         attempt: 1,
+        readOnly: resolved?.readOnly === true, // r5: snapshot; a takeover only looks at this
       });
       toolCallIds.set(call.id, rowId);
     }

@@ -99,6 +99,14 @@ export interface ToolCallRow {
   error_code: string | null;
   created_at: Date;
   updated_at: Date;
+  /** 008: readOnly snapshot at creation (1 = read-only, 0 = has side effects). */
+  read_only: number;
+  /** 008 (Q5): the provider's tool call id, audit only (never a lookup key, never replayed). */
+  call_id: string | null;
+  /** 008 (Q5): run_steps.seq of the call_model step that produced the call; NULL for rows written before 008. */
+  model_step: number | null;
+  /** 008 (Q5): index of the call in that step's toolCalls (from 0); NULL for rows written before 008. */
+  step_index: number | null;
 }
 
 export interface RunStepRow {
@@ -133,6 +141,8 @@ export interface ApprovalRow {
   decided_at: Date | null;
   comment: string | null;
   created_at: Date;
+  /** 008: why the approval exists; rows written before 008 (or by older code) read 'policy'. */
+  reason: "policy" | "interrupted";
 }
 
 export interface ProviderRow {
