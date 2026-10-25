@@ -120,6 +120,16 @@ const envSchema = z.object({
     .optional()
     .transform((value) => value !== "false"),
   WORKER_POLL_MS: z.coerce.number().int().positive().default(1000),
+  /**
+   * r5 §2.6: an approval expired at most this long ago is treated as rejected and the Run continues; longer -> the Run
+   * fails with APR-2102. Integer seconds 60..86400, default 900; must exceed WORKER_POLL_MS (the expiry sweep interval).
+   */
+  APPROVAL_EXPIRED_GRACE_SECONDS: z.coerce
+    .number({ error: "APPROVAL_EXPIRED_GRACE_SECONDS must be an integer number of seconds between 60 and 86400" })
+    .int("APPROVAL_EXPIRED_GRACE_SECONDS must be an integer number of seconds between 60 and 86400")
+    .min(60, "APPROVAL_EXPIRED_GRACE_SECONDS must be an integer number of seconds between 60 and 86400")
+    .max(86400, "APPROVAL_EXPIRED_GRACE_SECONDS must be an integer number of seconds between 60 and 86400")
+    .default(900),
   SCHEDULER_POLL_MS: z.coerce.number().int().positive().default(15000),
   MAX_CONCURRENT_RUNS: z.coerce.number().int().positive().default(2),
   LEASE_TTL_SECONDS: z.coerce.number().int().positive().default(30),
@@ -211,6 +221,11 @@ export function parseConfig(env: Record<string, string | undefined>, options: Pa
   const nodeEnv = parsed.data.NODE_ENV;
   if (nodeEnv !== undefined && !(KNOWN_NODE_ENVS as readonly string[]).includes(nodeEnv)) {
     warn(`[config] unrecognized NODE_ENV=${JSON.stringify(nodeEnv.slice(0, 64))}, treated as production (expected development, test or production).`);
+  }
+  // r5 §2.6: the expiry sweep runs once per worker cycle, so a cycle at least as long as the grace period could let an
+  // approval pass the grace period before anyone looks at it.
+  if (parsed.data.WORKER_POLL_MS >= parsed.data.APPROVAL_EXPIRED_GRACE_SECONDS * 1000) {
+    throw new Error("Invalid configuration:\nWORKER_POLL_MS must be smaller than APPROVAL_EXPIRED_GRACE_SECONDS x 1000 (the expiry sweep runs once per worker cycle).");
   }
   const config = resolveSecrets(parsed.data, warn);
   // K-22: SSO is enforced everywhere except an explicit development/test NODE_ENV (unset is treated like production).
