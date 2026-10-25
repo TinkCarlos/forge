@@ -350,7 +350,7 @@ data: {"type":"run.completed","seq":15,"runId":"...","data":{"status":"succeeded
 | `tool.failed` | 工具失败 | `toolCallId`, `error` |
 | `tool.interrupted` | 接手时发现上一个 Worker 中断了的工具调用 | `toolCallId`, `tool`, `action`（`rerun`：只读工具已自动重跑；`confirm`：有副作用，不自动重跑，已建新审批）, `attempt`（被中断的那一次执行的序号，从 1 开始）, `approvalId`（`confirm` 时为新审批，否则 `null`）, `previousApprovalId`（`confirm` 时为该调用之前的审批，没有为 `null`；旧审批不会被复用） |
 | `approval.required` | 等待审批 | `approvalId`, `toolCallId`, `tool`, `risk`, `reason`（`policy` / `interrupted`）, `expiresAt`（ISO 8601，UTC） |
-| `approval.resolved` | 审批完成 | `approvalId`, `decision` |
+| `approval.resolved` | 审批完成（Run 进入终态时被关闭的待审批也发一条，`decision` 为 `expired`，在终态事件之前） | `approvalId`, `decision` |
 | `context.compacted` | 上下文压缩 | `removedMessages`, `summaryTokens` |
 | `run.completed` | 成功 | `status`, `usage` |
 | `run.failed` | 失败 | `status`, `error` |
