@@ -49,7 +49,11 @@
 - 存储：只存 HMAC-SHA256（服务端 pepper）与可识别前缀；不支持找回。
 - 传递：仅 `Authorization` 头；禁止放在 URL 查询参数。
 - 生命周期：可设置过期时间；支持多把并存用于轮换；吊销立即生效。
-- 每个 Key 绑定一个应用；应用的 Scope、配额、Webhook 对 Key 生效。
+- 每个 Key 绑定一个应用；应用的配额、Webhook 对 Key 生效。
+- Scope：创建 Key 时把应用当时的 `scopes` 记到 Key 上，之后不再改写。每次请求的有效 Scope = Key 的 `scopes` ∩ 应用**当前**的 `scopes`，每次请求都重新读取应用，不缓存：
+  - 应用收窄 Scope 后，下一个请求起所有旧 Key 都失去被移除的 Scope（返回 `403 POL-2001`）；
+  - 应用放宽 Scope 不会让旧 Key 变宽，要用新增的 Scope 需新建 Key；
+  - 交集为空时，所有需要 Scope 的接口都返回 `403 POL-2001`。
 
 ### 3.2 Scope
 
