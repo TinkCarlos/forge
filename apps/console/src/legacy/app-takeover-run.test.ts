@@ -4,7 +4,8 @@ import { describe, expect, it } from 'vitest'
 /**
  * R9：旧版 Run 弹窗里的 Worker 接手相关显示。
  * - SSE tool.interrupted：事件日志写一行可读记录，不显示参数和结果；
- *   action=rerun「工具 X 执行中断，已自动重跑（第 N 次）」，action=confirm「工具 X 执行中断，已转人工确认」。
+ *   attempt = 被中断那次执行的序号（从 1 开始）。action=rerun「工具 X 执行中断，已自动重跑（第 attempt+1 次）」，
+ *   action=confirm「工具 X 第 attempt 次执行被中断，需重新确认」；attempt 不是正整数时不写次数。
  * - Run 失败原因：REST 的 errorCode / errorMessage 显示在状态栏；SSE run.failed 的 data.error.code 显示在事件日志。
  *   APR-2102 显示专门文案「审批已过期，Run 已终止」；其他码（如 CFG-8504 env 引用）照旧显示后端原文 + 错误码。
  * - 所有字段转义，不拼出 HTML；新代码没有内联 style / on*。
@@ -106,20 +107,47 @@ async function opened(initial = run('running')) {
 }
 
 describe('R9 SSE tool.interrupted', () => {
-  it('action=rerun：「工具 X 执行中断，已自动重跑（第 N 次）」', async () => {
+  it('action=rerun、attempt=1：重跑是第 2 次「工具 X 执行中断，已自动重跑（第 2 次）」', async () => {
     const h = await opened()
     h.es().emit('tool.interrupted', 5, { toolCallId: 'tc_1', tool: 'web_fetch', action: 'rerun', attempt: 1, approvalId: null, previousApprovalId: null })
     expect(h.log()).toHaveLength(1)
-    expect(h.log()[0]).toContain('工具 web_fetch 执行中断，已自动重跑（第 1 次）')
+    expect(h.log()[0]).toContain('工具 web_fetch 执行中断，已自动重跑（第 2 次）')
+    expect(h.log()[0]).not.toContain('第 1 次')
     expect(h.log()[0]).toContain('tool.interrupted')
     expect(h.log()[0]).not.toContain('toolCallId')
   })
 
-  it('action=confirm：「工具 X 执行中断，已转人工确认」', async () => {
+  it('action=rerun、attempt=3：「已自动重跑（第 4 次）」', async () => {
     const h = await opened()
-    h.es().emit('tool.interrupted', 6, { toolCallId: 'tc_2', tool: 'send_mail', action: 'confirm', attempt: 2, approvalId: 'apr_1', previousApprovalId: 'apr_0' })
-    expect(h.log()[0]).toContain('工具 send_mail 执行中断，已转人工确认')
+    h.es().emit('tool.interrupted', 5, { toolCallId: 'tc_1', tool: 'web_fetch', action: 'rerun', attempt: 3, approvalId: null, previousApprovalId: null })
+    expect(h.log()[0]).toContain('工具 web_fetch 执行中断，已自动重跑（第 4 次）')
+  })
+
+  it('action=rerun、attempt=null：不写次数', async () => {
+    const h = await opened()
+    h.es().emit('tool.interrupted', 5, { toolCallId: 'tc_1', tool: 'web_fetch', action: 'rerun', attempt: null })
+    expect(h.log()[0]).toContain('工具 web_fetch 执行中断，已自动重跑')
+    expect(h.log()[0]).not.toContain('（第')
+  })
+
+  it('action=confirm、attempt=3：「工具 X 第 3 次执行被中断，需重新确认」（不加 1）', async () => {
+    const h = await opened()
+    h.es().emit('tool.interrupted', 6, { toolCallId: 'tc_2', tool: 'send_mail', action: 'confirm', attempt: 3, approvalId: 'apr_1', previousApprovalId: 'apr_0' })
+    expect(h.log()[0]).toContain('工具 send_mail 第 3 次执行被中断，需重新确认')
     expect(h.log()[0]).not.toContain('apr_1')
+  })
+
+  it('action=confirm、attempt=1：「工具 X 第 1 次执行被中断，需重新确认」', async () => {
+    const h = await opened()
+    h.es().emit('tool.interrupted', 6, { toolCallId: 'tc_2', tool: 'send_mail', action: 'confirm', attempt: 1 })
+    expect(h.log()[0]).toContain('工具 send_mail 第 1 次执行被中断，需重新确认')
+  })
+
+  it('action=confirm、attempt 非正整数：「工具 X 执行被中断，需重新确认」，不写次数', async () => {
+    const h = await opened()
+    h.es().emit('tool.interrupted', 6, { toolCallId: 'tc_2', tool: 'send_mail', action: 'confirm', attempt: 0 })
+    expect(h.log()[0]).toContain('工具 send_mail 执行被中断，需重新确认')
+    expect(h.log()[0]).not.toContain('第 ')
   })
 
   it('不显示参数和结果（即使事件里意外带了）', async () => {

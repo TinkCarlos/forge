@@ -20,8 +20,12 @@ const fn = <T>(name: string) => {
 describe('approvalTakeover：中断徽标与尝试次数', () => {
   const view = (a: Record<string, unknown>) => fn<(a: Record<string, unknown>) => { badge: string; attempt: string | null } | null>('approvalTakeover')(a)
 
-  it('reason=interrupted、attempt=3 → 徽标 +「第 3 次尝试」', () => {
-    expect(view({ reason: 'interrupted', attempt: 3 })).toEqual({ badge: '执行中断，可能已执行过', attempt: '第 3 次尝试' })
+  it('reason=interrupted、attempt=3 → 徽标 +「第 3 次执行被中断」', () => {
+    expect(view({ reason: 'interrupted', attempt: 3 })).toEqual({ badge: '执行中断，可能已执行过', attempt: '第 3 次执行被中断' })
+  })
+
+  it('reason=interrupted、attempt=1 → 「第 1 次执行被中断」（attempt 是被中断那次执行的序号，不加 1）', () => {
+    expect(view({ reason: 'interrupted', attempt: 1 })).toEqual({ badge: '执行中断，可能已执行过', attempt: '第 1 次执行被中断' })
   })
 
   it('reason=interrupted、attempt=null → 有徽标，没有次数', () => {
@@ -96,7 +100,7 @@ describe('handleDecideError：409 APR-2104 / APR-2103 专门提示并刷新', ()
 })
 
 describe('码集合只定义一处', () => {
-  it('APPROVAL_STALE_CODES = {APR-2104, APR-2103}，不含 CFG-8503', () => {
+  it('APPROVAL_STALE_CODES = {APR-2104, APR-2103}（APR-2103 兜底），不含 CFG-8503', () => {
     const codes = mod.APPROVAL_STALE_CODES as ReadonlySet<string> | undefined
     expect(codes ? [...codes] : null).toEqual(['APR-2104', 'APR-2103'])
     expect(codes?.has('CFG-8503')).toBe(false)
