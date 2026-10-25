@@ -63,9 +63,11 @@ afterAll(async () => {
   await app?.close();
 });
 
+const POSITIVE_INT = /^[1-9][0-9]*$/;
+
 describe("P2 Idempotency-Key is resolved before the daily quota (/open runs + invoke)", () => {
   for (const { mode, url } of MODES) {
-    it(`${mode}: replay with quota NOT used up is unchanged (200 + Idempotency-Replayed, same body, no new Run)`, async () => {
+    it(`IDQ-01 ${mode}: replay with quota NOT used up is unchanged (200 + Idempotency-Replayed, same body, no new Run)`, async () => {
       const { appId, key } = await makeApp(`ok-${mode}`);
       const h = { authorization: `Bearer ${key}`, "idempotency-key": `idem-ok-${suffix}` };
       const first = await app.inject({ method: "POST", url: url(), headers: h, payload: { text: "hi" } });
@@ -77,20 +79,22 @@ describe("P2 Idempotency-Key is resolved before the daily quota (/open runs + in
       expect(await runCount(appId)).toBe(1);
     });
 
-    it(`${mode}: quota used up + replay of an existing key -> stored response (same runId), not 429, no new Run`, async () => {
+    it(`IDQ-01 ${mode}: quota used up + replay of an existing key -> same response as a normal replay (status, body, runId), not 429, no new Run`, async () => {
       const { appId, key } = await makeApp(`replay-${mode}`);
       const h = { authorization: `Bearer ${key}`, "idempotency-key": `idem-old-${suffix}` };
       const first = await app.inject({ method: "POST", url: url(), headers: h, payload: { text: "hi" } });
       expect(first.statusCode, first.body).toBe(202);
+      const before = await app.inject({ method: "POST", url: url(), headers: h, payload: { text: "hi" } });
       await exhaust(appId);
       const replay = await app.inject({ method: "POST", url: url(), headers: h, payload: { text: "hi" } });
-      expect(replay.statusCode, replay.body).toBe(200);
+      expect(replay.statusCode, replay.body).toBe(before.statusCode);
       expect(replay.headers["idempotency-replayed"]).toBe("true");
+      expect(replay.json()).toEqual(first.json());
       expect((replay.json() as { runId: string }).runId).toBe((first.json() as { runId: string }).runId);
       expect(await runCount(appId)).toBe(1);
     });
 
-    it(`${mode}: quota used up + new key (and no key) -> still 429 OPN-4501, no Run, no idempotency row left`, async () => {
+    it(`IDQ-02 ${mode}: quota used up + new key (and no key) -> still 429 OPN-4501 with Retry-After, no Run, no idempotency row left`, async () => {
       const { appId, key } = await makeApp(`new-${mode}`);
       const seed = await app.inject({ method: "POST", url: url(), headers: { authorization: `Bearer ${key}` }, payload: { text: "hi" } });
       expect(seed.statusCode, seed.body).toBe(202);
@@ -99,9 +103,51 @@ describe("P2 Idempotency-Key is resolved before the daily quota (/open runs + in
       const res = await app.inject({ method: "POST", url: url(), headers: { authorization: `Bearer ${key}`, "idempotency-key": fresh }, payload: { text: "hi" } });
       expect(res.statusCode, res.body).toBe(429);
       expect(errorOf(res).code).toBe("OPN-4501");
+      expect(String(res.headers["retry-after"] ?? "")).toMatch(POSITIVE_INT);
       expect(await idemRows(appId, fresh)).toBe(0);
       const noKey = await app.inject({ method: "POST", url: url(), headers: { authorization: `Bearer ${key}` }, payload: { text: "hi" } });
       expect(noKey.statusCode, noKey.body).toBe(429);
+      expect(errorOf(noKey).code).toBe("OPN-4501");
+      expect(String(noKey.headers["retry-after"] ?? "")).toMatch(POSITIVE_INT);
+      expect(await runCount(appId)).toBe(1);
+    });
+
+    it(`IDQ-03 ${mode}: one Run left, N replays do not use it up; the first new key still succeeds, the next is 429`, async () => {
+      const { appId, key } = await makeApp(`left1-${mode}`);
+      await execute("UPDATE api_apps SET daily_quota = 2 WHERE id = ?", [appId]);
+      const auth = { authorization: `Bearer ${key}` };
+      const h = { ...auth, "idempotency-key": `idem-a-${suffix}` };
+      const first = await app.inject({ method: "POST", url: url(), headers: h, payload: { text: "hi" } });
+      expect(first.statusCode, first.body).toBe(202);
+      for (let i = 0; i < 5; i += 1) {
+        const replay = await app.inject({ method: "POST", url: url(), headers: h, payload: { text: "hi" } });
+        expect(replay.statusCode, replay.body).toBe(200);
+        expect(replay.json()).toEqual(first.json());
+      }
+      expect(await runCount(appId)).toBe(1);
+      const fresh = await app.inject({ method: "POST", url: url(), headers: { ...auth, "idempotency-key": `idem-b-${suffix}` }, payload: { text: "hi" } });
+      expect(fresh.statusCode, fresh.body).toBe(202);
+      expect((fresh.json() as { runId: string }).runId).not.toBe((first.json() as { runId: string }).runId);
+      expect(await runCount(appId)).toBe(2);
+      const over = await app.inject({ method: "POST", url: url(), headers: { ...auth, "idempotency-key": `idem-c-${suffix}` }, payload: { text: "hi" } });
+      expect(over.statusCode, over.body).toBe(429);
+      expect(errorOf(over).code).toBe("OPN-4501");
+      expect(await runCount(appId)).toBe(2);
+    });
+
+    it(`IDQ-04 ${mode}: same key + different body is 409 OPN-4503 as before, and stays 409 (not 429) with the quota used up`, async () => {
+      const { appId, key } = await makeApp(`diff-${mode}`);
+      const h = { authorization: `Bearer ${key}`, "idempotency-key": `idem-diff-${suffix}` };
+      const first = await app.inject({ method: "POST", url: url(), headers: h, payload: { text: "hi" } });
+      expect(first.statusCode, first.body).toBe(202);
+      const conflict = await app.inject({ method: "POST", url: url(), headers: h, payload: { text: "bye" } });
+      expect(conflict.statusCode, conflict.body).toBe(409);
+      expect(errorOf(conflict).code).toBe("OPN-4503");
+      await exhaust(appId);
+      const conflictUsedUp = await app.inject({ method: "POST", url: url(), headers: h, payload: { text: "bye" } });
+      expect(conflictUsedUp.statusCode, conflictUsedUp.body).toBe(409);
+      expect(errorOf(conflictUsedUp).code).toBe("OPN-4503");
+      expect(conflictUsedUp.json()).toMatchObject({ error: { code: "OPN-4503", message: errorOf(conflict).message } });
       expect(await runCount(appId)).toBe(1);
     });
   }

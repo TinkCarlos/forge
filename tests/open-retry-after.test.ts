@@ -55,7 +55,7 @@ afterAll(async () => {
 });
 
 describe("P3 Retry-After on every 429", () => {
-  it("RPM 429 OPN-4502: Retry-After = whole seconds left in the current minute window (1..60)", async () => {
+  it("RA-01 RPM 429 OPN-4502: Retry-After = whole seconds left in the current minute window (1..60)", async () => {
     const key = await makeApp("rpm", 1, 1000);
     const h = { authorization: `Bearer ${key}` };
     let limited: LightMyRequestResponse | null = null;
@@ -76,7 +76,7 @@ describe("P3 Retry-After on every 429", () => {
     expect(Math.abs(Number(value) - Math.max(1, expected))).toBeLessThanOrEqual(1);
   });
 
-  it("daily quota 429 OPN-4501: Retry-After = seconds to the DB's next midnight (1..86400), runs and invoke", async () => {
+  it("RA-01 daily quota 429 OPN-4501: Retry-After = seconds to the DB's next midnight (1..86400), runs and invoke", async () => {
     const key = await makeApp("daily", 1000, 1);
     const h = { authorization: `Bearer ${key}` };
     const seed = await app.inject({ method: "POST", url: `/open/v1/agents/${agentKey}/runs`, headers: h, payload: { text: "hi" } });
@@ -95,7 +95,7 @@ describe("P3 Retry-After on every 429", () => {
     expect((await query<{ n: number }>("SELECT COUNT(*) AS n FROM runs WHERE agent_id = ?", [agentId]))[0]!.n).toBe(1);
   });
 
-  it("daily quota: if the DB cannot report its next midnight (null / error), Retry-After falls back to 3600", async () => {
+  it("RA-01 daily quota: if the DB cannot report its next midnight (null / error), Retry-After falls back to 3600", async () => {
     const key = await makeApp("fallback", 1000, 1);
     const h = { authorization: `Bearer ${key}` };
     expect((await app.inject({ method: "POST", url: `/open/v1/agents/${agentKey}/runs`, headers: h, payload: { text: "hi" } })).statusCode).toBe(202);
@@ -114,7 +114,7 @@ describe("P3 Retry-After on every 429", () => {
     }
   });
 
-  it("non-429 responses carry no Retry-After", async () => {
+  it("RA-01 non-429 responses carry no Retry-After", async () => {
     const key = await makeApp("none", 1000, 1000);
     const res = await app.inject({ method: "GET", url: "/open/v1/agents", headers: { authorization: `Bearer ${key}` } });
     expect(res.statusCode).toBe(200);
