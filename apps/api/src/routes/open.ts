@@ -61,6 +61,16 @@ async function openApp(request: FastifyRequest, scope: string): Promise<AppConte
   return { principal, app };
 }
 
+/**
+ * Daily Run quota (OPN-4501). P2 (architect on d26f2f4): called inside resolveIdempotentCreate's `create`, i.e. after
+ * the Idempotency-Key is resolved, so replaying a stored response never hits the quota; a new key (or no key) on a
+ * used-up quota is still 429 and its reservation is removed by resolveIdempotentCreate.
+ */
+async function assertDailyQuota(app: Record<string, unknown>): Promise<void> {
+  const runCount = await repos.countAppRunsToday(String(app.id));
+  if (runCount >= Number(app.daily_quota ?? 1000)) throw new ForgeError("OPN-4501", "应用今日配额已用完", 429);
+}
+
 function openPresentRun(run: RunRow) {
   return presentRun(run);
 }
@@ -102,8 +112,6 @@ export default async function openRoutes(app: FastifyInstance): Promise<void> {
     assertAgentRunnable(agent);
     assertValidInput(request);
     const appOrg = context.app.owner_org_unit_id ? String(context.app.owner_org_unit_id) : null;
-    const runCount = await repos.countAppRunsToday(String(context.app.id));
-    if (runCount >= Number(context.app.daily_quota ?? 1000)) throw new ForgeError("OPN-4501", "应用今日配额已用完", 429);
     const body = bodyOf(request);
     const header = request.headers["idempotency-key"];
     const idempotencyKey = Array.isArray(header) ? header[0] : header;
@@ -116,6 +124,7 @@ export default async function openRoutes(app: FastifyInstance): Promise<void> {
       key: idempotencyKey,
       requestHash: idempotencyRequestHash({ agentKey: agent.key, body }),
       create: async () => {
+        await assertDailyQuota(context.app);
         const runId = await createQueuedRun({
           agentId: agent.id,
           versionId,
@@ -142,8 +151,6 @@ export default async function openRoutes(app: FastifyInstance): Promise<void> {
     assertValidInput(request);
     const versionId = agent.published_version_id;
     const appOrg = context.app.owner_org_unit_id ? String(context.app.owner_org_unit_id) : null;
-    const runCount = await repos.countAppRunsToday(String(context.app.id));
-    if (runCount >= Number(context.app.daily_quota ?? 1000)) throw new ForgeError("OPN-4501", "应用今日配额已用完", 429);
     const body = bodyOf(request);
     const header = request.headers["idempotency-key"];
     const idempotencyKey = Array.isArray(header) ? header[0] : header;
@@ -155,6 +162,7 @@ export default async function openRoutes(app: FastifyInstance): Promise<void> {
       key: idempotencyKey,
       requestHash: idempotencyRequestHash({ agentKey: agent.key, mode: "invoke", wait, body }),
       create: async () => {
+        await assertDailyQuota(context.app);
         const runId = await createQueuedRun({
           agentId: agent.id,
           versionId,
