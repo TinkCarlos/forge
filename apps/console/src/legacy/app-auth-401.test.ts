@@ -117,10 +117,10 @@ function harness(routes: Record<string, Resp | ((n: number) => Resp)> = {}) {
   }
   const names = Object.keys(deps)
   const fnNames = ['esc', 'errorText', 'toast', 'api', 'showLogin', 'showApp', 'init', 'enterApp', 'statusPill', 'field', 'select',
-    'openModal', 'runMessagesHtml', 'runToolsHtml', 'runToolbarHtml', 'renderRunView', 'renderStreamStatus', 'listenRun', 'connectRunStream',
+    'openModal', 'runMessagesHtml', 'runToolsHtml', 'runFailureText', 'toolInterruptedText', 'runEventText', 'runToolbarHtml', 'renderRunView', 'renderStreamStatus', 'listenRun', 'connectRunStream',
     'syncRunFromRest', 'endRunStream', 'closeStream']
   const optional = ['handleSessionExpired', 'appScopesHint'].filter(hasFn)
-  const consts = ['RUN_TERMINAL_EVENTS', 'RUN_ACTIVE_STATUSES', 'STREAM_MAX_RETRIES', 'SESSION_EXPIRED_TEXT', 'APP_SCOPES_HINT_ID'].map(constLine).join('\n')
+  const consts = ['RUN_TERMINAL_EVENTS', 'RUN_ACTIVE_STATUSES', 'STREAM_MAX_RETRIES', 'RUN_APPROVAL_EXPIRED_CODE', 'RUN_APPROVAL_EXPIRED_TEXT', 'SESSION_EXPIRED_TEXT', 'APP_SCOPES_HINT_ID'].map(constLine).join('\n')
   const src = `${consts}\n${[...fnNames, ...optional].map(fnSource).join('\n')}\nreturn { api, init, enterApp, openModal, listenRun, syncRunFromRest, closeStream, ${method('openAppEdit')} };`
   const app = new Function(...names, src)(...names.map((n) => deps[n])) as {
     api(path: string, o?: Record<string, unknown>): Promise<unknown>
