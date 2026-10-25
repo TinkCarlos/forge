@@ -39,10 +39,11 @@ export interface ApiProcess {
 }
 
 /** Test-only preloads in tests/helpers (node --import); nothing in apps/ can turn them on. */
-export type TestPreload = "slow-threadpool" | "stuck-flush";
+export type TestPreload = "slow-threadpool" | "stuck-flush" | "pending-pool-end";
 const PRELOAD_FILES: Record<TestPreload, string> = {
   "slow-threadpool": "preload-slow-threadpool.mjs",
   "stuck-flush": "preload-stuck-flush.mjs",
+  "pending-pool-end": "preload-pending-pool-end.mjs",
 };
 
 /** Written to stderr by preload-signal-ready.mjs once the child's SIGTERM handler is installed. */

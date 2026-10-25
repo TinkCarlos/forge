@@ -58,8 +58,18 @@ export function createShutdown(deps: ShutdownDeps): (signal: string) => Promise<
       // from Fastify's preClose hook instead (a few ms later), so the two ms series do not share a zero.
       const startedAt = Date.now();
       // phaseSeq: shared with plugins/sse-shutdown.ts (phase-seq.ts), the order the phases were logged in.
-      const step = (phase: string, extra: Record<string, unknown> = {}): void =>
+      // exit is the last phase: once it is logged (normal path or backstop), steps of a drain that finishes late are
+      // not logged any more.
+      let exitLogged = false;
+      const step = (phase: string, extra: Record<string, unknown> = {}): void => {
+        if (exitLogged) return;
+        if (phase === "exit") exitLogged = true;
         deps.info?.(`shutdown (${signal}): ${phase}`, { phase, phaseSeq: nextPhaseSeq(), ms: Date.now() - startedAt, ...extra });
+      };
+      const exitFields = (exitCode: number): Record<string, unknown> => ({
+        code: exitCode,
+        ...(deps.activeResources ? { activeResources: countResources(deps.activeResources()) } : {}),
+      });
 
       let finishing: Promise<void> | null = null;
       /** Flush the logger for at most `limitMs`, then exit(exitCode). Only the first call does anything. */
@@ -114,14 +124,16 @@ export function createShutdown(deps: ShutdownDeps): (signal: string) => Promise<
       // stalled: it is neither unused nor idle, so it is never closed (see closeUnusedConnections in
       // plugins/sse-shutdown.ts) and the exit is 1 at timeoutMs - 1000 (+ at most BACKSTOP_FLUSH_MS of flush).
       // Normal clients never do this.
+      // Not unref'd: a drain can wait on a promise that holds no handle (nothing else keeps the event loop alive); an
+      // unref'd timer let the process end there with code 0 and no exit line (SIG-12). Cleared on the normal path.
       const drainDeadlineMs = deps.timeoutMs - BACKSTOP_FLUSH_MS - EXIT_MARGIN_MS;
       const timer = setTimeout(() => {
         if (finishing) return;
         deps.log(`shutdown (${signal}) timed out after ${deps.timeoutMs} ms`);
         step("drain_timeout", { code: 1 });
+        step("exit", exitFields(1));
         void finish(1, BACKSTOP_FLUSH_MS);
       }, drainDeadlineMs);
-      timer.unref?.();
       try {
         await deps.close();
       } catch (error) {
@@ -146,7 +158,7 @@ export function createShutdown(deps: ShutdownDeps): (signal: string) => Promise<
       // The backstop already fired (drain_timeout): it does the exit, with code 1.
       if (finishing) return finishing;
       clearTimeout(timer);
-      step("exit", { code, ...(deps.activeResources ? { activeResources: countResources(deps.activeResources()) } : {}) });
+      step("exit", exitFields(code));
       const flushLimitMs = Math.max(0, Math.min(FLUSH_TIMEOUT_MS, startedAt + deps.timeoutMs - EXIT_MARGIN_MS - Date.now()));
       return finish(code, flushLimitMs);
     })();

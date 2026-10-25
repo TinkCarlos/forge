@@ -49,6 +49,30 @@ describe("P3-07 graceful shutdown", () => {
     expect(order.at(-1)).toBe("exit:1");
   });
 
+  it("the backstop timer is not unref'd (it must hold a drain waiting on a handle-less promise) and is cleared on the normal path", async () => {
+    const unref = vi.fn();
+    const real = globalThis.setTimeout;
+    const handles: Array<ReturnType<typeof setTimeout>> = [];
+    const spy = vi.spyOn(globalThis, "setTimeout").mockImplementation(((fn: () => void, ms?: number) => {
+      const handle = real(fn, ms);
+      handle.unref = unref as never;
+      handles.push(handle);
+      return handle;
+    }) as never);
+    const clear = vi.spyOn(globalThis, "clearTimeout");
+    try {
+      const { d } = deps();
+      await createShutdown(d as never)("SIGTERM");
+      expect(handles.length).toBeGreaterThanOrEqual(1);
+      expect(unref).not.toHaveBeenCalled();
+      expect(clear).toHaveBeenCalledWith(handles[0]);
+      expect(d.exit).toHaveBeenCalledWith(0);
+    } finally {
+      spy.mockRestore();
+      clear.mockRestore();
+    }
+  });
+
   it("a hung close is cut off by the backstop: drain_timeout, exit 1, before timeoutMs", async () => {
     vi.useFakeTimers();
     const lines: string[] = [];
@@ -58,7 +82,7 @@ describe("P3-07 graceful shutdown", () => {
     await vi.advanceTimersByTimeAsync(8_999);
     expect(d.exit).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
-    expect(lines).toEqual(["signal", "drain_timeout"]);
+    expect(lines).toEqual(["signal", "drain_timeout", "exit"]);
     expect(d.log).toHaveBeenCalledWith("shutdown (SIGTERM) timed out after 10000 ms");
     expect(d.exit).toHaveBeenCalledWith(1); // no flush dependency here: exit at once
   });
@@ -126,12 +150,18 @@ describe("P3-07 graceful shutdown", () => {
     expect(JSON.parse(writeStderrSync.mock.calls[0]![0] as string)).toMatchObject({ phase: "flush_timeout", timeoutMs: 1500, code: 0 });
     expect(d.exit).toHaveBeenCalledWith(0);
 
-    const late = flushDeps({ close: vi.fn(() => new Promise<void>((resolve) => setTimeout(resolve, 9_200))) });
+    const latePhases: string[] = [];
+    const late = flushDeps({
+      close: vi.fn(() => new Promise<void>((resolve) => setTimeout(resolve, 9_200))),
+      info: vi.fn((_m: string, f: Record<string, unknown>) => latePhases.push(f.phase as string)),
+    });
     void createShutdown(late.d as never)("SIGTERM");
     await vi.advanceTimersByTimeAsync(10_000);
     expect(late.d.exit).toHaveBeenCalledTimes(1);
     expect(late.d.exit).toHaveBeenCalledWith(1);
     expect(late.writeStderrSync).toHaveBeenCalledTimes(1);
+    // exit stays the last phase: the late drain's app_close ... pool_end are not logged after it.
+    expect(latePhases).toEqual(["signal", "drain_timeout", "exit"]);
   });
 
   it("phaseSeq: every phase line carries the next number of one shared counter (strictly increasing, none repeated)", async () => {
