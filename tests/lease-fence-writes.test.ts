@@ -22,7 +22,7 @@ async function seedTakenOver(): Promise<Seeded> {
   const toolCallId = await repos.addToolCall({ runId, toolKey: "web_fetch", args: { url: "https://example.com" }, risk: "medium", status: "running" });
   const stepId = await repos.addRunStep({ runId, type: "call_model" });
   const pendingCall = await repos.addToolCall({ runId, toolKey: "mail.send", args: {}, risk: "high", status: "pending" });
-  const approvalId = await repos.addApproval({ runId, toolCallId: pendingCall, risk: "high", timeoutSeconds: 1 });
+  const approvalId = (await repos.addApproval({ runId, toolCallId: pendingCall, risk: "high", timeoutSeconds: 1 })).id;
   await execute("UPDATE approvals SET expires_at = DATE_SUB(CURRENT_TIMESTAMP(3), INTERVAL 1 MINUTE) WHERE id = ?", [approvalId]);
   await repos.expireRunLease(runId, "w-old");
   const claimed = await repos.claimRun(runId, "w-new", 30, false);
@@ -51,6 +51,7 @@ function writes(s: Seeded): Array<[string, () => Promise<unknown>]> {
     ["updateToolCall", () => repos.updateToolCall(s.toolCallId, { status: "succeeded", resultText: "late" })],
     ["addApproval", () => repos.addApproval({ runId: s.runId, toolCallId: s.toolCallId, risk: "high", timeoutSeconds: 60 })],
     ["timeoutApprovals", () => repos.timeoutApprovals(s.runId)],
+    ["rejectOverdueApproval", () => repos.rejectOverdueApproval(s.approvalId, s.runId)],
     ["failRunningSteps", () => repos.failRunningSteps(s.runId, "call_model", "MDL-3001")],
     ["addEvent", () => repos.addEvent(s.runId, "message.completed", { text: "late" })],
   ];
@@ -92,7 +93,8 @@ describe("P3-09 lease-fenced writes (runs.claimed_by)", () => {
     expect(after.run).toMatchObject({ status: "succeeded", claimed_by: "w-new" });
     expect(after.messages).toHaveLength(1);
     expect(after.toolCalls.find((row) => row.id === seeded.toolCallId)).toMatchObject({ status: "succeeded", result_text: "late" });
-    expect(after.approvals.find((row) => row.id === seeded.approvalId)).toMatchObject({ status: "expired" });
+    // timeoutApprovals expired it, then (r5) rejectOverdueApproval turned the expired approval into a system rejection.
+    expect(after.approvals.find((row) => row.id === seeded.approvalId)).toMatchObject({ status: "rejected" });
   });
 
   it("writes outside a lease scope (admin paths) are not fenced", async () => {

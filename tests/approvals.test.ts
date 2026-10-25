@@ -35,7 +35,7 @@ async function pendingApproval(orgUnitId: string, args: unknown, toolKey = "mail
   const threadId = await repos.createThread({ agentId, orgUnitId, subjectType: "user", subjectId: ADMIN_ID });
   const runId = await repos.createRun({ threadId, agentId, agentVersionId: versionId, orgUnitId, subjectType: "user", subjectId: ADMIN_ID, input: { text: "x" }, status: "waiting_approval" });
   const toolCallId = await repos.addToolCall({ runId, toolKey, args, risk: "high", status: "pending" });
-  return repos.addApproval({ runId, toolCallId, risk: "high", timeoutSeconds: 3600 });
+  return (await repos.addApproval({ runId, toolCallId, risk: "high", timeoutSeconds: 3600 })).id;
 }
 
 beforeAll(async () => {

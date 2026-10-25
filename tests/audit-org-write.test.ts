@@ -45,7 +45,7 @@ beforeAll(async () => {
   ids.thread = await repos.createThread({ agentId: ids.agent, orgUnitId: A, subjectType: "user", subjectId: ADMIN_ID });
   ids.run = await repos.createRun({ threadId: ids.thread, agentId: ids.agent, agentVersionId: ids.agent_version, orgUnitId: A, subjectType: "user", subjectId: ADMIN_ID, input: { text: "x" }, status: "waiting_approval" });
   ids.toolCall = await repos.addToolCall({ runId: ids.run, toolKey: "echo", args: {}, risk: "high", status: "pending" });
-  ids.approval = await repos.addApproval({ runId: ids.run, toolCallId: ids.toolCall, risk: "high", timeoutSeconds: 3600 });
+  ids.approval = (await repos.addApproval({ runId: ids.run, toolCallId: ids.toolCall, risk: "high", timeoutSeconds: 3600 })).id;
   ids.service_account = await repos.createServiceAccount({ key: `it-aw-svc-${suffix}`, name: "IT aw svc", orgUnitId: A, role: "operator", dataScope: "org", createdBy: ADMIN_ID });
   ids.schedule = await repos.createSchedule({
     key: `it-aw-${suffix}`, name: "IT aw", agentId: ids.agent, orgUnitId: A, subjectType: "service", subjectId: ids.service_account, serviceAccountId: ids.service_account,

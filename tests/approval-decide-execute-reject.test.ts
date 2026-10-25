@@ -12,6 +12,8 @@ class StubForgeError extends Error {
 }
 vi.mock("@forge/core", () => ({
   ForgeError: StubForgeError,
+  APPROVAL_NOT_PENDING_CODE: "APR-2104",
+  APPROVAL_EXPIRED_CODE: "APR-2102",
   config: { LEASE_TTL_SECONDS: 30 },
   errors: {
     notFound: (m: string) => new StubForgeError("RUN-7001", m, 404),

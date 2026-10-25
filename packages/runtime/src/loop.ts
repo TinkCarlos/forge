@@ -1,4 +1,5 @@
 import {
+  APPROVAL_EXPIRED_CODE,
   config,
   errors,
   ForgeError,
@@ -21,6 +22,8 @@ import { assertLeaseHeld, LeaseLostError, settleToolCalls, toolIdempotencyKey } 
 import { deliverDueWebhooks, enqueueRunWebhook } from "./webhook.js";
 
 const TERMINAL = ["succeeded", "failed", "cancelled", "budget_exhausted"];
+/** r5 §2.6: the Run's approval expired longer than APPROVAL_EXPIRED_GRACE_SECONDS ago. */
+const APPROVAL_EXPIRED_MESSAGE = "审批已过期，Run 已终止";
 
 type RunField = { usage: LlmUsage; costUsd: number };
 
@@ -98,6 +101,10 @@ async function runLoop(run: RunRow, workerId: string, lease: AbortSignal): Promi
     }
 
     const openState = await settleToolCalls(fresh, spec, tools, lease);
+    if (openState === "expired") {
+      await finalize(fresh, "failed", null, APPROVAL_EXPIRED_CODE, APPROVAL_EXPIRED_MESSAGE);
+      return;
+    }
     if (openState === "waiting") return;
 
     const historyRows = await repos.listThreadMessages(fresh.thread_id);
@@ -274,6 +281,10 @@ async function runLoop(run: RunRow, workerId: string, lease: AbortSignal): Promi
     }
 
     const state = await settleToolCalls(fresh, spec, tools, lease);
+    if (state === "expired") {
+      await finalize(fresh, "failed", null, APPROVAL_EXPIRED_CODE, APPROVAL_EXPIRED_MESSAGE);
+      return;
+    }
     if (state === "waiting") return;
   }
 }

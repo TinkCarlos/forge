@@ -180,6 +180,11 @@ export class ForgeError extends Error {
   }
 }
 
+/** 409 on deciding an approval that is not pending any more, lost a concurrent decision, or expired (r5 §2.7). */
+export const APPROVAL_NOT_PENDING_CODE = "APR-2104";
+/** Run failed because its approval expired longer than APPROVAL_EXPIRED_GRACE_SECONDS ago (r5 §2.6). */
+export const APPROVAL_EXPIRED_CODE = "APR-2102";
+
 export const errors = {
   unauthorized: (message = "未登录或会话已过期") => new ForgeError("AUTH-1001", message, 401),
   forbidden: (message = "没有权限执行该操作") => new ForgeError("POL-2001", message, 403),
