@@ -106,7 +106,7 @@
 | GET | `/agents` | Agent 目录 | `agents:read` |
 | GET | `/agents/{agentKey}` | Agent 详情与输入/输出 Schema | `agents:read` |
 | POST | `/agents/{agentKey}/runs` | 创建异步 Run | `runs:create` |
-| POST | `/agents/{agentKey}/invoke` | 创建并等待结果（最长 120s） | `runs:create`, `runs:read` |
+| POST | `/agents/{agentKey}/invoke` | 创建并等待结果（最长 120s） | `runs:create` |
 | GET | `/runs/{runId}` | 查询 Run | `runs:read` |
 | GET | `/runs/{runId}/result` | 获取最终结果 | `runs:read` |
 | GET | `/runs/{runId}/messages` | **未实现（请求返回 404）**；获取会话消息 | `runs:read` |
@@ -223,6 +223,7 @@ Idempotency-Key: 4b1c6f0e-...
 ### `POST /open/v1/agents/{agentKey}/invoke?wait=60`
 
 - 请求体与创建 Run 相同；`wait` 范围 1–120 秒，默认 30。
+- Scope 只需 `runs:create`（与创建 Run 相同）：返回的是本次调用刚创建的 Run 的结果，不需要 `runs:read`。之后再用 `/runs/{runId}` 等接口查询或订阅事件才需要 `runs:read`。
 - 在等待时间内完成：`200`，返回 Run 结果对象（含 `output`、`usage`、`artifacts`）。
 - 超时仍在运行：`202`，返回与创建 Run 相同的响应；调用方继续查询或订阅 SSE。
 - 失败/取消/预算耗尽：`200`，返回带 `status` 与 `error` 的结果对象。
