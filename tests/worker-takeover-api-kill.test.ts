@@ -155,7 +155,7 @@ async function killApiMidTool(toolKey: string, readOnly: boolean, path: string):
   expect(hits[path]).toBe(1);
   const during = await runState(seeded.runId);
   expect(during.status).toBe("running");
-  expect(during.claimed_by).toMatch(new RegExp(`:${api.child.pid}$`)); // executed in the API process (hostname:pid)
+  expect(during.claimed_by).toMatch(new RegExp(`:${api.child.pid}:[0-9a-f]{8}$`)); // executed in the API process (hostname:pid:epoch)
   expect((await toolRow(seeded.rowId)).status).toBe("running");
   api.child.kill("SIGKILL");
   await api.exited;
