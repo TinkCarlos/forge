@@ -7,6 +7,8 @@ import type { FastifyInstance } from "fastify";
 // transaction as the Run's status change: status `expired` (existing value, the same one the decide path already uses
 // for "Run 已结束"). They leave the pending list; deciding one afterwards is 409 (APR-2104, the approval is no longer
 // pending; RUN-7005 stays as the fallback for an approval still pending on a finished Run); the tool call never runs.
+// Architect ruling 15:26: after the commit, one `approval.resolved {approvalId, decision:"expired"}` (no `status` field)
+// per closed approval, through run_events, before the Run's terminal event. A rolled-back close (lease lost) emits none.
 // Only the network edge is stubbed (safeFetch counts downstream calls; assertOutboundAllowed: no DNS).
 const downstream: string[] = [];
 const safeFetch = vi.fn(async (url: string | URL) => {
@@ -58,6 +60,29 @@ async function addPendingCall(runId: string, threadId: string, step: number, tim
 const approvalStatus = async (id: string) => (await one<{ status: string }>("SELECT status FROM approvals WHERE id = ?", [id]))!.status;
 const toolStatus = async (id: string) => (await one<{ status: string }>("SELECT status FROM tool_calls WHERE id = ?", [id]))!.status;
 const runStatus = async (id: string) => (await one<{ status: string }>("SELECT status FROM runs WHERE id = ?", [id]))!.status;
+type EventRow = { seq: number; type: string; data_json: unknown };
+async function runEvents(runId: string): Promise<Array<{ seq: number; type: string; data: Record<string, unknown> }>> {
+  const rows = await query<EventRow>("SELECT seq, type, data_json FROM run_events WHERE run_id = ? ORDER BY seq", [runId]);
+  return rows.map((row) => ({ seq: Number(row.seq), type: row.type, data: (typeof row.data_json === "string" ? JSON.parse(row.data_json) : row.data_json) as Record<string, unknown> }));
+}
+const TERMINAL_EVENTS = ["run.completed", "run.failed", "run.cancelled", "run.budget_exhausted"];
+
+/** One approval.resolved {approvalId, decision:"expired"} (no status) per closed approval, all before the terminal event. */
+async function expectResolvedBeforeTerminal(runId: string, closedIds: string[], terminalType: string): Promise<void> {
+  const all = await runEvents(runId);
+  const terminal = all.filter((event) => TERMINAL_EVENTS.includes(event.type));
+  expect(terminal.map((event) => event.type)).toEqual([terminalType]);
+  const expired = all.filter((event) => event.type === "approval.resolved" && event.data.decision === "expired");
+  expect(expired.map((event) => event.data).sort((a, b) => String(a.approvalId).localeCompare(String(b.approvalId))))
+    .toEqual([...closedIds].sort().map((approvalId) => ({ approvalId, decision: "expired" })));
+  for (const event of expired) {
+    expect(Object.keys(event.data).sort()).toEqual(["approvalId", "decision"]);
+    expect(event.data).not.toHaveProperty("status");
+    expect(event.seq).toBeLessThan(terminal[0]!.seq);
+  }
+}
+const resolvedEvents = async (runId: string) => (await runEvents(runId)).filter((event) => event.type === "approval.resolved");
+
 const decide = (id: string, decision = "approved") => app.inject({ method: "POST", url: `/admin/api/approvals/${id}/decide`, headers, payload: { decision } });
 
 /** Every pending approval id the admin list shows (all pages). */
@@ -139,7 +164,18 @@ describe("a Run reaching a terminal status closes its pending approvals", () => 
     const res = await app.inject({ method: "POST", url: `/admin/api/runs/${seeded.runId}/cancel`, headers });
     expect(res.statusCode, res.body).toBe(200);
     expect(await runStatus(seeded.runId)).toBe("cancelled");
+    await expectResolvedBeforeTerminal(seeded.runId, [seeded.approvalId], "run.cancelled");
     await expectClosed(seeded);
+  });
+
+  it("several pending approvals: one event per closed approval, all before the terminal event", async () => {
+    downstream.length = 0;
+    const seeded = await seedWaiting();
+    const second = await addPendingCall(seeded.runId, seeded.threadId, 2);
+    await finalize((await repos.getRun(seeded.runId))!, "failed", null, "SYS-9001", "boom");
+    await expectResolvedBeforeTerminal(seeded.runId, [seeded.approvalId, second.approvalId], "run.failed");
+    await expectClosed(seeded);
+    await expectClosed({ runId: seeded.runId, ...second });
   });
 
   it("failed (finalize failed): closed", async () => {
@@ -147,6 +183,7 @@ describe("a Run reaching a terminal status closes its pending approvals", () => 
     const seeded = await seedWaiting();
     await finalize((await repos.getRun(seeded.runId))!, "failed", null, "SYS-9001", "boom");
     expect(await runStatus(seeded.runId)).toBe("failed");
+    await expectResolvedBeforeTerminal(seeded.runId, [seeded.approvalId], "run.failed");
     await expectClosed(seeded);
   });
 
@@ -155,6 +192,7 @@ describe("a Run reaching a terminal status closes its pending approvals", () => 
     const seeded = await seedWaiting();
     await finalize((await repos.getRun(seeded.runId))!, "succeeded", { text: "done" });
     expect(await runStatus(seeded.runId)).toBe("succeeded");
+    await expectResolvedBeforeTerminal(seeded.runId, [seeded.approvalId], "run.completed");
     await expectClosed(seeded);
   });
 
@@ -169,6 +207,8 @@ describe("a Run reaching a terminal status closes its pending approvals", () => 
     await runClaimed(claimed!, workerId);
     expect((await one<{ status: string; error_code: string | null }>("SELECT status, error_code FROM runs WHERE id = ?", [seeded.runId]))).toMatchObject({ status: "failed", error_code: "APR-2102" });
     expect(await approvalStatus(seeded.approvalId)).toBe("rejected");
+    // Only the closed one gets decision "expired"; the overdue (rejected) one is not reported as expired.
+    await expectResolvedBeforeTerminal(seeded.runId, [other.approvalId], "run.failed");
     await expectClosed({ runId: seeded.runId, ...other });
   });
 
@@ -178,10 +218,12 @@ describe("a Run reaching a terminal status closes its pending approvals", () => 
     await expect(withRunLease(seeded.runId, `w-not-holder-${suffix}`, () => finalize(run, "failed", null, "SYS-9001", "x"))).rejects.toBeInstanceOf(LeaseLostError);
     expect(await runStatus(seeded.runId)).toBe("running");
     expect(await approvalStatus(seeded.approvalId)).toBe("pending");
-    // The holder finalizes: both change together.
+    expect(await runEvents(seeded.runId)).toEqual([]); // rolled back: no approval.resolved, no terminal event
+    // The holder finalizes: both change together, then the event and the terminal event.
     await withRunLease(seeded.runId, `w-holder-${suffix}`, () => finalize(run, "failed", null, "SYS-9001", "x"));
     expect(await runStatus(seeded.runId)).toBe("failed");
     expect(await approvalStatus(seeded.approvalId)).toBe("expired");
+    await expectResolvedBeforeTerminal(seeded.runId, [seeded.approvalId], "run.failed");
   });
 
   it("decided approvals are not touched (approved / rejected keep their status and decided_at)", async () => {
@@ -191,5 +233,7 @@ describe("a Run reaching a terminal status closes its pending approvals", () => 
     const row = await one<{ status: string; decided_at: Date }>("SELECT status, decided_at FROM approvals WHERE id = ?", [seeded.approvalId]);
     expect(row?.status).toBe("rejected");
     expect(new Date(row!.decided_at).toISOString()).toBe("2026-01-01T00:00:00.000Z");
+    expect(await resolvedEvents(seeded.runId)).toEqual([]); // nothing was closed: no event
+    await expectResolvedBeforeTerminal(seeded.runId, [], "run.cancelled");
   });
 });

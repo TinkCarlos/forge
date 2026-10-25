@@ -158,7 +158,7 @@ export const runsRepo = {
   },
   async updateRun(id: string, fields: {
     status?: string; output?: unknown; usage?: unknown; costUsd?: number; errorCode?: string | null; errorMessage?: string | null; cancelRequested?: boolean; startedAt?: Date | null; completedAt?: Date | null;
-  }): Promise<void> {
+  }): Promise<{ closedApprovalIds: string[] }> {
     const sets: string[] = [];
     const params: unknown[] = [];
     if (fields.status) { sets.push("status = ?"); params.push(fields.status); }
@@ -170,15 +170,16 @@ export const runsRepo = {
     if (fields.cancelRequested !== undefined) { sets.push("cancel_requested = ?"); params.push(fields.cancelRequested ? 1 : 0); }
     if (fields.startedAt !== undefined) { sets.push("started_at = ?"); params.push(fields.startedAt); }
     if (fields.completedAt !== undefined) { sets.push("completed_at = ?"); params.push(fields.completedAt); }
-    if (!sets.length) return;
+    if (!sets.length) return { closedApprovalIds: [] };
     params.push(id);
     const owner = fenceOwnerFor(id);
     if (fields.status && TERMINAL_RUN_STATUSES.has(fields.status)) {
       // Architect ruling (front-end observation 2): a Run reaching a terminal status closes its still pending approvals
       // (status `expired`, as the decide path does for a finished Run) in the same transaction as the status write, so
       // they leave the pending list. A dropped fenced write (lease lost) rolls both back. Decided approvals are kept.
+      // Returns the closed ids (only once committed) so the caller emits approval.resolved for each (ruling 15:26).
       const values = params as Array<string | number | boolean | Date | null>;
-      await transaction(async (conn) => {
+      return transaction(async (conn) => {
         const [updated] = owner === null
           ? await conn.execute(`UPDATE runs SET ${sets.join(", ")} WHERE id = ?`, values)
           : await conn.execute(`UPDATE runs SET ${sets.join(", ")} WHERE id = ? AND claimed_by = ?`, [...values, owner]);
@@ -186,16 +187,24 @@ export const runsRepo = {
           const [held] = await conn.query("SELECT 1 AS held FROM runs WHERE id = ? AND claimed_by = ?", [id, owner]);
           if (!(held as unknown[]).length) throw new LeaseLostError();
         }
-        await conn.execute("UPDATE approvals SET status = 'expired', decided_at = CURRENT_TIMESTAMP(3) WHERE run_id = ? AND status = 'pending'", [id]);
+        const [pending] = await conn.query("SELECT id FROM approvals WHERE run_id = ? AND status = 'pending' ORDER BY created_at, id FOR UPDATE", [id]);
+        const closedApprovalIds = (pending as Array<{ id: string }>).map((row) => row.id);
+        if (closedApprovalIds.length) {
+          await conn.execute(
+            `UPDATE approvals SET status = 'expired', decided_at = CURRENT_TIMESTAMP(3) WHERE id IN (${closedApprovalIds.map(() => "?").join(",")}) AND status = 'pending'`,
+            closedApprovalIds,
+          );
+        }
+        return { closedApprovalIds };
       });
-      return;
     }
     if (owner === null) {
       await execute(`UPDATE runs SET ${sets.join(", ")} WHERE id = ?`, params);
-      return;
+      return { closedApprovalIds: [] };
     }
     const result = await execute(`UPDATE runs SET ${sets.join(", ")} WHERE id = ? AND claimed_by = ?`, [...params, owner]);
     if (result.affectedRows === 0) await assertLeaseOwned(id, owner);
+    return { closedApprovalIds: [] };
   },
   async requestCancel(id: string): Promise<void> {
     await execute("UPDATE runs SET cancel_requested = 1 WHERE id = ?", [id]);
