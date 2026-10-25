@@ -49,13 +49,19 @@ export async function finalize(
   errorCode?: string,
   errorMessage?: string,
 ): Promise<void> {
-  await repos.updateRun(run.id, {
+  const closed = await repos.updateRun(run.id, {
     status,
     output: output ?? null,
     errorCode: errorCode ?? null,
     errorMessage: errorMessage ?? null,
     completedAt: new Date(),
   });
+  // Ruling 15:26: the pending approvals closed with the terminal status (committed) are announced, before the Run's
+  // terminal event, with the existing approval.resolved payload {approvalId, decision}. A rolled-back close throws
+  // above and emits nothing.
+  for (const approvalId of closed?.closedApprovalIds ?? []) {
+    await emit(run.id, "approval.resolved", { approvalId, decision: "expired" });
+  }
   await emit(run.id, `run.${status === "succeeded" ? "completed" : status}`, {
     status,
     output: output ?? null,
