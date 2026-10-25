@@ -35,15 +35,19 @@ export function sseShuttingDown(): ForgeError {
   return new ForgeError("SYS-9003", "服务正在停机，请稍后重试", 503, undefined, true, { "Retry-After": "1" });
 }
 
-export function isDraining(app: FastifyInstance): boolean {
-  return app.forgeSse?.draining === true;
+// `app` can be undefined: streamRun is also called with a bare request (unit tests, no Fastify instance). Without
+// the registry there is no shutdown to take part in, so nothing is registered.
+export function isDraining(app: FastifyInstance | undefined): boolean {
+  return app?.forgeSse?.draining === true;
 }
 
 /** Registers an open stream; `end` stops its polling and finishes the response. Returns the unregister function. */
-export function registerSseStream(app: FastifyInstance, raw: ServerResponse, end: () => void): () => void {
-  app.forgeSse.streams.set(raw, end);
+export function registerSseStream(app: FastifyInstance | undefined, raw: ServerResponse, end: () => void): () => void {
+  const registry = app?.forgeSse;
+  if (!registry) return () => undefined;
+  registry.streams.set(raw, end);
   return () => {
-    app.forgeSse.streams.delete(raw);
+    registry.streams.delete(raw);
   };
 }
 
