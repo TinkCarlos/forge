@@ -98,6 +98,8 @@ function fmt(value) {
 }
 
 function toast(message, kind = "ok") {
+  // 空文案不弹（会话过期的错误已由 handleSessionExpired 提示过，errorText 对它返回空）
+  if (!message) return;
   const el = $("#toast");
   el.textContent = message;
   el.className = `toast ${kind}`;
@@ -109,6 +111,7 @@ function toast(message, kind = "ok") {
 // K-36：错误提示统一带上后端错误码（和新控制台一致），方便对照排查
 function errorText(error) {
   if (!(error instanceof Error)) return String(error ?? "");
+  if (error.sessionExpired) return "";
   return error.code ? `${error.message}（错误码 ${error.code}）` : error.message;
 }
 
@@ -141,8 +144,19 @@ async function api(path, options = {}) {
     payload = text;
   }
   if (response.status === 401) {
-    showLogin();
-    throw new Error(payload?.error?.message ?? "登录已过期");
+    // 不挂 code：登录失败的提示文案保持原样（只有后端 message，不追加错误码）。
+    const error = new Error(payload?.error?.message ?? "登录已过期");
+    error.status = 401;
+    // options.auth = "login"：登录请求本身（密码错等），照旧抛出失败原因，不算过期；
+    // options.auth = "probe"：会话检查（启动时 /auth/config、/auth/session，退出），安静显示登录页，不提示。
+    if (options.auth === "login") throw error;
+    if (options.auth === "probe") {
+      showLogin();
+      throw error;
+    }
+    error.sessionExpired = true;
+    handleSessionExpired();
+    throw error;
   }
   if (!response.ok) {
     const error = new Error(payload?.error?.message ?? `请求失败 (${response.status})`);
@@ -151,6 +165,18 @@ async function api(path, options = {}) {
     throw error;
   }
   return payload;
+}
+
+const SESSION_EXPIRED_TEXT = "登录已过期，请重新登录";
+
+/** 会话过期（非登录/会话检查请求收到 401）：关掉所有打开的 <dialog>、关 SSE、显示登录页；同一轮只提示一次，重新登录（enterApp）后重置。 */
+function handleSessionExpired() {
+  document.querySelectorAll("dialog[open]").forEach((dialog) => dialog.close());
+  closeStream();
+  showLogin();
+  if (state.sessionExpiredNotified) return;
+  state.sessionExpiredNotified = true;
+  toast(SESSION_EXPIRED_TEXT, "error");
 }
 
 function showLogin() {
@@ -166,7 +192,7 @@ function showApp() {
 
 async function init() {
   try {
-    const auth = await api("/auth/config");
+    const auth = await api("/auth/config", { auth: "probe" });
     $("#sso-login").classList.toggle("hidden", !auth.oidcConfigured);
     if (!auth.localLogin) {
       $("#login-form").classList.add("hidden");
@@ -182,6 +208,7 @@ async function init() {
       state.session = await api("/auth/local/login", {
         method: "POST",
         body: { email: data.get("email"), password: data.get("password") },
+        auth: "login",
       });
       await enterApp();
     } catch (error) {
@@ -189,14 +216,14 @@ async function init() {
     }
   });
   $("#logout").addEventListener("click", async () => {
-    await api("/auth/logout", { method: "POST" }).catch(() => {});
+    await api("/auth/logout", { method: "POST", auth: "probe" }).catch(() => {});
     showLogin();
   });
   $("#refresh").addEventListener("click", () => renderCurrent());
   bindAgentActions();
   window.addEventListener("hashchange", onHashChange);
   try {
-    state.session = await api("/auth/session");
+    state.session = await api("/auth/session", { auth: "probe" });
     await enterApp();
   } catch {
     showLogin();
@@ -223,6 +250,7 @@ async function checkHealth() {
 }
 
 async function enterApp() {
+  state.sessionExpiredNotified = false;
   showApp();
   checkHealth();
   clearInterval(checkHealth.timer);
