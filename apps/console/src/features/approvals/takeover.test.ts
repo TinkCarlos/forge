@@ -1,7 +1,12 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { toastError } = vi.hoisted(() => ({ toastError: vi.fn() }))
-vi.mock('sonner', () => ({ toast: { error: toastError } }))
+const { toastError, toastNeutral, toastSuccess, toastInfo } = vi.hoisted(() => ({
+  toastError: vi.fn(),
+  toastNeutral: vi.fn(),
+  toastSuccess: vi.fn(),
+  toastInfo: vi.fn(),
+}))
+vi.mock('sonner', () => ({ toast: Object.assign(toastNeutral, { error: toastError, success: toastSuccess, info: toastInfo }) }))
 
 import { ApiError } from '@/lib/api'
 import { handleDialogServerError, handleServerError } from '@/lib/handle-server-error'
@@ -132,5 +137,98 @@ describe('码集合只定义一处', () => {
     expect(codes ? [...codes] : null).toEqual(['APR-2104', 'APR-2103', 'RUN-7005'])
     expect(mod.APPROVAL_RUN_FINISHED_TOAST).toBe('Run 已结束，此审批已失效')
     expect(codes?.has('CFG-8503')).toBe(false)
+  })
+})
+
+/**
+ * SSE approval.resolved（Run 终态时后端把挂着的 pending 审批改成 expired）：/next/ 与旧版行为一致。
+ * - status=expired：approvalId 在当前列表里 → 移除（或刷新）；该审批的确认框开着 → 关掉并给中性轻提示「此审批已失效」；
+ *   当前页面没有这个审批 → 静默忽略。不弹 error、不写 console.error。
+ * - 其他 status 保持现状（不处理）；未知 status / 缺字段容错，不抛异常。
+ * 注：/next/ 目前没有任何 SSE 订阅，这个处理函数先做成纯逻辑并测试，待确认是否在审批页新增订阅后再接线。
+ */
+describe('handleApprovalResolved：approval.resolved 事件', () => {
+  type On = { has: (id: string) => boolean; remove: (id: string) => void; dialogApprovalId: string | null; closeDialog: () => void }
+  const handle = (data: unknown, on: On) => fn<(d: unknown, o: On) => void>('handleApprovalResolved')(data, on)
+  const X = 'apr_01M5PK6G1GPZ3APBN3QNXR'
+  const Y = 'apr_01M5PK6G1GPZ3APBN3QNXS'
+  const setup = (ids: string[], dialogApprovalId: string | null = null) => {
+    const on = { has: vi.fn((id: string) => ids.includes(id)), remove: vi.fn(), dialogApprovalId, closeDialog: vi.fn() }
+    return on
+  }
+  const noToast = () => {
+    expect(toastError).not.toHaveBeenCalled()
+    expect(toastNeutral).not.toHaveBeenCalled()
+    expect(toastSuccess).not.toHaveBeenCalled()
+    expect(toastInfo).not.toHaveBeenCalled()
+  }
+  let consoleError: ReturnType<typeof vi.spyOn>
+  beforeEach(() => {
+    toastError.mockReset(); toastNeutral.mockReset(); toastSuccess.mockReset(); toastInfo.mockReset()
+    consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+  })
+  afterEach(() => { expect(consoleError).not.toHaveBeenCalled(); consoleError.mockRestore() })
+
+  it('文案常量与旧版一致：「此审批已失效」', () => {
+    expect(mod.APPROVAL_RESOLVED_EXPIRED_TOAST).toBe('此审批已失效')
+  })
+
+  it('expired 且在列表里：移除，不提示，不关框', () => {
+    const on = setup([X, Y])
+    handle({ approvalId: X, status: 'expired' }, on)
+    expect(on.remove).toHaveBeenCalledWith(X)
+    expect(on.remove).toHaveBeenCalledTimes(1)
+    expect(on.closeDialog).not.toHaveBeenCalled()
+    noToast()
+  })
+
+  it('expired 且该审批的确认框开着：关框 + 中性轻提示「此审批已失效」（不是 error），并移除', () => {
+    const on = setup([X], X)
+    handle({ approvalId: X, status: 'expired' }, on)
+    expect(on.closeDialog).toHaveBeenCalledTimes(1)
+    expect(on.remove).toHaveBeenCalledWith(X)
+    expect(toastNeutral).toHaveBeenCalledWith('此审批已失效')
+    expect(toastNeutral).toHaveBeenCalledTimes(1)
+    expect(toastError).not.toHaveBeenCalled()
+    expect(toastSuccess).not.toHaveBeenCalled()
+  })
+
+  it('开着的是另一条的确认框：不关、不提示，只移除这一条', () => {
+    const on = setup([X, Y], Y)
+    handle({ approvalId: X, status: 'expired' }, on)
+    expect(on.closeDialog).not.toHaveBeenCalled()
+    expect(on.remove).toHaveBeenCalledWith(X)
+    noToast()
+  })
+
+  it('approvalId 不在当前页面：静默忽略', () => {
+    const on = setup([Y])
+    handle({ approvalId: X, status: 'expired' }, on)
+    expect(on.remove).not.toHaveBeenCalled()
+    expect(on.closeDialog).not.toHaveBeenCalled()
+    noToast()
+  })
+
+  it.each(['approved', 'rejected', 'pending', 'weird-status'])('status=%s：保持现状，不处理', (status) => {
+    const on = setup([X], X)
+    expect(() => handle({ approvalId: X, status }, on)).not.toThrow()
+    expect(on.remove).not.toHaveBeenCalled()
+    expect(on.closeDialog).not.toHaveBeenCalled()
+    noToast()
+  })
+
+  it.each([
+    ['undefined', undefined],
+    ['null', null],
+    ['字符串', 'expired'],
+    ['缺 approvalId', { status: 'expired' }],
+    ['approvalId 不是字符串', { approvalId: 42, status: 'expired' }],
+    ['缺 status', { approvalId: X }],
+  ])('data=%s：不抛异常，不处理', (_label, data) => {
+    const on = setup([X], X)
+    expect(() => handle(data, on)).not.toThrow()
+    expect(on.remove).not.toHaveBeenCalled()
+    expect(on.closeDialog).not.toHaveBeenCalled()
+    noToast()
   })
 })
