@@ -146,7 +146,7 @@ beforeAll(async () => {
   const threadId = await repos.createThread({ agentId: ids.agent, orgUnitId: ROOT, subjectType: "user", subjectId: ADMIN_ID });
   ids.run = await repos.createRun({ threadId, agentId: ids.agent, agentVersionId: ids.version, orgUnitId: ROOT, subjectType: "user", subjectId: ADMIN_ID, input: { text: "x" }, status: "waiting_approval" });
   const toolCallId = await repos.addToolCall({ runId: ids.run, toolKey: "mail.send", args: { to: "a@example.com" }, risk: "high", status: "pending" });
-  ids.approval = await repos.addApproval({ runId: ids.run, toolCallId, risk: "high", timeoutSeconds: 3600 });
+  ids.approval = (await repos.addApproval({ runId: ids.run, toolCallId, risk: "high", timeoutSeconds: 3600 })).id;
   ids.account = await repos.createServiceAccount({ key: `it-rsc-svc-${suffix}`, name: "IT rsc svc", orgUnitId: ROOT, role: "operator", dataScope: "org", createdBy: ADMIN_ID });
   ids.schedule = await repos.createSchedule({
     key: `it-rsc-${suffix}`, name: "IT rsc", agentId: ids.agent, orgUnitId: ROOT, subjectType: "service", subjectId: ids.account, serviceAccountId: ids.account,

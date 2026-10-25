@@ -131,7 +131,7 @@ describe("P3-09 heartbeat lease loss aborts the execution", () => {
 
   it("tool call in progress gets the signal; aborted execution writes no tool result", async () => {
     repos.heartbeatRun.mockResolvedValue(false);
-    repos.listOpenToolCalls.mockResolvedValueOnce([{ id: "tcl_1", tool_key: "web_fetch", status: "running", attempt: 1, args_json: {}, risk_level: "medium" }]);
+    repos.listOpenToolCalls.mockResolvedValueOnce([{ id: "tcl_1", tool_key: "web_fetch", status: "running", attempt: 1, args_json: {}, risk_level: "medium", read_only: 1 }]);
     let toolSignal: AbortSignal | undefined;
     const execute = vi.fn((_args: unknown, ctx?: { signal?: AbortSignal }) => {
       toolSignal = ctx?.signal;

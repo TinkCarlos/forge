@@ -4,7 +4,16 @@ import { LeaseLostError, parseJsonValue, repos, type RunRow, type ToolCallRow } 
 import { emit } from "./events.js";
 import { appendMessage } from "./messages.js";
 
-type OpenToolCall = ToolCallRow & { approval_status: string | null };
+type OpenToolCall = ToolCallRow & { approval_status: string | null; approval_reason?: string | null; approval_overdue_s?: number | null };
+
+/** settleToolCalls outcome: go on with a model step, wait (approval pending), or (r5 §2.6) the Run must fail APR-2102. */
+export type SettleState = "continue" | "waiting" | "expired";
+
+const REJECTED_MESSAGE = "The user rejected this tool call. Do not retry it; continue with the information available.";
+const INTERRUPTED_REJECTED_MESSAGE =
+  "The previous execution of this tool call was interrupted and its result is unknown; the user declined to run it again, so it was not retried. Do not retry it; continue with the information available.";
+const INTERRUPTED_EXPIRED_MESSAGE =
+  "The previous execution of this tool call was interrupted and its result is unknown; the confirmation expired, so it was not retried. Do not retry it; continue with the information available.";
 
 /**
  * Dedup key of one tool call (Q5): the call_model step's run_steps.seq and the call's index in that step's toolCalls.
@@ -71,7 +80,9 @@ export function assertLeaseHeld(signal: AbortSignal | undefined): void {
 async function executeToolCall(run: RunRow, stored: OpenToolCall, tools: Map<string, ResolvedTool>, signal?: AbortSignal): Promise<void> {
   const tool = tools.get(stored.tool_key);
   const args = parseJsonValue<Record<string, unknown>>(stored.args_json, {});
-  const nextAttempt = stored.status === "running" ? Number(stored.attempt ?? 1) + 1 : Number(stored.attempt ?? 1) || 1;
+  // A re-run (running row taken over) or a confirmed re-execution of an interrupted call is the next attempt.
+  const again = stored.status === "running" || stored.approval_reason === "interrupted";
+  const nextAttempt = again ? Number(stored.attempt ?? 1) + 1 : Number(stored.attempt ?? 1) || 1;
   const stepId = await repos.addRunStep({
     runId: run.id,
     type: "execute_tool",
@@ -126,18 +137,51 @@ async function executeToolCall(run: RunRow, stored: OpenToolCall, tools: Map<str
   await repos.finishRunStep(stepId, { status: result.ok ? "succeeded" : "failed", errorCode: result.errorCode ?? null });
 }
 
-export async function settleToolCalls(run: RunRow, spec: AgentSpec, tools: Map<string, ResolvedTool>, signal?: AbortSignal): Promise<"continue" | "waiting"> {
+/**
+ * tool.interrupted payload (r5 §2.2): `attempt` is the interrupted attempt; `approvalId` the new interrupted approval
+ * (confirm) or null (rerun); `previousApprovalId` the call's earlier approval (never reused), null for a rerun.
+ */
+function interruptedEvent(stored: OpenToolCall, kind: "rerun" | "confirm", approvalId: string | null): Record<string, unknown> {
+  const previousApprovalId = kind === "confirm" ? (stored.approval_id ?? null) : null;
+  return { toolCallId: stored.id, tool: stored.tool_key, action: kind, attempt: Number(stored.attempt ?? 1), approvalId, previousApprovalId };
+}
+
+/**
+ * Settles the Run's open tool calls at the start of a round (and after a model step). r5 takeover (design §2.2): a call
+ * still `running` here was left by an interrupted holder. Read-only (snapshot tool_calls.read_only=1) -> re-run in place
+ * (attempt + 1). With side effects -> never re-run automatically: a new `interrupted` approval (an earlier approval of
+ * that call is never reused), one at a time in created_at order. Expired approvals are rejections and never execute;
+ * one expired longer than APPROVAL_EXPIRED_GRACE_SECONDS ago -> approval rejected by the system, call rejected and
+ * "expired" (the caller fails the Run with APR-2102, no further model or tool call).
+ */
+export async function settleToolCalls(run: RunRow, spec: AgentSpec, tools: Map<string, ResolvedTool>, signal?: AbortSignal): Promise<SettleState> {
   await repos.timeoutApprovals(run.id);
-  const open = await repos.listOpenToolCalls(run.id);
+  const open: OpenToolCall[] = await repos.listOpenToolCalls(run.id);
   if (!open.length) return "continue";
+
+  const grace = config.APPROVAL_EXPIRED_GRACE_SECONDS;
+  const overdue = open.filter((stored) => stored.status === "pending_approval" && stored.approval_status === "expired" && Number(stored.approval_overdue_s ?? 0) > grace);
+  if (overdue.length) {
+    for (const stored of overdue) {
+      if (stored.approval_id) await repos.rejectOverdueApproval(stored.approval_id, run.id);
+      await repos.updateToolCall(stored.id, { status: "rejected" });
+    }
+    return "expired";
+  }
 
   const executable: OpenToolCall[] = [];
   const needsApproval: OpenToolCall[] = [];
+  const interrupted: OpenToolCall[] = [];
   let blocked = false;
 
   for (const stored of open) {
     if (stored.status === "running") {
-      executable.push(stored);
+      if (Number(stored.read_only) === 1) {
+        await emit(run.id, "tool.interrupted", interruptedEvent(stored, "rerun", null));
+        executable.push(stored);
+      } else {
+        interrupted.push(stored);
+      }
       continue;
     }
     if (stored.status === "pending_approval") {
@@ -146,16 +190,15 @@ export async function settleToolCalls(run: RunRow, spec: AgentSpec, tools: Map<s
         continue;
       }
       if (stored.approval_status === "rejected" || stored.approval_status === "expired") {
+        const wasInterrupted = stored.approval_reason === "interrupted";
+        const text = !wasInterrupted ? REJECTED_MESSAGE : stored.approval_status === "expired" ? INTERRUPTED_EXPIRED_MESSAGE : INTERRUPTED_REJECTED_MESSAGE;
         await repos.updateToolCall(stored.id, { status: "rejected" });
-        await appendMessage(run, "tool", {
-          text: "The user rejected this tool call. Do not retry it; continue with the information available.",
-          tool_call_id: stored.id,
-          name: stored.tool_key,
-        });
+        await appendMessage(run, "tool", { text, tool_call_id: stored.id, name: stored.tool_key });
         await emit(run.id, "approval.resolved", { approvalId: stored.approval_id, decision: stored.approval_status });
         continue;
       }
-      executable.push(stored);
+      // Invariant: only an `approved` approval makes a pending_approval call executable.
+      if (stored.approval_status === "approved") executable.push(stored);
       continue;
     }
     const definition = tools.get(stored.tool_key)?.definition;
@@ -171,17 +214,23 @@ export async function settleToolCalls(run: RunRow, spec: AgentSpec, tools: Map<s
 
   assertLeaseHeld(signal);
   if (blocked) return "waiting";
+  const timeoutSeconds = spec.approval?.timeoutSeconds ?? 3600;
+  const cut = interrupted[0];
+  if (cut) {
+    const definition = tools.get(cut.tool_key)?.definition;
+    const risk = definition?.risk ?? cut.risk_level;
+    const approval = await repos.addApproval({ runId: run.id, toolCallId: cut.id, risk, timeoutSeconds, reason: "interrupted" });
+    await repos.updateRun(run.id, { status: "waiting_approval" });
+    await emit(run.id, "tool.interrupted", interruptedEvent(cut, "confirm", approval.id));
+    await emit(run.id, "approval.required", { approvalId: approval.id, toolCallId: cut.id, tool: cut.tool_key, risk, reason: "interrupted", expiresAt: approval.expiresAt.toISOString() });
+    return "waiting";
+  }
   const pending = needsApproval[0];
   if (!pending) return "continue";
   const definition = tools.get(pending.tool_key)?.definition;
   const risk = definition?.risk ?? pending.risk_level;
-  const approvalId = await repos.addApproval({
-    runId: run.id,
-    toolCallId: pending.id,
-    risk,
-    timeoutSeconds: spec.approval?.timeoutSeconds ?? 3600,
-  });
+  const approval = await repos.addApproval({ runId: run.id, toolCallId: pending.id, risk, timeoutSeconds, reason: "policy" });
   await repos.updateRun(run.id, { status: "waiting_approval" });
-  await emit(run.id, "approval.required", { approvalId, toolCallId: pending.id, tool: pending.tool_key, risk });
+  await emit(run.id, "approval.required", { approvalId: approval.id, toolCallId: pending.id, tool: pending.tool_key, risk, reason: "policy", expiresAt: approval.expiresAt.toISOString() });
   return "waiting";
 }

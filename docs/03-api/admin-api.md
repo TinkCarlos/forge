@@ -481,8 +481,8 @@ If-Match: "rev-2"
 - **审批不存在（包括跨部门访问）统一返回 `404 RUN-7001`**，状态码、错误码、文案完全相同。
 - `POST /admin/api/approvals/{id}/decide`（当前实现）：审批不存在、对应 Run 不存在、Run 不在调用者数据范围内，三种情况返回完全相同的 `404 RUN-7001「审批不存在」`（错误码是通用的“资源不存在”码，和其他 404 一样），响应里不出现 Run 的 id 或「Run 不存在」字样。
 - 审批对应的 Run 已结束（`succeeded`、`failed`、`cancelled`、`budget_exhausted`，I-APR-38）：在 `decision` 校验之后返回 `409 RUN-7005「Run 已结束，审批不可操作」`，同时把仍为 `pending` 的审批置为 `expired`（现有的审批状态值，不新增 `cancelled`），不写 `approval.decide` 审计、不恢复 Run。此判断只在接口层做，执行循环不变。
-- 已经处理过（`approved`/`rejected`/`expired`）的审批再次 decide 返回 `409 CFG-8503「审批已处理或已过期」`（I-APR-37），不论 Run 处于什么状态。
-- 错误码优先级（P3-02）：`404 RUN-7001` → `400 CFG-8501`（decision 校验）→ 审批已不是 `pending` 时 `409 CFG-8503` → 审批 `pending` 但 Run 已结束时 `409 RUN-7005`（审批置为 `expired`，因此再次 decide 得到 `CFG-8503`）。
+- 已经处理过（`approved`/`rejected`/`expired`）的审批再次 decide 返回 `409 APR-2104「审批已处理或已过期」`（I-APR-37），不论 Run 处于什么状态。审批仍是 `pending` 但已过 `expires_at`（数据库时钟，UTC）时同样返回 `409 APR-2104`，并把审批置为 `expired`；并发决定中落败的一方也返回 `409 APR-2104`。不写 `approval.decide` 审计、不恢复 Run。
+- 错误码优先级（P3-02）：`404 RUN-7001` → `400 CFG-8501`（decision 校验）→ 审批已不是 `pending` 时 `409 APR-2104` → 审批 `pending` 但 Run 已结束时 `409 RUN-7005`（审批置为 `expired`，因此再次 decide 得到 `APR-2104`）。
 - 超时由工作流处理，API 返回 `APR-2102`。
 - 审批参数只在服务端脱敏后展示；不返回秘密。
 
