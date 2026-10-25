@@ -1,6 +1,6 @@
 import { type FastifyInstance, type FastifyRequest } from "fastify";
 import { errors, ForgeError, type Principal } from "@forge/core";
-import { assertScope } from "@forge/governance";
+import { assertScope, effectiveKeyScopes } from "@forge/governance";
 import { authenticateApiKey } from "@forge/identity";
 import {
   assertAgentRunnable,
@@ -12,7 +12,7 @@ import {
   resolveIdempotentCreate,
   waitForRun,
 } from "@forge/runtime";
-import { repos, type AgentRow, type RunRow } from "@forge/store";
+import { parseJsonValue, repos, type AgentRow, type RunRow } from "@forge/store";
 import {
   bodyOf,
   param,
@@ -31,12 +31,23 @@ interface AppContext {
 
 const rateBuckets = new Map<string, { minute: number; count: number }>();
 
+/** The app's current scopes (api_apps.scopes_json); anything but an array of strings counts as none. */
+function appScopesOf(app: Record<string, unknown>): string[] {
+  const scopes = parseJsonValue<unknown>(app.scopes_json, []);
+  return Array.isArray(scopes) ? scopes.filter((scope): scope is string => typeof scope === "string") : [];
+}
+
 async function openApp(request: FastifyRequest, scope: string): Promise<AppContext> {
   const header = request.headers.authorization;
   if (!header?.startsWith("Bearer ")) throw errors.unauthorized("缺少 API Key");
-  const principal = await authenticateApiKey(header.slice(7));
+  const keyPrincipal = await authenticateApiKey(header.slice(7));
+  const app = keyPrincipal.appId ? await repos.getApiApp(keyPrincipal.appId) : null;
+  // P2: effective scopes = Key scopes ∩ the app's current scopes, read on every request (no cache). The Key row is
+  // never rewritten. A missing app keeps the Key's own scopes here and is rejected as 401 below (same order as before).
+  const principal: Principal = app
+    ? { ...keyPrincipal, scopes: effectiveKeyScopes(keyPrincipal.scopes ?? [], appScopesOf(app)) }
+    : keyPrincipal;
   assertScope(principal, scope);
-  const app = principal.appId ? await repos.getApiApp(principal.appId) : null;
   if (!app || app.status !== "active") throw errors.unauthorized("应用已停用");
   const minute = Math.floor(Date.now() / 60000);
   const bucket = rateBuckets.get(principal.id);

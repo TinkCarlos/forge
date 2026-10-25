@@ -11,6 +11,16 @@ export function assertPermission(principal: Principal, permission: string): void
   if (!hasPermission(principal.role, permission)) throw errors.forbidden(`角色缺少权限: ${permission}`);
 }
 
+/**
+ * Effective scopes of an API-key request (P2, architect on e2d2c5f): the Key's scopes ∩ the app's *current* scopes.
+ * Narrowing the app takes effect on the next request; widening it never widens an existing Key. No `*` handling here
+ * (assertScope never treats `*` as a wildcard).
+ */
+export function effectiveKeyScopes(keyScopes: readonly string[], appScopes: readonly string[]): string[] {
+  const allowed = new Set(appScopes);
+  return keyScopes.filter((scope) => allowed.has(scope));
+}
+
 export function assertScope(principal: Principal, scope: string): void {
   if (principal.type === "app" && !(principal.scopes ?? []).includes(scope)) {
     throw errors.forbidden(`应用缺少 Scope: ${scope}`);
