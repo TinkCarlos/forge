@@ -167,7 +167,7 @@ connector_instances（本实例运行状态）
 
 `messages.content_json` 为内容块数组（text/tool_call/tool_result/image_ref），大结果存对象存储。`seq` 按 Thread 全局递增，分配时在同一事务更新 `threads.next_seq`。`run_events` 的 `seq` 按 Run 递增。
 
-**过渡调度列（Temporal 之前）**：`claimed_by`、`lease_expires_at`、`heartbeat_at` 只用于 MySQL 队列认领与崩溃续跑，不是业务事实来源。Worker 认领 `queued`，或租约已过期的 `running`；进入 `waiting_approval` 或 Run 结束后清空租约。接上 Temporal 后这三列停止写入，不在同一版本删除。
+**过渡调度列（Temporal 之前）**：`claimed_by`、`lease_expires_at`、`heartbeat_at` 只用于 MySQL 队列认领与崩溃续跑，不是业务事实来源。Worker 认领 `queued`，或租约已过期的 `running`；进入 `waiting_approval` 或 Run 结束后清空租约。接上 Temporal 后这三列停止写入，不在同一版本删除。`claimed_by` 的值为 `hostname:pid:epoch`（epoch 为进程启动时生成一次的 8 位 hex，总长不超过 128，超长时先截 hostname）：重启后复用同一 host 和 pid 的进程（如容器里的 pid 1）不会被当成原持有者；旧格式 `hostname:pid` 的行只按字符串比较，租约过期或为空时照常可认领，无需迁移。
 
 **0.1.x `run_steps`**：类型为 `prepare_context` / `compress` / `call_model` / `execute_tool` / `validate_output`。模型标识写入 `summary_json.modelKey`；目标字典中的 `model_id` 等外键留待模型目录接通后再填。`tool_calls.idempotency_key` 新记录存 `<runId>:s<model_step>:<step_index>`（r5，模型步骤序号与步内序号），与 `attempt` 一起用于崩溃后续跑时不重复插入已成功的调用；同键已存在但 `tool_key` 不同时报 `SYS-9001`。1.3 之前的旧记录不回填。
 
