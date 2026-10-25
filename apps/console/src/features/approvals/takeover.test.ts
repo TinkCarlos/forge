@@ -4,6 +4,7 @@ const { toastError } = vi.hoisted(() => ({ toastError: vi.fn() }))
 vi.mock('sonner', () => ({ toast: { error: toastError } }))
 
 import { ApiError } from '@/lib/api'
+import { handleDialogServerError, handleServerError } from '@/lib/handle-server-error'
 import * as takeover from './takeover'
 
 /**
@@ -72,11 +73,19 @@ describe('handleDecideError：409 APR-2104 / APR-2103 专门提示并刷新', ()
     expect(refresh).toHaveBeenCalledTimes(1)
   })
 
-  it('其他 409（RUN-7005）→ 照旧：原文 + 错误码，保留确认框，刷新列表（原有行为）', () => {
+  it.each(['approved', 'rejected'])('409 RUN-7005（审批仍 pending，Run 已结束；%s）→ 「Run 已结束，此审批已失效」，关框并刷新，不弹后端原文', () => {
     const { close, refresh } = run(new ApiError('Run 已结束，审批不可操作', 409, 'RUN-7005'))
-    expect(toastError).toHaveBeenCalledWith('Run 已结束，审批不可操作', { description: '错误码 RUN-7005', ...sticky })
-    expect(close).not.toHaveBeenCalled()
+    expect(toastError).toHaveBeenCalledTimes(1)
+    expect(toastError).toHaveBeenCalledWith('Run 已结束，此审批已失效', { description: '错误码 RUN-7005', ...sticky })
+    expect(close).toHaveBeenCalledTimes(1)
     expect(refresh).toHaveBeenCalledTimes(1)
+  })
+
+  it('护栏：非 409 的 RUN-7005 不当作审批失效', () => {
+    const { close, refresh } = run(new ApiError('参数错误', 400, 'RUN-7005'))
+    expect(toastError).toHaveBeenCalledWith('参数错误', { description: '错误码 RUN-7005', ...sticky })
+    expect(close).not.toHaveBeenCalled()
+    expect(refresh).not.toHaveBeenCalled()
   })
 
   it('500 → 照旧：原文 + 错误码，保留确认框，不刷新', () => {
@@ -99,10 +108,29 @@ describe('handleDecideError：409 APR-2104 / APR-2103 专门提示并刷新', ()
   })
 })
 
+describe('护栏：审批以外的操作收到 409 RUN-7005 照旧走通用错误提示', () => {
+  beforeEach(() => toastError.mockClear())
+
+  it('handleServerError（通用 mutation / 查询）→ 后端原文 + 错误码，不弹「已失效」', () => {
+    handleServerError(new ApiError('Run 已结束，不能取消', 409, 'RUN-7005'))
+    expect(toastError).toHaveBeenCalledTimes(1)
+    expect(toastError).toHaveBeenCalledWith('Run 已结束，不能取消', { description: '错误码 RUN-7005', ...sticky })
+    expect(JSON.stringify(toastError.mock.calls)).not.toContain('已失效')
+  })
+
+  it('handleDialogServerError（其他确认框）→ 后端原文 + 错误码，保留确认框', () => {
+    const close = vi.fn()
+    handleDialogServerError(new ApiError('Run 已结束，不能取消', 409, 'RUN-7005'), close)
+    expect(toastError).toHaveBeenCalledWith('Run 已结束，不能取消', { description: '错误码 RUN-7005', ...sticky })
+    expect(close).not.toHaveBeenCalled()
+  })
+})
+
 describe('码集合只定义一处', () => {
-  it('APPROVAL_STALE_CODES = {APR-2104, APR-2103}（APR-2103 兜底），不含 CFG-8503', () => {
+  it('APPROVAL_STALE_CODES = {APR-2104, APR-2103, RUN-7005}（APR-2103 兜底），不含 CFG-8503；RUN-7005 文案固定', () => {
     const codes = mod.APPROVAL_STALE_CODES as ReadonlySet<string> | undefined
-    expect(codes ? [...codes] : null).toEqual(['APR-2104', 'APR-2103'])
+    expect(codes ? [...codes] : null).toEqual(['APR-2104', 'APR-2103', 'RUN-7005'])
+    expect(mod.APPROVAL_RUN_FINISHED_TOAST).toBe('Run 已结束，此审批已失效')
     expect(codes?.has('CFG-8503')).toBe(false)
   })
 })
