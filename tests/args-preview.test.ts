@@ -159,9 +159,10 @@ describe("buildArgsPreview", () => {
       expect(buildArgsPreview({ u: "api.ex.com:8443/v1?key=NOSCHEME2" })).toBe("u=api.ex.com:8443/v1?key=NOSCHEME2");
     });
 
-    it("free text: key=value / key: value masked; `密码是 x` (no separator) and a digit-less Bearer value are still kept", () => {
+    it("free text: key=value / key: value masked; `密码是 x` (no separator) is still kept; MASK-01: `Authorization:` masks its whole value", () => {
       expect(buildArgsPreview({ note: "密码是 hunter2，token=abc123" })).toBe("note=密码是 hunter2，token=***");
-      expect(buildArgsPreview({ note: "use Authorization: Bearer abc" })).toBe("note=use Authorization: Bearer abc");
+      expect(buildArgsPreview({ note: "use Authorization: Bearer abc" })).toBe("note=use Authorization: ***");
+      expect(buildArgsPreview({ note: "the bearer abc of news" })).toBe("note=the bearer abc of news");
     });
 
     it("full-width ？ is not a query separator, but token= after it is masked by the prose rule", () => {
