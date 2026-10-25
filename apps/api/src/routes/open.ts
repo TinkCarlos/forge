@@ -218,6 +218,7 @@ export default async function openRoutes(app: FastifyInstance): Promise<void> {
     servers: [{ url: "/open/v1" }],
     paths: {
       "/agents": { get: { summary: "List exposed agents", security: [{ apiKey: [] }] } },
+      "/agents/{key}": { get: { summary: "Get exposed agent", security: [{ apiKey: [] }] } },
       "/agents/{key}/runs": { post: { summary: "Create a run", security: [{ apiKey: [] }] } },
       "/agents/{key}/invoke": { post: { summary: "Create a run and wait", security: [{ apiKey: [] }] } },
       "/runs/{id}": { get: { summary: "Get run", security: [{ apiKey: [] }] } },
