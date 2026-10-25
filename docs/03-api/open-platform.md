@@ -130,7 +130,9 @@
 
 ### `GET /open/v1/agents`
 
-查询参数：`cursor`、`limit`（1–100，默认 20）、`q`、`category`。
+查询参数：`cursor`、`limit`（1–100，默认 20）、`q`、`category` 均**未实现**（不分页、不过滤，一次返回该应用可访问的全部已发布 Agent）。
+
+当前每项只返回 `key`、`name`、`description`、`version` 四个字段，响应只有 `items`。下例中的 `category`、`inputSchema`、`outputSchema`、`capabilities`、`estimatedLatency` 字段和 `nextCursor` 均**未实现（响应中不包含）**：
 
 ```json
 {
@@ -226,7 +228,7 @@ Idempotency-Key: 4b1c6f0e-...
 
 - 请求体与创建 Run 相同；`wait` 范围 1–120 秒，默认 30。
 - Scope 只需 `runs:create`（与创建 Run 相同）：返回的是本次调用刚创建的 Run 的结果，不需要 `runs:read`。之后再用 `/runs/{runId}` 等接口查询或订阅事件才需要 `runs:read`。
-- 在等待时间内完成：`200`，返回 Run 结果对象（含 `output`、`usage`、`artifacts`）。
+- 在等待时间内完成：`200`，返回 Run 结果对象（含 `runId`、`threadId`、`status`、`output`、`usage`、`error`、`completedAt`）；`artifacts` **未实现（响应中不包含）**。
 - 超时仍在运行：`202`，返回与创建 Run 相同的响应；调用方继续查询或订阅 SSE。
 - 失败/取消/预算耗尽：`200`，返回带 `status` 与 `error` 的结果对象。
 - 适用短任务；长任务请使用异步 + Webhook。
