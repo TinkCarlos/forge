@@ -542,6 +542,8 @@ const APPROVAL_STALE_CODES = new Set(["APR-2104", "APR-2103", "RUN-7005"]);
 const APPROVAL_STALE_TEXT = "该审批已失效，请刷新后处理新的审批";
 // RUN-7005 的专门文案（和 /next/ 一致）。
 const APPROVAL_RUN_FINISHED_TEXT = "Run 已结束，此审批已失效";
+// SSE approval.resolved status=expired（Run 进入终态时后端让挂着的审批失效）：确认框正开着时的中性轻提示（和 /next/ 一致）。
+const APPROVAL_RESOLVED_EXPIRED_TEXT = "此审批已失效";
 
 function approvalReason(approval) {
   return approval?.reason === "interrupted" ? "interrupted" : "policy";
@@ -559,9 +561,12 @@ function approvalReasonHtml(approval) {
   return ` <span class="pill warn">${esc(INTERRUPTED_BADGE_TEXT)}</span>${attempt ? ` <span class="muted">${esc(attempt)}</span>` : ""}`;
 }
 
-async function renderApprovals() {
-  const data = await api("/admin/api/approvals");
-  state.approvals = data.items ?? [];
+// refetch=false：按 state.approvals 本地重渲染（approval.resolved 移除某条后用），不请求接口。
+async function renderApprovals({ refetch = true } = {}) {
+  if (refetch) {
+    const data = await api("/admin/api/approvals");
+    state.approvals = data.items ?? [];
+  }
   $("#content").innerHTML = `
     <div class="card">
       <div class="card-head"><div><h3>待审批</h3><p class="muted">高风险工具调用会暂停 Run</p></div><button class="btn ghost small" onclick="app.renderCurrent()">刷新</button></div>
@@ -569,6 +574,29 @@ async function renderApprovals() {
         ${state.approvals.map((approval) => `<tr><td class="mono">${esc(approval.run_id)}</td><td>${esc(approval.agent_name)}</td><td>${statusPill(approval.risk_level)}${approvalReasonHtml(approval)}</td><td>${fmt(approval.expires_at)}</td><td><div class="actions"><button class="btn primary small" onclick="app.decideApproval('${esc(approval.id)}','approved')">批准</button><button class="btn danger small" onclick="app.decideApproval('${esc(approval.id)}','rejected')">驳回</button><button class="btn ghost small" onclick="app.openRun('${esc(approval.run_id)}')">查看 Run</button></div></td></tr>`).join("")}
       </tbody></table></div>` : empty("没有待审批", "高风险工具执行时会出现在这里。")}
     </div>`;
+}
+
+/**
+ * SSE approval.resolved：只处理 status=expired（Run 已进入终态、审批被后端置为失效），不弹错误、不写 console.error。
+ * - approvalId 在当前审批列表里：从列表移除；审批页正显示时按本地数据重渲染。
+ * - 该审批的确认框正开着：关掉，并给中性轻提示（kind=info，没有专门样式，显示为默认深色底，不是红色 error）。
+ * - 其他 status / 未知 status / 缺字段 / 页面上没有这个审批：静默忽略。
+ */
+function onApprovalResolved(data) {
+  if (!data || typeof data !== "object" || data.status !== "expired") return;
+  const id = data.approvalId;
+  if (typeof id !== "string" || !id) return;
+  const approvals = Array.isArray(state.approvals) ? state.approvals : [];
+  if (approvals.some((item) => item?.id === id)) {
+    state.approvals = approvals.filter((item) => item?.id !== id);
+    if (state.tab === "approvals" && $("#content")) void renderApprovals({ refetch: false }).catch(() => {});
+  }
+  const dialog = $("#modal");
+  if (state.approvalDialog === id && dialog?.open) {
+    state.approvalDialog = null;
+    dialog.close();
+    toast(APPROVAL_RESOLVED_EXPIRED_TEXT, "info");
+  }
 }
 
 async function renderSchedules() {
@@ -1182,6 +1210,11 @@ const app = {
       toast(decision === "approved" ? "已批准，Run 将继续" : "已驳回");
       await renderApprovals();
     }, decision === "approved" ? "批准" : "确认驳回", decision !== "approved");
+    // 记下当前开着的是哪条审批的确认框（approval.resolved expired 时据此关框）；确认框一关就清掉。
+    state.approvalDialog = id;
+    $("#modal").addEventListener("close", () => {
+      if (state.approvalDialog === id) state.approvalDialog = null;
+    }, { once: true });
   },
 
   openServiceAccountCreate() {
@@ -1441,6 +1474,8 @@ function connectRunStream(view) {
       void syncRunFromRest(view);
     } else if (type === "message.completed") {
       void syncRunFromRest(view);
+    } else if (type === "approval.resolved") {
+      onApprovalResolved(payload.data);
     }
   };
   for (const type of types) source.addEventListener(type, (event) => append(type, event));
