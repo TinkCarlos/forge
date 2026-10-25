@@ -63,7 +63,7 @@
 | `files:write` | 上传/删除文件 |
 | `threads:read` / `threads:write` | Thread API（P1） |
 
-- 缺 Scope → `403` + `POL-2001`，`details.requiredScope` 指明所需 Scope。
+- 缺 Scope → `403` + `POL-2001`，所需 Scope 写在 `message` 里：`应用缺少 Scope: {scope}`（例如 `应用缺少 Scope: runs:create`）；`details` 为 `null`，不返回 `details.requiredScope`。
 - 应用被停用、Key 过期/吊销 → `401`。
 - Agent 未开放或未授权给应用 → `404`（不暴露存在性）。
 
