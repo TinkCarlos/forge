@@ -6,6 +6,7 @@ import { maskArgsDeep } from "@forge/governance";
 import { createSession, destroySession, sessionCookieValue, type Session } from "@forge/identity";
 import { execute, one, repos } from "@forge/store";
 import { buildApp } from "../apps/api/src/app.js";
+import { MASK01_KEEP, MASK01_VECTORS } from "./helpers/mask01-vectors.js";
 
 // Regression: the raw assistant text stored in `messages` (content_json, never rewritten) leaves the API only through
 // maskArgsDeep - the same function as output_json (presentRunOutput). Read paths: GET /admin/api/runs/:id `messages`
@@ -14,11 +15,14 @@ import { buildApp } from "../apps/api/src/app.js";
 const suffix = `${Date.now().toString(36)}${randomBytes(3).toString("hex")}`;
 const ROOT = "01J00000000000000000000000";
 const ADMIN_ID = "01J00000000000000000000001";
-const SK = `sk-${randomBytes(18).toString("hex")}`;
-const BEARER = `Bearer ${randomBytes(18).toString("base64url")}`;
-const PASSWORD = `pw${randomBytes(6).toString("hex")}`;
-const ASSISTANT_TEXT = `好的。API key: ${SK}\nAuthorization: ${BEARER}\n数据库密码：${PASSWORD}`;
-const PLAINTEXT = [SK, BEARER, BEARER.slice("Bearer ".length), PASSWORD];
+// MASK-01: fixed values only (no random tokens), so the result does not depend on whether a random token happened to
+// contain a digit. The legacy three plus every vector of tests/helpers/mask01-vectors.ts, each checked on its own.
+const SK = "sk-abababababababababababababababababab"; // no digit
+const BEARER = "Bearer AbCdEfGh-IjKlMnOp_QrStUvWx"; // no digit
+const PASSWORD = "pwQwErTyUiOp"; // no digit
+const LEGACY_TEXT = `好的。API key: ${SK}\nAuthorization: ${BEARER}\n数据库密码：${PASSWORD}`;
+const ASSISTANT_TEXT = [LEGACY_TEXT, ...MASK01_VECTORS.map((v) => v.text), ...MASK01_KEEP].join("\n");
+const PLAINTEXT = [SK, BEARER, BEARER.slice("Bearer ".length), PASSWORD, ...MASK01_VECTORS.map((v) => v.secret)];
 
 let app: FastifyInstance;
 let session: Session;
@@ -29,6 +33,8 @@ let appId = "";
 let openKey = "";
 let runId = "";
 let messageId = "";
+let adminBody = "";
+const openBodies: Record<string, string> = {};
 
 function assertNoPlaintext(raw: string): void {
   for (const secret of PLAINTEXT) expect(raw).not.toContain(secret);
@@ -48,6 +54,10 @@ beforeAll(async () => {
   runId = await repos.createRun({ threadId, agentId, agentVersionId: versionId, appId, orgUnitId: ROOT, subjectType: "user", subjectId: ADMIN_ID, input: { text: "hi" }, status: "succeeded" });
   await execute("UPDATE runs SET output_json = ? WHERE id = ?", [JSON.stringify({ text: ASSISTANT_TEXT }), runId]);
   messageId = await repos.addMessage({ threadId, runId, seq: 1, role: "assistant", content: { text: ASSISTANT_TEXT } });
+  adminBody = (await app.inject({ method: "GET", url: `/admin/api/runs/${runId}`, headers })).body;
+  for (const url of [`/open/v1/runs/${runId}`, `/open/v1/runs/${runId}/result`]) {
+    openBodies[url] = (await app.inject({ method: "GET", url, headers: { authorization: `Bearer ${openKey}` } })).body;
+  }
 });
 
 afterAll(async () => {
@@ -93,5 +103,26 @@ describe("assistant message text is masked on every read path", () => {
   it("the stored row keeps the raw text (masking is read-only, no backfill)", async () => {
     const row = await one<{ content_json: { text: string } }>("SELECT content_json FROM messages WHERE id = ?", [messageId]);
     expect(row?.content_json.text).toBe(ASSISTANT_TEXT);
+  });
+
+  describe("MASK-01 vectors, one by one (with and without a digit)", () => {
+    it.each(MASK01_VECTORS)("admin GET /admin/api/runs/:id hides $name", ({ secret }) => {
+      expect(adminBody.length).toBeGreaterThan(0);
+      expect(adminBody).not.toContain(secret);
+    });
+    it.each(MASK01_VECTORS)("open GET /open/v1/runs/:id and /result hide $name", ({ secret }) => {
+      for (const body of Object.values(openBodies)) {
+        expect(body.length).toBeGreaterThan(0);
+        expect(body).not.toContain(secret);
+      }
+    });
+    it.each(MASK01_KEEP)("admin and open keep ordinary text unchanged: %s", (text) => {
+      const admin = JSON.parse(adminBody) as { messages: Array<{ id: string; content: { text: string } }>; output: { text: string } };
+      expect(admin.messages.find((m) => m.id === messageId)!.content.text.split("\n")).toContain(text);
+      expect(admin.output.text.split("\n")).toContain(text);
+      for (const body of Object.values(openBodies)) {
+        expect((JSON.parse(body) as { output: { text: string } }).output.text.split("\n")).toContain(text);
+      }
+    });
   });
 });
