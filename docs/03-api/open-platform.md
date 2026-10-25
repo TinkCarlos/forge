@@ -16,13 +16,13 @@
   └─ 调用日志 / 用量
         │
         ▼
-  /open/v1  ── Run 控制面 + SSE + 文件 + 结果
+  /open/v1  ── Run 控制面 + SSE + 文件（未实现） + 结果
 ```
 
 - 只有**已发布、开启 API、且应用有权访问**的 Agent 出现在目录中。
 - 默认异步执行；同步便捷调用只是等待结果的语法糖。
 - 所有接口以应用为调用主体；终端用户信息只作为业务 `metadata` 传递，不作为平台鉴权依据。
-- 应用数据范围固定为 `app`，只能访问自身创建的 Run/Thread/File/Artifact；不接受调用方自报用户身份。
+- 应用数据范围固定为 `app`，只能访问自身创建的 Run/Thread/File/Artifact（File、Artifact 接口未实现）；不接受调用方自报用户身份。
 - 管理操作（创建应用、密钥、Webhook）在控制台或管理 API 完成；控制台人类登录走统一 SSO；P1 提供应用自助管理。
 
 ## 2. 通用约定
@@ -30,7 +30,7 @@
 | 项 | 约定 |
 | --- | --- |
 | Base URL | `https://{forge-host}/open/v1` |
-| 内容类型 | 请求/响应 `application/json; charset=utf-8`；文件上传 `multipart/form-data` |
+| 内容类型 | 请求/响应 `application/json; charset=utf-8`；文件上传 `multipart/form-data`（未实现：`POST /files` 没有注册；现有接口不解析 multipart 字段，创建 Run 按空输入返回 `400 CFG-8501`，见第 7 节） |
 | 认证 | `Authorization: Bearer fsk_live_...` |
 | ID | ULID 字符串（26 字符）；文件、Run、应用均有前缀便于识别 |
 | 时间 | ISO 8601 UTC，毫秒精度，例如 `2026-10-21T08:00:00.000Z` |
@@ -57,11 +57,13 @@
 | --- | --- |
 | `agents:read` | 列出/读取已开放 Agent |
 | `runs:create` | 创建 Run、同步调用 |
-| `runs:read` | 查询 Run、结果、消息、事件 |
+| `runs:read` | 查询 Run、结果、事件；消息（未实现） |
 | `runs:cancel` | 取消 Run |
-| `runs:message` | 运行中插话（P1） |
-| `files:write` | 上传/删除文件 |
-| `threads:read` / `threads:write` | Thread API（P1） |
+| `runs:message` | 运行中插话（P1，未实现） |
+| `files:write` | 上传/删除文件（未实现） |
+| `threads:read` / `threads:write` | Thread API（P1，未实现） |
+
+- 标「未实现」的 Scope 目前没有任何接口使用：应用的 `scopes` 可以写入这些值（只校验是不超过 64 字符的字符串），但它们不放行、也不拦截任何请求。在已有 Thread 上续接会话只需 `runs:create`（见第 7 节 `threadId`）。
 
 - 缺 Scope → `403` + `POL-2001`，所需 Scope 写在 `message` 里：`应用缺少 Scope: {scope}`（例如 `应用缺少 Scope: runs:create`）；`details` 为 `null`，不返回 `details.requiredScope`。
 - 应用被停用、Key 过期/吊销 → `401`。
@@ -70,7 +72,7 @@
 ### 3.3 应用数据隔离
 
 - 调用主体是 API 应用；数据范围固定为 `app`。
-- 只能读取/取消/下载**本应用创建**的 Run、Thread、File、Artifact；跨应用访问统一 `404`。
+- 只能读取/取消/下载**本应用创建**的 Run、Thread、File、Artifact（File、Artifact 接口未实现）；跨应用访问统一 `404`。
 - 管理员不能通过 Scope 让应用读取其他应用数据；跨应用数据导出必须走管理端服务账号并审计。
 - 开放平台不提供人工登录；人类用户使用控制台 SSO。机器到机器可继续使用 API Key，OAuth2 Client Credentials 为 P1。
 
@@ -84,8 +86,8 @@
 | 每月 Run 次数 | 20000 | 创建 Run 前 |
 | 每月成本 | $100 | 模型调用前后累计 |
 | 单请求体 | 1 MB | 网关 |
-| 单文件 | 50 MB | 上传 |
-| 单 Run 文件数 | 10 | 创建 Run |
+| 单文件 | 50 MB（未实现） | 上传 |
+| 单 Run 文件数 | 10（未实现） | 创建 Run |
 | SSE 连接 | 每 Run 5 | 网关 |
 
 - 配额按应用计；模型 Provider 的并发/TPM 是另一层保护，二者同时生效。
@@ -177,12 +179,12 @@ Idempotency-Key: 4b1c6f0e-...
 | 字段 | 必填 | 说明 |
 | --- | --- | --- |
 | `input.text` | 条件 | 与 `files`/`data` 至少一项非空；最大 200,000 字符 |
-| `input.files` | 否 | 文件 ID 列表，最多 10 个；必须属于同一应用且未过期 |
+| `input.files` | 否 | **未实现**：不校验个数、归属和过期，也不读取文件；当作 `input` 里的普通字段原样存进 Run 输入，不返回 400（`input` 对象不限字段）。`input` 没有 `text` 时，用户消息是整个 `input` 的 JSON 文本，文件 ID 会作为文本进入消息。原设计：文件 ID 列表，最多 10 个；必须属于同一应用且未过期 |
 | `input.data` | 否 | 业务结构化输入，≤64 KB；不得覆盖 Agent 指令 |
 | `metadata` | 否 | 键值均为字符串；≤20 键、≤4 KB；用于检索与回传 |
 | `options.maxSteps` | 否 | 只能小于等于策略上限；越大无效 |
 | `options.timeoutSeconds` | 否 | 只能小于等于策略上限 |
-| `threadId` | 否 | P1；传入则续接会话 |
+| `threadId` | 否 | 传入则续接会话（当前已实现）：Thread 必须属于同一个 Agent、由本应用创建，否则 `404 RUN-7001「会话不存在」`，不建 Run；不传则新建 Thread。Thread 的 ID 从创建 Run 响应的 `threadId` 取得（Thread API 未实现） |
 
 顶层 `text`（当前实现，item 9）：可代替 `input` 传纯文本（等同 `input: { text }`）。同时传非空 `text`（trim 后不为空）和不含 `text` 字段的 `input` 对象 → `400 CFG-8501`（`details.field = "text"`），不建 Run；`text` 为 `""` 或纯空白时当作没传，只带 `input` 对象是合法请求（item E 调整，管理端试运行、开放平台、Connector 同改；之前也是 400）（之前用户消息会存成 `[object Object]`）；只传不含 `text` 的 `input` 对象时，用户消息存为该对象的 JSON 文本。管理端试运行与 Connector `/integration/v1/runs` 同一规则。
 
@@ -552,7 +554,7 @@ curl -N "https://forge.acme.internal/open/v1/runs/run_01J.../events" \
 
 - 全链路 TLS；HSTS；禁止在 URL 中携带密钥。
 - 应用可配置 IP 白名单（P1）；默认仅服务端调用，不开启 CORS。
-- 文件类型与大小校验；P1 病毒扫描；下载使用短期签名 URL。
+- 文件类型与大小校验；P1 病毒扫描；下载使用短期签名 URL（文件接口未实现）。
 - 日志脱敏：`Authorization`、`apiKey`、Cookie、URL 密钥、文件内容不落日志。
 - 调用日志保留 90 天（可配）；Run 数据按客户保留策略。
 - 越权访问按资源存在性返回 404，避免枚举。
@@ -567,5 +569,5 @@ curl -N "https://forge.acme.internal/open/v1/runs/run_01J.../events" \
 - [ ] 取消幂等；高并发下状态与事件一致。
 - [ ] Webhook 签名可验证、重试正确、可重放、失败停用。
 - [ ] 配额与限流头正确；429 有 `Retry-After`。
-- [ ] 结果、消息、文件、Artifact 只能被同应用访问。
+- [ ] 结果、消息、文件、Artifact 只能被同应用访问（消息、文件、Artifact 接口未实现）。
 - [ ] OpenAPI 规范与实现契约测试一致。
