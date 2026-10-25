@@ -494,6 +494,8 @@ If-Match: "rev-2"
 - 排序 `created_at` 倒序，同一时间按 `id` 倒序。
 - 每条保留原有字段（`id`、`run_id`、`tool_call_id`、`status`、`risk_level`、`expires_at`、`decided_by`、`decided_at`、`comment`、`created_at`、`agent_name`），新增：
   - `agent_id`；
+  - `reason`：`"policy"`（按风险策略要求审批，原有情况；升级前的审批也是它）或 `"interrupted"`（执行中途 Worker 中断、结果未知的有副作用调用，需重新确认；批准 = 再执行一次，驳回或过期 = 不再执行）；
+  - `attempt`：`reason = "interrupted"` 时为被中断的那一次执行的序号（从 1 开始，与 SSE `tool.interrupted` 的 `attempt` 相同）；`reason = "policy"` 或找不到工具调用时为 `null`；
   - `tool_name`：对应 `tool_calls.tool_key`，找不到工具调用时为 `null`；
   - `args_preview`：服务端生成的参数摘要，形如 `to=a@b.com, subject=周报, api_key=***`，嵌套对象写成 `k={a=1, b=***}`，数组写成 `[x, y]`；没有工具调用时为 `null`；工具参数为空（`{}`）时为空字符串 `""`，前端显示为「无参数」。脱敏规则（任意层级，数组元素同样适用）：
     - **按键名**：把键名按 `_`、`-`、`.`、驼峰、连续大写缩写、字母和数字的边界拆成小写的词，任何一个词等于 `password`、`passwords`、`pwd`、`passwd`、`token`、`tokens`、`secret`、`secrets`、`key`、`keys`、`authorization`、`credential`、`credentials`、`cookie`、`cookies` 时，整个值写成 `***`。例如 `api_key`、`apiKey`、`APIKey`、`X-Api-Key`、`accessToken`、`DB_PWD`、`set_cookies`、`Set-Cookie` 会脱敏，`keyword`、`monkey`、`tokenizer`、`secretary` 不会。**计数字段例外**：拆出的词里同时有 `token`/`tokens` 和 `max`、`min`、`input`、`output`、`prompt`、`completion`、`total`、`num`、`count`、`limit`、`used`、`remaining`、`reasoning`、`cached` 中的任意一个时，视为 token 计数字段，`token`/`tokens` 这个词不算敏感，例如 `max_tokens`、`maxTokens`、`max_output_tokens`、`prompt_tokens`、`total_tokens`、`tokenCount`、`token_limit` 不脱敏；`token`、`tokens`、`access_token`、`refresh_token`、`id_token`、`api_token`、`authToken` 照样脱敏；同一个键里还有别的敏感词时照样脱敏（如 `max_api_key`、`password_count`）。例外只看键名，值本身像密钥（下一条）时仍写成 `***`。运行详情等处的 `maskArgsDeep` 用同一套规则。

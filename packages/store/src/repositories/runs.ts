@@ -336,7 +336,7 @@ export const runsRepo = {
     scope: { orgIds?: string[] | null; subjectType?: string; subjectId?: string; appId?: string };
     limit: number;
     offset: number;
-  }): Promise<{ rows: Array<ApprovalRow & { agent_id: string; agent_name: string; tool_key: string | null; tool_args: unknown }>; total: number }> {
+  }): Promise<{ rows: Array<ApprovalRow & { agent_id: string; agent_name: string; tool_key: string | null; tool_args: unknown; attempt: number | null }>; total: number }> {
     const { scope } = input;
     const where: string[] = ["a.status = ?"];
     const params: unknown[] = [input.status];
@@ -358,8 +358,11 @@ export const runsRepo = {
     const counted = await one<{ total: number }>(`SELECT COUNT(*) AS total ${from}`, params);
     const limit = Math.min(Math.max(Math.floor(input.limit), 1), 100);
     const offset = Math.max(Math.floor(input.offset), 0);
-    const rows = await query<ApprovalRow & { agent_id: string; agent_name: string; tool_key: string | null; tool_args: unknown }>(
-      `SELECT a.*, r.agent_id AS agent_id, ag.name AS agent_name, tc.tool_key AS tool_key, tc.args_json AS tool_args
+    // r5 contract §2: attempt = the interrupted execution's attempt (tool_calls.attempt) for an interrupted approval,
+    // null for a policy approval or a missing call.
+    const rows = await query<ApprovalRow & { agent_id: string; agent_name: string; tool_key: string | null; tool_args: unknown; attempt: number | null }>(
+      `SELECT a.*, r.agent_id AS agent_id, ag.name AS agent_name, tc.tool_key AS tool_key, tc.args_json AS tool_args,
+       CASE WHEN a.reason = 'interrupted' THEN tc.attempt ELSE NULL END AS attempt
        ${from} ORDER BY a.created_at DESC, a.id DESC LIMIT ? OFFSET ?`,
       [...params, limit, offset],
     );
