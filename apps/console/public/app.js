@@ -1325,6 +1325,32 @@ window.app = app;
 const RUN_TERMINAL_EVENTS = ["run.completed", "run.failed", "run.cancelled", "run.budget_exhausted"];
 const RUN_ACTIVE_STATUSES = ["queued", "running", "waiting_approval"];
 const STREAM_MAX_RETRIES = 3;
+// R9：升级前就已过期的审批，后端把 Run 直接标成 failed 并带这个码。换码只改这一行。
+const RUN_APPROVAL_EXPIRED_CODE = "APR-2102";
+const RUN_APPROVAL_EXPIRED_TEXT = "审批已过期，Run 已终止";
+
+/** Run 失败原因（REST errorCode / errorMessage，或 SSE run.failed 的 data.error）：专门码用固定文案，其余用后端原文；都带错误码。 */
+function runFailureText(code, message) {
+  if (!code && !message) return "";
+  const text = code === RUN_APPROVAL_EXPIRED_CODE ? RUN_APPROVAL_EXPIRED_TEXT : String(message || "Run 执行失败");
+  return code ? `${text}（错误码 ${code}）` : text;
+}
+
+/** SSE tool.interrupted 的可读记录；只用工具名、动作和次数，不显示参数和结果。 */
+function toolInterruptedText(data) {
+  const tool = String(data?.tool ?? "") || "未知工具";
+  if (data?.action === "confirm") return `工具 ${tool} 执行中断，已转人工确认`;
+  const attempt = Number.isInteger(data?.attempt) && data.attempt > 0 ? `（第 ${data.attempt} 次）` : "";
+  if (data?.action === "rerun") return `工具 ${tool} 执行中断，已自动重跑${attempt}`;
+  return `工具 ${tool} 执行中断`;
+}
+
+/** 事件日志一行的正文（纯文本，调用方负责转义）：tool.interrupted 和带错误的 run.failed 显示可读文案，其余照旧显示 JSON。 */
+function runEventText(type, data) {
+  if (type === "tool.interrupted") return toolInterruptedText(data);
+  if (type === "run.failed" && (data?.error?.code || data?.error?.message)) return `Run 失败：${runFailureText(data.error.code, data.error.message)}`;
+  return JSON.stringify(data).slice(0, 320);
+}
 
 function runMessagesHtml(messages) {
   const rows = (messages ?? []).map((message) => `<div style="padding:10px 0;border-bottom:1px solid var(--border)" data-message-id="${esc(message.id)}"><div class="muted"><strong>${esc(message.role)}</strong> · #${esc(message.seq)}</div><div style="white-space:pre-wrap">${esc(message.content?.text ?? JSON.stringify(message.content))}</div></div>`).join("");
@@ -1337,7 +1363,8 @@ function runToolsHtml(toolCalls) {
 }
 
 function runToolbarHtml(run) {
-  return `<span>${statusPill(run.status)}</span><span class="muted">成本 $${Number(run.costUsd).toFixed(4)}</span>${RUN_ACTIVE_STATUSES.includes(run.status) ? `<button class="btn danger small" type="button" onclick="app.cancelRun('${esc(run.id)}')">取消 Run</button>` : ""}`;
+  const failure = RUN_ACTIVE_STATUSES.includes(run.status) || run.status === "succeeded" ? "" : runFailureText(run.errorCode, run.errorMessage);
+  return `<span>${statusPill(run.status)}</span><span class="muted">成本 $${Number(run.costUsd).toFixed(4)}</span>${failure ? `<span class="muted">失败原因：${esc(failure)}</span>` : ""}${RUN_ACTIVE_STATUSES.includes(run.status) ? `<button class="btn danger small" type="button" onclick="app.cancelRun('${esc(run.id)}')">取消 Run</button>` : ""}`;
 }
 
 /** 以 REST 快照为准整体重渲染 Run 弹窗的状态栏、消息区和工具调用区（事件日志不动）。 */
@@ -1388,7 +1415,7 @@ function connectRunStream(view) {
   const log = $("#event-log");
   if (!log) return;
   const runId = view.runId;
-  const types = ["run.queued", "run.started", "run.resumed", "message.completed", "context.compressed", "model.retried", "output.rejected", "tool.started", "tool.retried", "tool.completed", "tool.failed", "approval.required", "approval.resolved", ...RUN_TERMINAL_EVENTS];
+  const types = ["run.queued", "run.started", "run.resumed", "message.completed", "context.compressed", "model.retried", "output.rejected", "tool.started", "tool.retried", "tool.interrupted", "tool.completed", "tool.failed", "approval.required", "approval.resolved", ...RUN_TERMINAL_EVENTS];
   const source = new EventSource(`/admin/api/runs/${idSeg(runId)}/events`);
   view.source = source;
   state.eventSource = source;
@@ -1398,7 +1425,7 @@ function connectRunStream(view) {
     const row = document.createElement("div");
     row.className = "event-row";
     const payload = JSON.parse(event.data);
-    row.innerHTML = `<span class="muted">${esc(payload.seq)}</span><span class="type">${esc(type)}</span><span>${esc(JSON.stringify(payload.data).slice(0, 320))}</span>`;
+    row.innerHTML = `<span class="muted">${esc(payload.seq)}</span><span class="type">${esc(type)}</span><span>${esc(runEventText(type, payload.data))}</span>`;
     log.appendChild(row);
     log.scrollTop = log.scrollHeight;
     if (RUN_TERMINAL_EVENTS.includes(type)) {
