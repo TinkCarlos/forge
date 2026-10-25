@@ -289,7 +289,7 @@ queued ──▶ running ──▶ succeeded
 
 - `runs.claimed_by`、`lease_expires_at`、`heartbeat_at` 只服务当前队列。`waiting_approval` 释放租约；租约过期的 `running` 可被其他 worker 认领。
 - 每步写入 `run_steps`（`prepare_context` / `compress` / `call_model` / `execute_tool` / `validate_output`）。已落库的 assistant 消息和 `succeeded` 工具调用不重做。
-- 未落库的模型调用至少再执行一次，并写事件 `model.retried`。工具幂等键为 `runId:toolCallId`（`tool_calls.idempotency_key`）。
+- 未落库的模型调用至少再执行一次，并写事件 `model.retried`。工具调用记录按模型步骤和步内序号识别，去重键为 `<runId>:s<模型步骤序号>:<步内序号>`（`tool_calls.idempotency_key`，唯一键兜底；与 1.3 之前的旧格式记录相撞时 Run 以 `SYS-9001`「工具调用记录冲突」失败），不用供应商返回的调用 id（只存档在 `call_id`），发给模型的调用 id 一律是 Forge 自己的记录 id；下游 `Idempotency-Key` 为 `sha256(runId:记录 id)`。
 - 低/中风险工具按 `limits.maxParallelTools` 并行；高风险工具仍串行审批。执行前再次确认工具仍在该 Run 的工具快照内。
 - 上下文超过 `limits.maxContextTokens` 时裁剪旧工具/助手正文，保留 system 与最近消息，事件 `context.compressed`。正文仍在 MySQL，不进调度历史。
 - P1 起模型流式增量不再写入 `run_events`（不落库、不下发 `message.delta`），只写打码后的 `message.completed`；旧 delta 行读取时过滤。SSE 继续按 `Last-Event-ID` 从 MySQL 续传，所有事件读取时再过 `maskArgsDeep`。Redis Stream 仍是多实例目标形态。
@@ -463,8 +463,9 @@ Pi 内置 bash/文件工具在服务端禁用。文档解析与浏览器在独�
 | 上下文超长 | 先压缩再重试一次；仍超长失败 `MDL-3002` |
 | 工具 4xx 业务错误 | 不重试，作为工具结果交还模型 |
 | 工具 5xx/超时 | 重试（幂等键保护）；用尽后作为工具错误交还模型 |
-| Worker 崩溃 | 目标：Temporal 重放，已完成 Activity 不重做。过渡实现见 8.7：租约过期后重领，已落库步骤不重做 |
-| 审批超时 | 按策略驳回，Run 继续或失败（Agent 配置） |
+| Worker 崩溃 | 目标：Temporal 重放，已完成 Activity 不重做。过渡实现见 8.7：租约过期后重领，已落库步骤不重做；被打断的只读工具调用重跑一次，有副作用的调用不自动重发，改为 `reason=interrupted` 的审批由人确认（过期按驳回）；OpenAPI 请求带 `Idempotency-Key`（同一调用的各次尝试相同） |
+| Worker 停机 | 排空：不再领新 Run，模型调用立即中止，工具调用等其完成并落库，写 `run.released` 后释放租约；超过 `WORKER_DRAIN_TIMEOUT_MS`（默认 35000）中止其余调用，按 Worker 崩溃处理 |
+| 审批超时 | 按策略驳回，Run 继续或失败（Agent 配置）；过期后不能再决定；到期超过 `APPROVAL_EXPIRED_GRACE_SECONDS`（默认 900）仍未收尾时系统驳回，Run 以 `APR-2102` 失败 |
 | 取消 | 取消 Activity；保留部分消息；事件与状态一致 |
 | Webhook 失败 | 指数退避重试；超限停用 + 告警；可手动重放 |
 
