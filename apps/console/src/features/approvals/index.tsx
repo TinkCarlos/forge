@@ -4,12 +4,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, ExternalLink, MoreHorizontal, X, Copy } from 'lucide-react'
 import { toast } from 'sonner'
 import { onReject } from '@/lib/settle'
-import { api, ApiError } from '@/lib/api'
+import { api } from '@/lib/api'
 import { idSeg } from '@/lib/entity-id'
 import { useCan } from '@/hooks/use-can'
 import { shortTime } from '@/lib/format'
 import { clampPage, pageCount, showPager } from '@/lib/pagination'
-import { handleDialogServerError } from '@/lib/handle-server-error'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -28,6 +27,7 @@ import { rowMotion } from '@/components/motion/page'
 import { StatusBadge } from '@/components/status-badge'
 import { type SkeletonCol, SkeletonRows, TableError, TableMessage } from '@/components/table-states'
 import { type Approval, approvalsQuery } from './api'
+import { approvalTakeover, handleDecideError, INTERRUPTED_BADGE } from './takeover'
 
 type Decision = { approval: Approval; decision: 'approved' | 'rejected' } | null
 
@@ -98,10 +98,11 @@ export function Approvals() {
       setPending(null)
       qc.invalidateQueries({ queryKey: ['approvals'] }).catch(onReject({ warn: 'approvals: refresh after decide' }))
     },
-    onError: (err) => {
-      handleDialogServerError(err, () => setPending(null))
-      if (err instanceof ApiError && err.status === 409) qc.invalidateQueries({ queryKey: ['approvals'] }).catch(onReject({ warn: 'approvals: refresh after conflict' }))
-    },
+    onError: (err) =>
+      handleDecideError(err, {
+        close: () => setPending(null),
+        refresh: () => qc.invalidateQueries({ queryKey: ['approvals'] }).catch(onReject({ warn: 'approvals: refresh after conflict' })),
+      }),
   })
 
   const open = (approval: Approval, decision: 'approved' | 'rejected') => {
@@ -143,6 +144,7 @@ export function Approvals() {
               data.items.map((a, i) => {
                 const created = shortTime(a.created_at)
                 const expires = shortTime(a.expires_at)
+                const takeover = approvalTakeover(a)
                 return (
                   <MotionRow key={a.id} {...rowMotion(i)} className='h-13 [&>td]:py-2'>
                     <TableCell>
@@ -155,7 +157,13 @@ export function Approvals() {
                       <ArgsPreview value={a.args_preview} />
                       </div>
                     </TableCell>
-                    <TableCell data-label='风险'><StatusBadge status={a.risk_level} /></TableCell>
+                    <TableCell data-label='风险'>
+                      <div className='flex flex-wrap items-center gap-1.5 max-lg:justify-end'>
+                        <StatusBadge status={a.risk_level} />
+                        {takeover && <StatusBadge status='interrupted' tone='warning' label={takeover.badge} />}
+                        {takeover?.attempt && <span className='text-xs text-muted-foreground tabular-nums'>{takeover.attempt}</span>}
+                      </div>
+                    </TableCell>
                     <TableCell data-label='提交时间' className='tabular-nums' title={created.title}>{created.text}</TableCell>
                     <TableCell data-label='过期时间' className='tabular-nums' title={expires.title}>{expires.text}</TableCell>
                     <TableCell data-actions>
@@ -211,7 +219,13 @@ export function Approvals() {
         onOpenChange={(o) => !o && setPending(null)}
         destructive={pending?.decision === 'rejected'}
         title={pending ? `${pending.decision === 'approved' ? '批准' : '驳回'}「${pending.approval.agent_name}」调用「${tool(pending.approval)}」` : ''}
-        desc={pending?.decision === 'approved' ? '批准后 Run 会立即继续执行这次工具调用，批准后不能撤回。' : '驳回后 Run 不会执行这次工具调用，驳回后不能撤回。'}
+        desc={
+          pending?.decision !== 'approved'
+            ? '驳回后 Run 不会执行这次工具调用，驳回后不能撤回。'
+            : approvalTakeover(pending.approval)
+              ? `这次调用${INTERRUPTED_BADGE}。批准会再执行一次，批准后不能撤回。`
+              : '批准后 Run 会立即继续执行这次工具调用，批准后不能撤回。'
+        }
         confirmText={pending?.decision === 'approved' ? '确认批准' : '确认驳回'}
         isLoading={decide.isPending}
         handleConfirm={() => pending && decide.mutate(pending)}
