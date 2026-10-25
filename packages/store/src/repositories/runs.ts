@@ -1,4 +1,4 @@
-import { ulidWithPrefix } from "@forge/core";
+import { ForgeError, ulidWithPrefix } from "@forge/core";
 import type { ResultSetHeader } from "mysql2/promise";
 import { execute, isRetryableWrite, json, one, query, transaction } from "../db.js";
 import { activeFence, fenceOwnerFor, LeaseLostError } from "../lease-fence.js";
@@ -205,21 +205,52 @@ export const runsRepo = {
     const row = await one<{ maxSeq: number | null }>("SELECT MAX(seq) AS maxSeq FROM messages WHERE run_id = ?", [runId]);
     return Number(row?.maxSeq ?? 0) + 1;
   },
-  async addToolCall(input: { runId: string; toolKey: string; args: unknown; risk: string; status?: string; approvalId?: string | null; idempotencyKey?: string | null; attempt?: number; readOnly?: boolean }): Promise<string> {
-    if (input.idempotencyKey) {
-      const existing = await one<{ id: string }>("SELECT id FROM tool_calls WHERE run_id = ? AND idempotency_key = ?", [input.runId, input.idempotencyKey]);
-      if (existing) return existing.id;
-    }
+  /**
+   * Stores one tool call. Identity (Q5): a call is unique per (run, model_step, step_index) and `idempotencyKey` is
+   * `<runId>:s<model_step>:<step_index>` (the caller builds it; uk_tool_calls_run_idem is the DB guard). An existing row
+   * with the same key is the replay of this call only when it is for the same tool; anything else (e.g. a pre-1.3 row
+   * whose `<runId>:<provider id>` key happens to look like the new format) is a conflict: SYS-9001, never a silent reuse.
+   * `callId` is the provider's id, kept for audit only (never a key, never replayed): "" is stored as NULL, longer than
+   * 191 is truncated.
+   */
+  async addToolCall(input: {
+    runId: string;
+    toolKey: string;
+    args: unknown;
+    risk: string;
+    status?: string;
+    approvalId?: string | null;
+    idempotencyKey?: string | null;
+    attempt?: number;
+    readOnly?: boolean;
+    callId?: string | null;
+    modelStep?: number | null;
+    stepIndex?: number | null;
+  }): Promise<string> {
+    const replayOf = async (): Promise<string | null> => {
+      if (!input.idempotencyKey) return null;
+      const existing = await one<{ id: string; tool_key: string }>("SELECT id, tool_key FROM tool_calls WHERE run_id = ? AND idempotency_key = ?", [input.runId, input.idempotencyKey]);
+      if (!existing) return null;
+      if (existing.tool_key !== input.toolKey) throw new ForgeError("SYS-9001", "工具调用记录冲突", 500);
+      return existing.id;
+    };
+    const replayed = await replayOf();
+    if (replayed) return replayed;
     const id = ulidWithPrefix("tcl");
-    const values = [id, input.runId, input.toolKey, json(input.args), input.risk, input.status ?? "running", input.approvalId ?? null, input.idempotencyKey ?? null, input.attempt ?? 1, input.readOnly === true ? 1 : 0];
+    const callId = typeof input.callId === "string" && input.callId !== "" ? input.callId.slice(0, 191) : null;
+    const values = [
+      id, input.runId, input.toolKey, json(input.args), input.risk, input.status ?? "running", input.approvalId ?? null, input.idempotencyKey ?? null, input.attempt ?? 1,
+      input.readOnly === true ? 1 : 0, callId, input.modelStep ?? null, input.stepIndex ?? null,
+    ];
+    const columns = "id, run_id, tool_key, args_json, risk_level, status, approval_id, idempotency_key, attempt, read_only, call_id, model_step, step_index";
     const owner = fenceOwnerFor(input.runId);
     try {
       if (owner === null) {
-        await execute("INSERT INTO tool_calls (id, run_id, tool_key, args_json, risk_level, status, approval_id, idempotency_key, attempt, read_only) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", values);
+        await execute(`INSERT INTO tool_calls (${columns}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, values);
         return id;
       }
       const result = await execute(
-        "INSERT INTO tool_calls (id, run_id, tool_key, args_json, risk_level, status, approval_id, idempotency_key, attempt, read_only) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM runs WHERE id = ? AND claimed_by = ?",
+        `INSERT INTO tool_calls (${columns}) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM runs WHERE id = ? AND claimed_by = ?`,
         [...values, input.runId, owner],
       );
       if (result.affectedRows === 0) throw new LeaseLostError();
@@ -227,8 +258,8 @@ export const runsRepo = {
     } catch (error) {
       const errno = (error as { errno?: number }).errno;
       if (errno === 1062 && input.idempotencyKey) {
-        const existing = await one<{ id: string }>("SELECT id FROM tool_calls WHERE run_id = ? AND idempotency_key = ?", [input.runId, input.idempotencyKey]);
-        if (existing) return existing.id;
+        const existing = await replayOf();
+        if (existing) return existing;
       }
       throw error;
     }
@@ -370,6 +401,10 @@ export const runsRepo = {
     return result.affectedRows;
   },
   async addRunStep(input: { runId: string; type: string; status?: string; summary?: unknown; toolCallId?: string | null }): Promise<string> {
+    return (await runsRepo.addRunStepWithSeq(input)).id;
+  },
+  /** Same as addRunStep, also returning the allocated seq (a call_model step's seq is its tool calls' model_step). */
+  async addRunStepWithSeq(input: { runId: string; type: string; status?: string; summary?: unknown; toolCallId?: string | null }): Promise<{ id: string; seq: number }> {
     for (let attempt = 0; attempt < 5; attempt += 1) {
       try {
         return await transaction(async (conn) => {
@@ -384,14 +419,14 @@ export const runsRepo = {
               "INSERT INTO run_steps (id, run_id, seq, type, status, tool_call_id, summary_json, ended_at) VALUES (?, ?, ?, ?, ?, ?, ?, IF(? IN ('succeeded','failed'), UTC_TIMESTAMP(3), NULL))",
               values,
             );
-            return id;
+            return { id, seq };
           }
           const [inserted] = await conn.execute(
             "INSERT INTO run_steps (id, run_id, seq, type, status, tool_call_id, summary_json, ended_at) SELECT ?, ?, ?, ?, ?, ?, ?, IF(? IN ('succeeded','failed'), UTC_TIMESTAMP(3), NULL) FROM runs WHERE id = ? AND claimed_by = ?",
             [...values, input.runId, owner],
           );
           if ((inserted as ResultSetHeader).affectedRows === 0) throw new LeaseLostError();
-          return id;
+          return { id, seq };
         });
       } catch (error) {
         if (!isRetryableWrite(error) || attempt === 4) throw error;

@@ -69,7 +69,7 @@ beforeAll(async () => {
 
   const threadId = await repos.createThread({ agentId, orgUnitId: ROOT, subjectType: "user", subjectId: ADMIN_ID });
   runId = await repos.createRun({ threadId, agentId, agentVersionId: versionId, appId, orgUnitId: ROOT, subjectType: "user", subjectId: ADMIN_ID, input: RUN_INPUT, status: "succeeded" });
-  const toolCallId = await repos.addToolCall({ runId, toolKey: "http.call", args: TOOL_ARGS, risk: "high", status: "succeeded" });
+  const toolCallId = await repos.addToolCall({ runId, toolKey: "http.call", args: TOOL_ARGS, risk: "high", status: "succeeded", callId: "provider_call_q5" });
   await repos.addMessage({ threadId, runId, seq: 1, role: "user", content: RUN_INPUT });
   await repos.addMessage({ threadId, runId, seq: 2, role: "assistant", content: { text: "calling", tool_calls: [{ id: toolCallId, type: "function", function: { name: "http.call", arguments: JSON.stringify(TOOL_ARGS) } }] } });
 
@@ -113,6 +113,10 @@ describe("run responses mask tool args and user input", () => {
     const expectedArgs = { url: "https://x.test/cb?id=1&token=***", api_key: "***", headers: { Authorization: "***" }, body: JSON.stringify({ pwd: "***", to: "a@b.com" }) };
     expect(body.toolCalls[0]!.args).toEqual(expectedArgs);
     expect(body.toolCalls[0]!.args_json).toEqual(expectedArgs);
+    // Q5: the provider's tool call id is audit-only; the API exposes our row id only.
+    expect(body.toolCalls[0]!.id).toMatch(/^tcl_/);
+    expect(body.toolCalls[0]).not.toHaveProperty("call_id");
+    expect(JSON.stringify(body)).not.toContain("provider_call_q5");
     expect(body.messages.find((m) => m.role === "user")!.content).toEqual(body.input);
     const assistant = body.messages.find((m) => m.role === "assistant")!.content as { text: string; tool_calls: Array<{ function: { name: string; arguments: string } }> };
     expect(assistant.text).toBe("calling");

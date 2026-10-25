@@ -6,8 +6,12 @@ import { appendMessage } from "./messages.js";
 
 type OpenToolCall = ToolCallRow & { approval_status: string | null };
 
-export function toolIdempotencyKey(runId: string, toolCallId: string): string {
-  return `${runId}:${toolCallId}`.slice(0, 191);
+/**
+ * Dedup key of one tool call (Q5): the call_model step's run_steps.seq and the call's index in that step's toolCalls.
+ * The provider's tool call id is not part of it (providers omit it or repeat it across steps).
+ */
+export function toolIdempotencyKey(runId: string, modelStep: number, stepIndex: number): string {
+  return `${runId}:s${modelStep}:${stepIndex}`;
 }
 
 export function requiresApproval(toolKey: string, risk: string, spec: AgentSpec): boolean {

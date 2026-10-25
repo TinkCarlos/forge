@@ -70,7 +70,7 @@ describe("output repair", () => {
 
 describe("tool execution", () => {
   it("builds a stable idempotency key and limits parallel execution", async () => {
-    expect(toolIdempotencyKey("run_1", "call_1")).toBe("run_1:call_1");
+    expect(toolIdempotencyKey("run_1", 3, 0)).toBe("run_1:s3:0");
     let inFlight = 0;
     let maxInFlight = 0;
     await mapLimit([1, 2, 3, 4], 2, async () => {
