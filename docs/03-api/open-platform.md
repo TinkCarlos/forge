@@ -85,19 +85,21 @@
 
 | 维度 | 默认 | 执行点 |
 | --- | --- | --- |
-| RPM | 60 | API 网关（Redis 令牌桶） |
-| 并发 Run | 5 | 创建 Run 前 |
-| 每日 Run 次数 | 1000 | 创建 Run 前 |
-| 每月 Run 次数 | 20000 | 创建 Run 前 |
-| 每月成本 | $100 | 模型调用前后累计 |
-| 单请求体 | 1 MB | 网关 |
+| RPM | 60（应用的 `rateLimitPerMinute`，1–100000） | API 进程内，单进程固定一分钟窗口，多实例部署时上限按实例数放大 |
+| 并发 Run | 5（未实现） | 创建 Run 前 |
+| 每日 Run 次数 | 1000（应用的 `dailyQuota`，1–10000000） | 创建 Run 前；按数据库时区的自然日统计该应用当天建的 Run（不分状态） |
+| 每月 Run 次数 | 20000（未实现） | 创建 Run 前 |
+| 每月成本 | $100（未实现） | 模型调用前后累计 |
+| 单请求体 | 2 MiB | API |
 | 单文件 | 50 MB（未实现） | 上传 |
 | 单 Run 文件数 | 10（未实现） | 创建 Run |
-| SSE 连接 | 每 Run 5 | 网关 |
+| SSE 连接 | 每 Run 5（未实现） | 网关 |
 
 - 配额按应用计；模型 Provider 的并发/TPM 是另一层保护，二者同时生效。
-- 超限返回 `429`（瞬时速率）或 `402`/`429`（周期额度，按套餐定义统一用 `429` + code `OPN-4501`），带 `Retry-After`。
-- 幂等重放不消耗 Run 次数，但仍计入请求速率。
+- 超限返回 `429`：请求速率超限为 `OPN-4502`，每日 Run 次数用完为 `OPN-4501`。所有 429 都带 `Retry-After`（整数秒）：
+  - `OPN-4502`：当前一分钟窗口剩余的秒数，至少 1。
+  - `OPN-4501`：按数据库时区距次日 00:00 的秒数（与每日计数同一口径），取值 1–86400；数据库取不到时保守返回 3600。
+- 幂等重放（同一应用、同一 `Idempotency-Key`）返回第一次的响应，不消耗 Run 次数；每日次数已用完时重放仍返回原响应，不返回 429。重放仍计入请求速率，超过 RPM 照样返回 `429 OPN-4502`。
 
 ## 5. 接口目录
 
@@ -484,14 +486,15 @@ v1 = hex(HMAC_SHA256(webhookSecret, signed))
 {
   "error": {
     "code": "OPN-4501",
-    "message": "应用本月运行次数已用完",
-    "requestId": "req_01J...",
-    "runId": null,
-    "details": { "dimension": "monthlyRuns", "resetAt": "2026-11-01T00:00:00.000Z" },
-    "remedy": "在控制台调整应用配额，或等待下个周期"
+    "message": "应用今日配额已用完",
+    "requestId": "req-1a2b",
+    "details": null,
+    "retryable": false
   }
 }
 ```
+
+上例是每日 Run 次数用完时的实际响应（HTTP 429，响应头带 `Retry-After`，见 §4）。错误体目前只有 `code`、`message`、`requestId`、`details`、`retryable` 五个字段；`runId`、`remedy` 以及 `details.dimension`/`resetAt`、按月次数（`monthlyRuns`）这类维度均**未实现**。
 
 | HTTP | 场景 | 典型错误码 |
 | --- | --- | --- |
@@ -507,11 +510,13 @@ v1 = hex(HMAC_SHA256(webhookSecret, signed))
 | 502/503 | 上游模型/服务不可用 | `MDL-3001`、`SYS-9003` |
 
 - 状态码与错误码以代码为准：应用停用返回 `401 AUTH-1001`，不是 `403`；同一请求既缺 Scope、应用又已停用时先报 `403 POL-2001`（Scope 检查在前）。
-- `retryable` 由错误码决定；`Retry-After` 仅在 429/503 出现。
+- `retryable` 由错误码决定；`Retry-After` 目前只在 429 出现（取值见 §4），503 不带。
 - 不在错误中返回堆栈、内部地址、密钥或完整上游响应。
 - 所有错误写 `api_request_logs` 与审计（按严重度）。
 
 ## 15. 限流响应头
+
+以下 `X-RateLimit-*` 与 `X-Forge-Quota-*` 响应头**未实现（响应中不包含）**：
 
 ```
 X-RateLimit-Limit: 60
@@ -522,7 +527,7 @@ X-Forge-Quota-Remaining: 873
 X-Forge-Quota-Reset: 1762070400
 ```
 
-429 返回 `Retry-After`（秒）与 `details.dimension`。
+目前只有 429 返回 `Retry-After`（整数秒，取值见 §4）；`details.dimension` 未实现。
 
 ## 16. 版本与弃用
 
