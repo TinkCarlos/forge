@@ -1,6 +1,6 @@
 # Forge 部署与运维
 
-版本：1.1　日期：2026-10-24　状态：待评审
+版本：1.2　日期：2026-10-25　状态：待评审
 
 > 发布执行以 [release-process.md](release-process.md) 与公司 K8s/CI/Nginx 上游文档为准。本文描述部署拓扑、配置项与日常运维。
 
@@ -150,7 +150,7 @@ minio:9000/9001
 
 详见 [release-process.md](release-process.md)。
 
-### 6.1 本版本升级须知（破坏性变更）
+### 6.1 1.1 版升级须知（破坏性变更）
 
 以下变更都是安全或输入校验修复，调用方需要按新行为调整。错误码 CFG-8501 表示请求参数不合法，响应里的 `details.field` 指出是哪个字段。
 
@@ -164,6 +164,14 @@ minio:9000/9001
 8. **manifest 非法的插件不加载**：它的 MCP 不进工具列表、技能不进系统提示，Provider 调用报 MDL-3001；它带的 Agent 发起 Run 时返回 409 CFG-8503，定时触发只跳过这一次并记下 `last_error_code`，任务不禁用。manifest 修好后自动恢复，其他插件不受影响。
 
 其他行为变化（不破坏兼容）：重装插件沿用原记录的 `pkg_` id；user、tool、assistant 三种消息和 webhook 负载在落库、下发和读取时都经过同一个掩码函数，单独出现的 `sk-` 密钥也会打码。
+
+### 6.2 1.2 版升级须知（破坏性变更）
+
+从 1.1 升级到 1.2 时看这一节；还停在 1.1 之前的部署，先按 6.1 处理，再看这一节。错误码和 `details.field` 的含义同 6.1。
+
+<!-- 第 9、10 条由后端从 6.1 挪到这里，编号接着 6.1 往下排。 -->
+
+其他变化（不影响部署和调用方）：测试框架升级到 vitest 4，不再依赖 tinypool；只影响开发和 CI，运行时依赖不变。
 
 ## 7. 备份与恢复
 
@@ -257,4 +265,4 @@ minio:9000/9001
 
 ## 14. 已知风险
 
-- **测试依赖的已知漏洞（只影响开发和测试环境）**：vitest 3 依赖链上的 tinypool（GHSA-5gmw-xhrv-c9v3、GHSA-85c8-ppgw-ccpr）和 vitest / @vitest/mocker（GHSA-82fw-gwwq-j7x9、GHSA-qxg6-89mg-rqv8）。它们都是 devDependencies，不进生产运行时；只有在测试进程里运行不可信代码时才有风险。不要在 CI 或开发机上对不可信分支直接跑测试。升级到 vitest 4 另立任务跟进。
+- **测试依赖的已知漏洞（1.2 已解决）**：1.1 用的 vitest 3 依赖链上有 tinypool（GHSA-5gmw-xhrv-c9v3、GHSA-85c8-ppgw-ccpr）和 vitest / @vitest/mocker（GHSA-82fw-gwwq-j7x9、GHSA-qxg6-89mg-rqv8）的漏洞，都是 devDependencies，不进生产运行时。1.2 升级到 vitest 4.1.12 后不再依赖 tinypool，`pnpm audit --dev` 没有已知漏洞。还停在 1.1 的环境不要对不可信分支直接跑测试。
