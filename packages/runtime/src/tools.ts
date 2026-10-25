@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { config, ForgeError, type AgentSpec } from "@forge/core";
 import type { ResolvedTool } from "@forge/capabilities";
 import { LeaseLostError, parseJsonValue, repos, type RunRow, type ToolCallRow } from "@forge/store";
+import { toolCallStarted } from "./drain.js";
 import { emit } from "./events.js";
 import { appendMessage } from "./messages.js";
 
@@ -110,6 +111,8 @@ async function executeToolCall(run: RunRow, stored: OpenToolCall, tools: Map<str
   const started = Date.now();
   const idempotencyKey = toolRequestKey(run.id, stored.id);
   const executed = await withToolRetries(config.TOOL_MAX_ATTEMPTS, nextAttempt, async () => {
+    // Ruling 15:39: a drain releases the lease only after this call has ended (even when it ignores the abort).
+    const ended = toolCallStarted(run.id);
     try {
       const outcome = await tool.execute(args, { signal, idempotencyKey });
       assertLeaseHeld(signal); // no retry / tool.retried after an abort
@@ -118,6 +121,8 @@ async function executeToolCall(run: RunRow, stored: OpenToolCall, tools: Map<str
       assertLeaseHeld(signal);
       const code = error instanceof ForgeError ? error.code : "HTP-4001";
       return { ok: false, content: String(error), errorCode: code === "HTP-4002" || code === "MCP-4102" ? code : "HTP-4001" };
+    } finally {
+      ended();
     }
   }, async (attempt, failed) => {
     await emit(run.id, "tool.retried", { toolCallId: stored.id, tool: stored.tool_key, attempt, error: failed.errorCode ?? null });

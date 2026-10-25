@@ -16,11 +16,12 @@ if (config.EMBEDDED_WORKER) startRuntime();
 console.log(`Forge API listening on ${config.FORGE_PUBLIC_URL} (local http://localhost:${port})`);
 
 // P3-07 / r5 §4: drain the runtime (no new claims; tool calls in flight finish), close the server, close the DB pool,
-// flush the log (r4, at most 2 s), then exit (0, or 1 when a step failed / a drain did not finish); the process is gone
-// within 10 s.
+// flush the log (r4), then exit (0, or 1 when a step failed / a drain did not finish). Ruling 15:39: one deadline 9 s
+// after the signal; Run drain min(WORKER_DRAIN_TIMEOUT_MS, 5 s), lease release 1 s, flush 2 s, each cut to it.
 const shutdown = createShutdown({
   close: () => app.close(),
-  drainRuntime: () => drainRuntime(),
+  runDrainTimeoutMs: config.WORKER_DRAIN_TIMEOUT_MS,
+  drainRuntime: (budget) => drainRuntime(budget.drainMs, budget),
   closePool: () => pool.end(),
   exit: (code) => process.exit(code),
   log: (message, error) => app.log.error(error === undefined ? {} : { err: logSafeError(error) }, message),

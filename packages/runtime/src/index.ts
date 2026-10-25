@@ -13,4 +13,4 @@ export { deliverDueWebhooks, webhookRetryDelayMs, webhookShouldRetry } from "./w
 export { describeTickError, guardTick, logSafeError, redactCredentials, tickBackoffMs, TICK_BACKOFF_MAX_MS, TICK_BACKOFF_MIN_MS, type GuardedTick, type TickGuardOptions, type TickGuardState } from "./tick-guard.js";
 export { AUTH_GC_BATCH, AUTH_GC_INTERVAL_MS, AUTH_GC_LOCK, collectExpiredAuth, type AuthGcResult } from "./auth-gc.js";
 export { drainRuntime, startRuntime, stopRuntime } from "./worker.js";
-export type { DrainResult } from "./drain.js";
+export type { DrainOptions, DrainResult, RunHandoff } from "./drain.js";

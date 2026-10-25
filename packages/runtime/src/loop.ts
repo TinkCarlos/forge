@@ -359,13 +359,21 @@ export async function runClaimed(claimed: ClaimedRun, workerId = currentWorkerId
     });
   } finally {
     clearInterval(timer);
-    try {
-      if (drain.signal.aborted && !lease.signal.aborted) await announceDrainRelease(run.id, workerId);
-      // After a lease loss the DB may still be unreachable: the release is best effort (the lease expires anyway).
-      if (lease.signal.aborted) await repos.releaseRunLease(run.id, workerId).catch(() => undefined);
-      else await repos.releaseRunLease(run.id, workerId);
-    } finally {
-      drain.done();
+    if (drain.signal.aborted) {
+      // Ruling 15:39: during a drain the coordinator releases the lease, and only once every tool call of this Run
+      // has ended (a call that ignored the abort keeps the lease until it expires). The heartbeat stops here.
+      drain.handOff(async () => {
+        if (!lease.signal.aborted) await announceDrainRelease(run.id, workerId);
+        await repos.releaseRunLease(run.id, workerId);
+      });
+    } else {
+      try {
+        // After a lease loss the DB may still be unreachable: the release is best effort (the lease expires anyway).
+        if (lease.signal.aborted) await repos.releaseRunLease(run.id, workerId).catch(() => undefined);
+        else await repos.releaseRunLease(run.id, workerId);
+      } finally {
+        drain.done();
+      }
     }
   }
 }
