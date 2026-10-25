@@ -19,7 +19,7 @@ let agentKey = "";
 let versionId = "";
 const appIds: string[] = [];
 
-const errorOf = (res: LightMyRequestResponse) => (res.json() as { error: { code: string } }).error;
+const errorOf = (res: LightMyRequestResponse) => (res.json() as { error: { code: string; message: string } }).error;
 const runCount = async (appId: string) => (await query<{ n: number }>("SELECT COUNT(*) AS n FROM runs WHERE app_id = ?", [appId]))[0]!.n;
 const idemRows = async (appId: string, key: string) =>
   (await query<{ n: number }>("SELECT COUNT(*) AS n FROM idempotency_keys WHERE scope = ? AND idempotency_key = ?", [appId, key]))[0]!.n;
