@@ -43,4 +43,55 @@ describe("IDLE: SIGTERM with an idle connection and no SSE stream", () => {
     expect(proc.output()).not.toContain("timed out");
     expect(await conn.closed).toBe("");
   });
+
+  it("IDLE-03: a proxy reuses the idle keep-alive connection during shutdown (request started before the close) -> answer has Connection: close, exit 0 within 2 s", { timeout: 30_000 }, async () => {
+    const proc = await api();
+    const conn = await rawConnection(proc.port);
+    conn.write(keepAliveGet("/healthz"));
+    const first = await conn.response();
+    expect(first).toMatch(/^HTTP\/1\.1 200/);
+    expect(first.toLowerCase()).toContain("connection: keep-alive");
+    // The next request on the same connection: its request line is on the wire when SIGTERM arrives, the rest after.
+    const [line, ...rest] = keepAliveGet("/admin/api/agents").split("\r\n");
+    conn.write(`${line}\r\n`);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const exit = sigterm(proc, 2000);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    conn.write(rest.join("\r\n"));
+    const second = await conn.response(first.length);
+    expect(second).toMatch(/^HTTP\/1\.1 503/);
+    expect(second.toLowerCase()).toContain("connection: close");
+    expect((await conn.closed).length).toBe(first.length + second.length);
+    const result = await exit;
+    expect(result.code, proc.output().slice(-600)).toBe(0);
+    expect(result.ms).toBeLessThan(2000);
+  });
+
+  it("IDLE-04: a proxy sends a request on an idle or never-used connection right after SIGTERM -> a Connection: close answer or a clean close with no response byte, exit 0 within 2 s", { timeout: 60_000 }, async () => {
+    for (const used of [true, false]) {
+      for (const delayMs of [0, 1, 5, 20]) {
+        const proc = await api();
+        const conn = await rawConnection(proc.port);
+        let offset = 0;
+        if (used) {
+          conn.write(keepAliveGet("/healthz"));
+          offset = (await conn.response()).length;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        const exit = sigterm(proc, 2000);
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        conn.write(keepAliveGet("/admin/api/agents"));
+        const answer = (await conn.closed).slice(offset);
+        const what = `${used ? "idle" : "never-used"} connection, request ${delayMs} ms after SIGTERM`;
+        // Never half a response: either nothing (the proxy retries on a fresh connection) or a full answer that closes.
+        if (answer.length > 0) {
+          expect(answer, what).toMatch(/^HTTP\/1\.1 \d{3}/);
+          expect(answer.toLowerCase(), what).toContain("connection: close");
+        }
+        const result = await exit;
+        expect(result.code, `${what}: ${proc.output().slice(-400)}`).toBe(0);
+        expect(result.ms, what).toBeLessThan(2000);
+      }
+    }
+  });
 });
