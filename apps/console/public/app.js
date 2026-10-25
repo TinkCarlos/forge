@@ -684,6 +684,18 @@ function textarea(label, name, value = "", rows = 6, extra = "") {
   return `<label>${label}<textarea name="${esc(name)}" rows="${rows}"${extra ? ` ${extra}` : ""}>${esc(value)}</textarea></label>`;
 }
 
+const APP_SCOPES_HINT_ID = "app-scopes-hint";
+
+/** 应用 Scopes 输入框下的说明：Key 的有效 scope = Key 的 scopes ∩ 应用当前 scopes；新建 Key 复制应用当时的 scopes；不接受含 * 的 scope。 */
+function appScopesHint() {
+  return `<p class="hint" id="${APP_SCOPES_HINT_ID}">${esc("收窄会立即对已有 Key 生效；放宽只对之后新建的 Key 生效，已有 Key 需要重新创建。不支持 ")}<code>*</code>${esc(" 通配。")}</p>`;
+}
+
+/** Key 列表 Scopes 列：GET /admin/api/apps/:id/keys 返回 scopes_json（数组）；缺失或不是数组时显示空。 */
+function keyScopesText(key) {
+  return Array.isArray(key?.scopes_json) ? key.scopes_json.join(", ") : "";
+}
+
 /** 表单内字段提示：文案走 textContent，显示提示、标记 aria-invalid 并聚焦；用户改动输入后提示消失。 */
 function showFieldError(name, errorId, message) {
   const input = $("#modal-body").querySelector(`[name="${name}"]`);
@@ -844,7 +856,7 @@ const app = {
       <div class="form-grid">
         ${field("名称", "name", app.name)}
         ${select("状态", "status", [{ value: "active", label: "active" }, { value: "disabled", label: "disabled" }], app.status)}
-        <div class="full">${field("Scopes", "scopes", (app.scopes ?? []).join(","))}</div>
+        <div class="full">${field("Scopes", "scopes", (app.scopes ?? []).join(","), "text", `aria-describedby="${APP_SCOPES_HINT_ID}"`)}${appScopesHint()}</div>
         <div class="full">${field("Webhook URL", "webhookUrl", app.webhookUrl ?? "")}</div>
         <div class="full">${field("新 Webhook Secret（留空不改）", "webhookSecret", "", "password")}</div>
       </div>`, async (data) => {
@@ -1176,7 +1188,7 @@ const app = {
         ${field("名称", "name", "合作方应用")}
         <div class="full">${field("Webhook URL", "webhookUrl", "")}</div>
         <div class="full">${field("Webhook Secret", "webhookSecret", "", "password")}</div>
-        <div class="full">${field("Scopes", "scopes", "agents:read,runs:create,runs:read,runs:cancel")}</div>
+        <div class="full">${field("Scopes", "scopes", "agents:read,runs:create,runs:read,runs:cancel", "text", `aria-describedby="${APP_SCOPES_HINT_ID}"`)}${appScopesHint()}</div>
       </div>`, async (data) => {
       await api("/admin/api/apps", { method: "POST", body: { key: data.get("key"), name: data.get("name"), webhookUrl: data.get("webhookUrl"), webhookSecret: data.get("webhookSecret"), scopes: String(data.get("scopes") ?? "").split(",").map((item) => item.trim()).filter(Boolean) } });
       toast("应用已创建");
@@ -1196,7 +1208,7 @@ const app = {
   async listAppKeys(appId) {
     try {
       const result = await api(`/admin/api/apps/${idSeg(appId)}/keys`);
-      openModal("API Keys", `<div class="table-wrap"><table><thead><tr><th>名称</th><th>Prefix</th><th>状态</th><th>最后使用</th></tr></thead><tbody>${(result.items ?? []).map((key) => `<tr><td>${esc(key.name)}</td><td class="mono">${esc(key.prefix)}</td><td>${statusPill(key.status)}</td><td>${fmt(key.last_used_at)}</td></tr>`).join("")}</tbody></table></div>`, async () => {}, "关闭");
+      openModal("API Keys", `<div class="table-wrap"><table><thead><tr><th>名称</th><th>Prefix</th><th>Scopes</th><th>状态</th><th>最后使用</th></tr></thead><tbody>${(result.items ?? []).map((key) => `<tr><td>${esc(key.name)}</td><td class="mono">${esc(key.prefix)}</td><td class="mono">${esc(keyScopesText(key))}</td><td>${statusPill(key.status)}</td><td>${fmt(key.last_used_at)}</td></tr>`).join("")}</tbody></table></div>`, async () => {}, "关闭");
     } catch (error) {
       toast(errorText(error), "error");
     }
