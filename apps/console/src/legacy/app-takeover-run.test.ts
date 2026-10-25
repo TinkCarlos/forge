@@ -241,3 +241,25 @@ describe('R9 严格 CSP', () => {
     expect(src).not.toMatch(/\son[a-z]+="/)
   })
 })
+
+describe('R9 SSE tool.interrupted：attempt 非法值不显示次数', () => {
+  const BAD: Array<[string, unknown]> = [['0', 0], ['null', null], ['负数', -1], ['小数', 1.5], ['字符串', '2']]
+
+  it.each(BAD)('action=confirm、attempt=%s：「工具 X 执行被中断，需重新确认」，不写次数', async (_label, attempt) => {
+    const h = await opened()
+    h.es().emit('tool.interrupted', 6, { toolCallId: 'tc_2', tool: 'send_mail', action: 'confirm', attempt })
+    expect(h.log()).toHaveLength(1)
+    expect(h.log()[0]).toContain('工具 send_mail 执行被中断，需重新确认')
+    expect(h.log()[0]).not.toContain('第 ')
+    expect(h.log()[0]).not.toContain('NaN')
+  })
+
+  it.each(BAD)('action=rerun、attempt=%s：「工具 X 执行中断，已自动重跑」，不写次数', async (_label, attempt) => {
+    const h = await opened()
+    h.es().emit('tool.interrupted', 5, { toolCallId: 'tc_1', tool: 'web_fetch', action: 'rerun', attempt })
+    expect(h.log()).toHaveLength(1)
+    expect(h.log()[0]).toContain('工具 web_fetch 执行中断，已自动重跑')
+    expect(h.log()[0]).not.toContain('（第')
+    expect(h.log()[0]).not.toContain('NaN')
+  })
+})
