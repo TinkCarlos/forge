@@ -533,6 +533,29 @@ async function renderRuns() {
     </div>`;
 }
 
+// R9：Worker 接手中断后转人工确认的审批（reason=interrupted）。reason 缺失（老后端）或未知值一律按 policy 处理。
+const INTERRUPTED_BADGE_TEXT = "执行中断，可能已执行过";
+// 批准/驳回一条已处理、已被接手替换、已过期或并发输掉的审批：409 + 其中一个码（APR-2104 审批已处理或已过期，APR-2103 并发决定）。
+// 码集合只在这一行定义；CFG-8503 是通用「资源状态冲突」，不在集合里，照普通错误提示。
+const APPROVAL_STALE_CODES = new Set(["APR-2104", "APR-2103"]);
+const APPROVAL_STALE_TEXT = "该审批已失效，请刷新后处理新的审批";
+
+function approvalReason(approval) {
+  return approval?.reason === "interrupted" ? "interrupted" : "policy";
+}
+
+/** attempt 是正整数时返回「第 N 次尝试」，null / 缺失 / 非法值返回空串。 */
+function attemptText(attempt) {
+  return Number.isInteger(attempt) && attempt > 0 ? `第 ${attempt} 次尝试` : "";
+}
+
+/** 审批列表「风险」列里追加的中断徽标；policy 返回空串（和原来一样）。 */
+function approvalReasonHtml(approval) {
+  if (approvalReason(approval) !== "interrupted") return "";
+  const attempt = attemptText(approval.attempt);
+  return ` <span class="pill warn">${esc(INTERRUPTED_BADGE_TEXT)}</span>${attempt ? ` <span class="muted">${esc(attempt)}</span>` : ""}`;
+}
+
 async function renderApprovals() {
   const data = await api("/admin/api/approvals");
   state.approvals = data.items ?? [];
@@ -540,7 +563,7 @@ async function renderApprovals() {
     <div class="card">
       <div class="card-head"><div><h3>待审批</h3><p class="muted">高风险工具调用会暂停 Run</p></div><button class="btn ghost small" onclick="app.renderCurrent()">刷新</button></div>
       ${state.approvals.length ? `<div class="table-wrap"><table><thead><tr><th>Run</th><th>Agent</th><th>风险</th><th>过期时间</th><th>操作</th></tr></thead><tbody>
-        ${state.approvals.map((approval) => `<tr><td class="mono">${esc(approval.run_id)}</td><td>${esc(approval.agent_name)}</td><td>${statusPill(approval.risk_level)}</td><td>${fmt(approval.expires_at)}</td><td><div class="actions"><button class="btn primary small" onclick="app.decideApproval('${esc(approval.id)}','approved')">批准</button><button class="btn danger small" onclick="app.decideApproval('${esc(approval.id)}','rejected')">驳回</button><button class="btn ghost small" onclick="app.openRun('${esc(approval.run_id)}')">查看 Run</button></div></td></tr>`).join("")}
+        ${state.approvals.map((approval) => `<tr><td class="mono">${esc(approval.run_id)}</td><td>${esc(approval.agent_name)}</td><td>${statusPill(approval.risk_level)}${approvalReasonHtml(approval)}</td><td>${fmt(approval.expires_at)}</td><td><div class="actions"><button class="btn primary small" onclick="app.decideApproval('${esc(approval.id)}','approved')">批准</button><button class="btn danger small" onclick="app.decideApproval('${esc(approval.id)}','rejected')">驳回</button><button class="btn ghost small" onclick="app.openRun('${esc(approval.run_id)}')">查看 Run</button></div></td></tr>`).join("")}
       </tbody></table></div>` : empty("没有待审批", "高风险工具执行时会出现在这里。")}
     </div>`;
 }
@@ -1141,8 +1164,18 @@ const app = {
   },
 
   async decideApproval(id, decision) {
-    openModal(decision === "approved" ? "批准工具调用" : "驳回工具调用", `${textarea("备注", "comment", "")}`, async (data) => {
-      await api(`/admin/api/approvals/${idSeg(id)}/decide`, { method: "POST", body: { decision, comment: data.get("comment") } });
+    const approval = (state.approvals ?? []).find((item) => item.id === id);
+    const hint = decision === "approved" && approvalReason(approval) === "interrupted" ? `<p class="muted">这次调用${esc(INTERRUPTED_BADGE_TEXT)}，批准会再执行一次。</p>` : "";
+    openModal(decision === "approved" ? "批准工具调用" : "驳回工具调用", `${hint}${textarea("备注", "comment", "")}`, async (data) => {
+      try {
+        await api(`/admin/api/approvals/${idSeg(id)}/decide`, { method: "POST", body: { decision, comment: data.get("comment") } });
+      } catch (error) {
+        // R9：审批已失效（被接手替换 / 已处理 / 已过期）：专门提示，关确认框并刷新列表，不弹后端原文。
+        if (error?.status !== 409 || !APPROVAL_STALE_CODES.has(error.code)) throw error;
+        toast(`${APPROVAL_STALE_TEXT}（错误码 ${error.code}）`, "error");
+        await renderApprovals();
+        return;
+      }
       toast(decision === "approved" ? "已批准，Run 将继续" : "已驳回");
       await renderApprovals();
     }, decision === "approved" ? "批准" : "确认驳回", decision !== "approved");
