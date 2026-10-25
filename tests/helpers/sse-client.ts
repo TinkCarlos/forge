@@ -1,7 +1,7 @@
 import { request as httpRequest, type IncomingMessage } from "node:http";
 import { connect, createServer } from "node:net";
 import { spawn, type ChildProcess } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
 
 // Shutdown tests (SIG-xx): a real API child process and a raw SSE client. Ports reserved by other local services
@@ -9,7 +9,8 @@ import { dirname, join } from "node:path";
 const RESERVED = (port: number): boolean =>
   port === 3100 || (port >= 3191 && port <= 3199) || port === 4176 || (port >= 4178 && port <= 4180) || (port >= 8090 && port <= 8094) || port === 3307;
 export const isReservedPort = RESERVED;
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const HELPERS = dirname(fileURLToPath(import.meta.url));
+const ROOT = join(HELPERS, "..", "..");
 
 export async function freePort(): Promise<number> {
   for (;;) {
@@ -32,26 +33,65 @@ export interface ApiProcess {
   /** Resolves with the exit code once the child exits. */
   exited: Promise<{ code: number | null; signal: NodeJS.Signals | null; at: number }>;
   output: () => string;
+  /** stdout / stderr of the child separately (output() is both, in arrival order). */
+  stdout: () => string;
+  stderr: () => string;
+}
+
+/** Test-only preloads in tests/helpers (node --import); nothing in apps/ can turn them on. */
+export type TestPreload = "slow-threadpool" | "stuck-flush";
+const PRELOAD_FILES: Record<TestPreload, string> = {
+  "slow-threadpool": "preload-slow-threadpool.mjs",
+  "stuck-flush": "preload-stuck-flush.mjs",
+};
+
+/** Written to stderr by preload-signal-ready.mjs once the child's SIGTERM handler is installed. */
+export const SIGNAL_READY = "[test-preload] SIGTERM handler installed";
+
+export interface TestOnlyStartOptions {
+  /** slow-threadpool also sets UV_THREADPOOL_SIZE=1 for the child. */
+  preload?: TestPreload[];
+  /** NODE_ENV of the child; default "test" ("unset" removes it). */
+  nodeEnv?: "development" | "test" | "unset";
 }
 
 /**
  * Starts apps/api/src/server.ts (tsx) on a free 127.0.0.1 port, embedded worker off, same test DB and secrets.
- * `extraEnv` can only raise the log level (LOG_LEVEL), nothing else.
- * NODE_ENV is pinned to "test" for the child whatever the runner's NODE_ENV is: under "development" app.ts logs
- * through pino-pretty, and the tests that read the child's log (SIG-09) parse JSON lines only.
+ * `extraEnv` can only raise the log level (LOG_LEVEL). `testOnly` is for the shutdown log tests only: test preloads
+ * from tests/helpers (slow libuv thread pool, a logger flush that never calls back) and the child's NODE_ENV.
+ * NODE_ENV is pinned to "test" for the child unless `testOnly.nodeEnv` says otherwise: under "development" app.ts logs
+ * through pino-pretty, and the tests that read the child's log as JSON (SIG-09) parse JSON lines only.
  */
-export async function startApiProcess(extraEnv: { LOG_LEVEL?: "info" } = {}): Promise<ApiProcess> {
+export async function startApiProcess(extraEnv: { LOG_LEVEL?: "info" } = {}, testOnly: TestOnlyStartOptions = {}): Promise<ApiProcess> {
   const port = await freePort();
   const env: NodeJS.ProcessEnv = { ...process.env, NODE_ENV: "test", PORT: String(port), HOST: "127.0.0.1", EMBEDDED_WORKER: "false", LOG_LEVEL: "warn", ...extraEnv };
-  const child = spawn(process.execPath, ["--import", "tsx", "apps/api/src/server.ts"], { cwd: ROOT, env, stdio: ["ignore", "pipe", "pipe"] });
+  if (testOnly.nodeEnv === "unset") delete env.NODE_ENV;
+  else if (testOnly.nodeEnv) env.NODE_ENV = testOnly.nodeEnv;
+  const preloads = testOnly.preload ?? [];
+  if (preloads.includes("slow-threadpool")) env.UV_THREADPOOL_SIZE = "1";
+  // Every child: preload-signal-ready.mjs reports on stderr once server.ts has installed its SIGTERM handler.
+  const preloadArgs = ["preload-signal-ready.mjs", ...preloads.map((name) => PRELOAD_FILES[name])].flatMap((file) => ["--import", pathToFileURL(join(HELPERS, file)).href]);
+  const child = spawn(process.execPath, ["--import", "tsx", ...preloadArgs, "apps/api/src/server.ts"], { cwd: ROOT, env, stdio: ["ignore", "pipe", "pipe"] });
   let out = "";
-  child.stdout?.on("data", (chunk: Buffer) => (out += chunk.toString("utf8")));
-  child.stderr?.on("data", (chunk: Buffer) => (out += chunk.toString("utf8")));
+  let stdout = "";
+  let stderr = "";
+  child.stdout?.on("data", (chunk: Buffer) => {
+    const text = chunk.toString("utf8");
+    out += text;
+    stdout += text;
+  });
+  child.stderr?.on("data", (chunk: Buffer) => {
+    const text = chunk.toString("utf8");
+    out += text;
+    stderr += text;
+  });
   const exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null; at: number }>((resolve) =>
     child.once("exit", (code, signal) => resolve({ code, signal, at: Date.now() })),
   );
   const started = Date.now();
-  while (!out.includes("Forge API listening")) {
+  // Not just "Forge API listening": server.ts installs its signal handlers right after printing it, and a signal sent
+  // in between kills the child (seen once in SIG-10c, exit code null).
+  while (!(out.includes("Forge API listening") && stderr.includes(SIGNAL_READY))) {
     if (child.exitCode !== null) throw new Error(`API process exited during startup: ${out.slice(-800)}`);
     if (Date.now() - started > 30_000) {
       child.kill("SIGKILL");
@@ -59,7 +99,7 @@ export async function startApiProcess(extraEnv: { LOG_LEVEL?: "info" } = {}): Pr
     }
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
-  return { port, child, exited, output: () => out };
+  return { port, child, exited, output: () => out, stdout: () => stdout, stderr: () => stderr };
 }
 
 export interface SseEvent {

@@ -76,7 +76,9 @@ afterAll(async () => {
 
 describe("SIG: SIGTERM with open SSE streams (API child process)", () => {
   it("SIG-09: every shutdown step logs one info line with ms, in order; no timer is left at exit", { timeout: 60_000 }, async () => {
-    const proc = await startApiProcess({ LOG_LEVEL: "info" });
+    // Test-only slow libuv thread pool (tests/helpers/preload-slow-threadpool.mjs): pino's asynchronous write of the
+    // phase lines waits behind a pbkdf2 job, the delay that reordered the lines under load (1 in 91 runs on 6479be9).
+    const proc = await startApiProcess({ LOG_LEVEL: "info" }, { preload: ["slow-threadpool"] });
     processes.push(proc);
     const runId = await newRun();
     await repos.addEvent(runId, "run.started", { n: 1 });
@@ -101,6 +103,8 @@ describe("SIG: SIGTERM with open SSE streams (API child process)", () => {
     // plugins/sse-shutdown.ts, starting at 1, strictly increasing, no number used twice.
     const steps = [...arrived].sort((a, b) => a.phaseSeq - b.phaseSeq);
     expect(steps.map((entry) => entry.phaseSeq)).toEqual(steps.map((_entry, index) => index + 1));
+    // The logger is flushed (and its in-flight write awaited) before exit, so the lines also arrive in that order.
+    expect(arrived.map((entry) => entry.phaseSeq)).toEqual(steps.map((entry) => entry.phaseSeq));
     expect(steps.map((entry) => entry.phase)).toEqual([
       "signal",
       "readyz_not_ready",

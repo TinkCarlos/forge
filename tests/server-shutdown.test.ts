@@ -20,6 +20,12 @@ function deps(over: Partial<Record<string, unknown>> = {}) {
   };
   return { d, order };
 }
+/** deps() with a logger flush (default: never calls back) and the synchronous stderr writer, both as typed mocks. */
+function flushDeps(over: Partial<Record<string, unknown>> = {}, flush = vi.fn((_done: () => void): void => undefined)) {
+  const writeStderrSync = vi.fn((_line: string): void => undefined);
+  const { d, order } = deps({ flush, writeStderrSync, ...over });
+  return { d, order, flush, writeStderrSync };
+}
 afterEach(() => vi.useRealTimers());
 
 describe("P3-07 graceful shutdown", () => {
@@ -43,14 +49,89 @@ describe("P3-07 graceful shutdown", () => {
     expect(order.at(-1)).toBe("exit:1");
   });
 
-  it("a hung close is cut off by the timeout: exit 1", async () => {
+  it("a hung close is cut off by the backstop: drain_timeout, exit 1, before timeoutMs", async () => {
     vi.useFakeTimers();
-    const { d } = deps({ close: vi.fn(() => new Promise<void>(() => undefined)) });
+    const lines: string[] = [];
+    const { d } = deps({ close: vi.fn(() => new Promise<void>(() => undefined)), info: vi.fn((_m: string, f: Record<string, unknown>) => lines.push(f.phase as string)) });
     void createShutdown(d as never)("SIGTERM").catch(() => undefined);
-    await vi.advanceTimersByTimeAsync(9_999);
+    // Backstop at timeoutMs - 1000: room for its 500 ms flush and the process exit inside timeoutMs.
+    await vi.advanceTimersByTimeAsync(8_999);
     expect(d.exit).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
+    expect(lines).toEqual(["signal", "drain_timeout"]);
+    expect(d.log).toHaveBeenCalledWith("shutdown (SIGTERM) timed out after 10000 ms");
+    expect(d.exit).toHaveBeenCalledWith(1); // no flush dependency here: exit at once
+  });
+
+  it("flush: exit is called only after the logger flush called back (slow flush, fake clock)", async () => {
+    vi.useFakeTimers();
+    const events: string[] = [];
+    const { d, writeStderrSync } = flushDeps(
+      { info: vi.fn((_m: string, f: Record<string, unknown>) => events.push(`log:${f.phase as string}`)) },
+      vi.fn((done: () => void): void => {
+        events.push("flush");
+        setTimeout(done, 300);
+      }),
+    );
+    d.exit = vi.fn((code: number) => { events.push(`exit:${code}`); });
+    const finished = createShutdown(d as never)("SIGTERM");
+    await vi.advanceTimersByTimeAsync(299);
+    expect(events.slice(-2)).toEqual(["log:exit", "flush"]);
+    expect(d.exit).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(events.at(-1)).toBe("exit:0");
+    await finished;
+    expect(writeStderrSync).not.toHaveBeenCalled();
+    expect(d.exit).toHaveBeenCalledTimes(1);
+  });
+
+  it("flush that never calls back: after 2000 ms one flush_timeout JSON line on stderr (sync, not the logger), exit with the drain code", async () => {
+    vi.useFakeTimers();
+    for (const [over, code] of [[{}, 0], [{ closePool: vi.fn(async () => { throw new Error("pool"); }) }, 1]] as const) {
+      const { d, writeStderrSync } = flushDeps(over);
+      void createShutdown(d as never)("SIGTERM");
+      await vi.advanceTimersByTimeAsync(1_999);
+      expect(d.exit).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(writeStderrSync).toHaveBeenCalledTimes(1);
+      const line = JSON.parse(writeStderrSync.mock.calls[0]![0] as string) as Record<string, unknown>;
+      expect(line).toMatchObject({ phase: "flush_timeout", timeoutMs: 2000, code });
+      expect(d.exit).toHaveBeenCalledWith(code);
+      expect(d.exit).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("backstop with a stuck flush: drain_timeout, 500 ms flush, flush_timeout, exit 1, all within timeoutMs", async () => {
+    vi.useFakeTimers();
+    const { d, flush, writeStderrSync } = flushDeps({ close: vi.fn(() => new Promise<void>(() => undefined)) });
+    void createShutdown(d as never)("SIGTERM").catch(() => undefined);
+    await vi.advanceTimersByTimeAsync(9_000);
+    expect(flush).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(499);
+    expect(d.exit).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(JSON.parse(writeStderrSync.mock.calls[0]![0] as string)).toMatchObject({ phase: "flush_timeout", timeoutMs: 500, code: 1 });
     expect(d.exit).toHaveBeenCalledWith(1);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(d.exit).toHaveBeenCalledTimes(1);
+  });
+
+  it("a slow drain shortens the flush limit so the exit stays within timeoutMs; a drain finishing after the backstop does not exit twice", async () => {
+    vi.useFakeTimers();
+    const { d, writeStderrSync } = flushDeps({ close: vi.fn(() => new Promise<void>((resolve) => setTimeout(resolve, 8_000))) });
+    void createShutdown(d as never)("SIGTERM");
+    await vi.advanceTimersByTimeAsync(8_000 + 1_499);
+    expect(d.exit).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(JSON.parse(writeStderrSync.mock.calls[0]![0] as string)).toMatchObject({ phase: "flush_timeout", timeoutMs: 1500, code: 0 });
+    expect(d.exit).toHaveBeenCalledWith(0);
+
+    const late = flushDeps({ close: vi.fn(() => new Promise<void>((resolve) => setTimeout(resolve, 9_200))) });
+    void createShutdown(late.d as never)("SIGTERM");
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(late.d.exit).toHaveBeenCalledTimes(1);
+    expect(late.d.exit).toHaveBeenCalledWith(1);
+    expect(late.writeStderrSync).toHaveBeenCalledTimes(1);
   });
 
   it("phaseSeq: every phase line carries the next number of one shared counter (strictly increasing, none repeated)", async () => {
@@ -82,5 +163,19 @@ describe("P3-07 graceful shutdown", () => {
     expect(src).not.toMatch(/=>\s*void\s+shutdown/);
     expect(src).toMatch(/process\.on\("SIGTERM"/);
     expect(src).toMatch(/process\.on\("SIGINT"/);
+    // r4: the logger is flushed (log-flush.ts) and a flush timeout is written straight to fd 2, not through pino.
+    expect(src).toMatch(/flush: \(done\) => flushLogger\(app\.log, done\)/);
+    expect(src).toMatch(/writeSync\(2, /);
+  });
+
+  it("the stuck-flush / slow-threadpool test preloads cannot be reached from the production code", async () => {
+    const { readdirSync } = await import("node:fs");
+    const dir = new URL("../apps/api/src/", import.meta.url);
+    const files = readdirSync(dir, { recursive: true, encoding: "utf8" }).filter((name) => name.endsWith(".ts"));
+    expect(files.length).toBeGreaterThan(10);
+    for (const name of files) {
+      const src = readFileSync(new URL(name, dir), "utf8");
+      expect(src, name).not.toMatch(/stuck-flush|slow-threadpool|preload-|UV_THREADPOOL_SIZE|tests\/helpers/);
+    }
   });
 });

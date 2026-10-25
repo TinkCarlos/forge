@@ -1,7 +1,9 @@
 import { config, setOutboundLogger } from "@forge/core";
 import { logSafeError, startRuntime, stopRuntime } from "@forge/runtime";
 import { pool } from "@forge/store";
+import { writeSync } from "node:fs";
 import { buildApp } from "./app.js";
+import { flushLogger } from "./log-flush.js";
 import { createShutdown } from "./shutdown.js";
 
 const app = await buildApp();
@@ -13,7 +15,8 @@ await app.listen({ port, host: config.HOST });
 if (config.EMBEDDED_WORKER) startRuntime();
 console.log(`Forge API listening on ${config.FORGE_PUBLIC_URL} (local http://localhost:${port})`);
 
-// P3-07: close the server, stop runtime ticks, close the DB pool, then exit (0, or 1 when a step failed / after 10 s).
+// P3-07: close the server, stop runtime ticks, close the DB pool, flush the log (r4, at most 2 s), then exit (0, or 1
+// when a step failed / the drain did not finish); the process is gone within 10 s.
 const shutdown = createShutdown({
   close: () => app.close(),
   stopRuntime,
@@ -23,6 +26,11 @@ const shutdown = createShutdown({
   timeoutMs: 10_000,
   info: (message, fields) => app.log.info(fields, message),
   activeResources: () => process.getActiveResourcesInfo(),
+  flush: (done) => flushLogger(app.log, done),
+  // Not through pino: this is the line for when pino's own flush did not finish.
+  writeStderrSync: (line) => {
+    writeSync(2, `${line}\n`);
+  },
 });
 const onSignal = (signal: string): void => {
   shutdown(signal).catch(() => process.exit(1));
