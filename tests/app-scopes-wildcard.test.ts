@@ -81,6 +81,7 @@ describe("P2 scopes containing `*` cannot be saved; stored `*` is never a wildca
     const res = await app.inject({ method: "PATCH", url: `/admin/api/apps/${baseAppId}`, headers, payload: { scopes } });
     expect(res.statusCode, res.body).toBe(400);
     expect(errorOf(res).code).toBe("CFG-8501");
+    expect(errorOf(res).details?.field).toBe(`scopes.${scopes.findIndex((s) => s.includes("*"))}`);
     expect(await appRow(baseAppId)).toEqual(before);
   });
 
@@ -120,6 +121,20 @@ describe("P2 scopes containing `*` cannot be saved; stored `*` is never a wildca
       expect(res.statusCode, res.body).toBe(403);
       expect(errorOf(res).code).toBe("POL-2001");
     }
+  });
+
+  it("WC-04 legacy app with stored `runs:*`: re-saving its scopes -> 400 details.field scopes.N; dropping that item saves; PATCH without scopes unaffected", async () => {
+    const { appId } = await legacyApp("legacy-resave", ["agents:read", "runs:*"], ["agents:read"]);
+    const resave = await app.inject({ method: "PATCH", url: `/admin/api/apps/${appId}`, headers, payload: { scopes: ["agents:read", "runs:*"] } });
+    expect(resave.statusCode, resave.body).toBe(400);
+    expect(errorOf(resave).code).toBe("CFG-8501");
+    expect(errorOf(resave).details?.field).toBe("scopes.1");
+    expect(JSON.parse((await appRow(appId))!.scopes)).toEqual(["agents:read", "runs:*"]);
+    const other = await app.inject({ method: "PATCH", url: `/admin/api/apps/${appId}`, headers, payload: { description: "wc" } });
+    expect(other.statusCode, other.body).toBe(200);
+    const fixed = await app.inject({ method: "PATCH", url: `/admin/api/apps/${appId}`, headers, payload: { scopes: ["agents:read", "runs:create"] } });
+    expect(fixed.statusCode, fixed.body).toBe(200);
+    expect(JSON.parse((await appRow(appId))!.scopes)).toEqual(["agents:read", "runs:create"]);
   });
 
   it("WC-03 assertScope never treats `*` as a wildcard (unit)", () => {
