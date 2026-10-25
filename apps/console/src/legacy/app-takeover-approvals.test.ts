@@ -267,3 +267,19 @@ describe('R9 严格 CSP', () => {
     expect(src).not.toMatch(/\son[a-z]+="/)
   })
 })
+
+describe('R9 审批列表：attempt 非法值不显示次数（只显示徽标）', () => {
+  it.each([
+    ['0', 0],
+    ['null', null],
+    ['负数', -1],
+    ['小数', 1.5],
+    ['字符串', '2'],
+  ])('reason=interrupted、attempt=%s：有徽标，不显示「第 N 次执行被中断」', async (_label, attempt) => {
+    const h = harness({ [LIST]: list(approval({ reason: 'interrupted', attempt })) })
+    await h.app.renderApprovals()
+    expect(h.content().split(BADGE).length - 1).toBe(1)
+    expect(h.content()).not.toContain('次执行被中断')
+    expect(h.content()).not.toMatch(/第 \S+ 次/)
+  })
+})
