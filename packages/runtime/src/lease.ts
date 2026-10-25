@@ -1,11 +1,17 @@
+import { randomBytes } from "node:crypto";
 import os from "node:os";
 import { config } from "@forge/core";
 import { repos, type ClaimedRun } from "@forge/store";
 
 const TERMINAL = new Set(["succeeded", "failed", "cancelled", "budget_exhausted"]);
 
+/** r5 §5: generated once per process, so a restart that reuses host+pid (container pid 1) is a different owner. */
+const PROCESS_EPOCH = randomBytes(4).toString("hex");
+
+/** `hostname:pid:epoch`, at most 128 chars (runs.claimed_by); the hostname is cut first, pid and epoch are kept. */
 export function currentWorkerId(): string {
-  return `${os.hostname()}:${process.pid}`.slice(0, 128);
+  const tail = `:${process.pid}:${PROCESS_EPOCH}`;
+  return `${os.hostname().slice(0, Math.max(0, 128 - tail.length))}${tail}`;
 }
 
 export function leaseEligible(input: {

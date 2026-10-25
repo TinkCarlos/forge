@@ -128,7 +128,7 @@ describe("standalone worker: Run drain timeout on SIGTERM", () => {
     child.stderr?.on("data", (chunk: Buffer) => (out += chunk.toString("utf8")));
     const exited = new Promise<number | null>((resolve) => child.once("exit", (code) => resolve(code)));
     await Promise.race([inFlight, new Promise((_, reject) => setTimeout(() => reject(new Error(`tool request never reached downstream\n${out}`)), 25_000))]);
-    expect((await one<{ claimed_by: string | null }>("SELECT claimed_by FROM runs WHERE id = ?", [runId]))!.claimed_by).toMatch(new RegExp(`:${child.pid}$`));
+    expect((await one<{ claimed_by: string | null }>("SELECT claimed_by FROM runs WHERE id = ?", [runId]))!.claimed_by).toMatch(new RegExp(`:${child.pid}:[0-9a-f]{8}$`));
     const signalledAt = Date.now();
     child.kill("SIGTERM");
     const code = await Promise.race([exited, new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`worker did not exit\n${out}`)), DRAIN_MS + 10_000))]);
