@@ -17,9 +17,14 @@ import {
 } from "@forge/core";
 import { parseJsonValue, repos } from "@forge/store";
 
-/** P3-09: `signal` aborts the call when the worker lost the Run's lease (passed by the runtime). */
+/**
+ * P3-09: `signal` aborts the call when the worker lost the Run's lease (passed by the runtime).
+ * r5 §3.1: `idempotencyKey` is the downstream key of this tool call (same on every attempt and across takeovers); OpenAPI
+ * tools send it as `Idempotency-Key`, web_fetch and MCP do not.
+ */
 export interface ToolContext {
   signal?: AbortSignal;
+  idempotencyKey?: string;
 }
 export interface ResolvedTool {
   definition: ToolDefinition;
@@ -308,6 +313,7 @@ export async function executeOpenApiTool(input: {
   tool: Record<string, unknown>;
   args: Record<string, unknown>;
   signal?: AbortSignal;
+  idempotencyKey?: string;
 }): Promise<ToolResult> {
   const baseUrl = String(input.source.base_url ?? "");
   const path = String(input.tool.path ?? "");
@@ -336,6 +342,11 @@ export async function executeOpenApiTool(input: {
     const refused = envRefToolResult(error);
     if (refused) return refused;
     throw error;
+  }
+  if (input.idempotencyKey) {
+    // r5 §3.1: every method; Forge's value replaces a configured header of the same name (any case).
+    for (const name of Object.keys(headers)) if (name.toLowerCase() === "idempotency-key") delete headers[name];
+    headers["Idempotency-Key"] = input.idempotencyKey;
   }
   let body: string | undefined;
   if (method === "GET" || method === "DELETE" || method === "HEAD") {
@@ -409,7 +420,7 @@ export async function resolveTools(spec: AgentSpec): Promise<Map<string, Resolve
             risk: String(row.risk_level) as ToolDefinition["risk"],
           },
           readOnly: Number(row.read_only) === 1,
-          execute: async (args, context) => executeOpenApiTool({ source, tool: row, args, signal: context?.signal }),
+          execute: async (args, context) => executeOpenApiTool({ source, tool: row, args, signal: context?.signal, idempotencyKey: context?.idempotencyKey }),
         });
       }
     }

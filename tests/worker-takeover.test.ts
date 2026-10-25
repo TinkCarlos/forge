@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 
 // r5 takeover state machine (design §2, contract §3-§7). A worker that finds a tool call still `running` at the start
@@ -9,7 +9,8 @@ import type { FastifyInstance } from "fastify";
 // with APR-2102 without any further model or tool call. Approval 409s are APR-2104.
 // Only the network edge is stubbed (safeFetch: the model at llm.invalid, the downstream API at down.invalid, counted;
 // assertOutboundAllowed: no DNS); DB, runtime, capabilities and the API are real.
-const downstream: Array<{ url: string; method: string }> = [];
+const downstream: Array<{ url: string; method: string; idem: string | null }> = [];
+const downstreamStatus: number[] = [];
 let onDownstream: (() => Promise<void>) | null = null;
 const modelReplies: Array<() => Response> = [];
 let modelCalls = 0;
@@ -20,11 +21,12 @@ const safeFetch = vi.fn(async (url: string | URL, init?: RequestInit) => {
     const next = modelReplies.shift();
     return next ? next() : reply({ content: "done (default)" });
   }
-  downstream.push({ url: target.toString(), method: String(init?.method ?? "GET") });
+  downstream.push({ url: target.toString(), method: String(init?.method ?? "GET"), idem: new Headers(init?.headers).get("idempotency-key") });
   const hook = onDownstream;
   onDownstream = null;
   if (hook) await hook();
-  return new Response("downstream ok", { status: 200 });
+  const status = downstreamStatus.shift() ?? 200;
+  return new Response(status === 200 ? "downstream ok" : "unavailable", { status });
 });
 vi.mock("@forge/core", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@forge/core")>()),
@@ -74,8 +76,10 @@ const toolMessages = async (runId: string) =>
   });
 const decideHttp = (id: string, decision: string) => app.inject({ method: "POST", url: `/admin/api/approvals/${id}/decide`, headers, payload: { decision } });
 const audits = async (id: string) => (await query("SELECT id FROM audit_logs WHERE action = 'approval.decide' AND resource_id = ?", [id])).length;
+const requestKey = (runId: string, rowId: string) => createHash("sha256").update(`${runId}:${rowId}`).digest("hex");
 const resetNet = () => {
   downstream.length = 0;
+  downstreamStatus.length = 0;
   modelReplies.length = 0;
   modelCalls = 0;
   onDownstream = null;
@@ -234,6 +238,20 @@ describe("takeover of a running tool call", () => {
     expect(downstream).toHaveLength(2);
     expect(await toolRows(runId)).toEqual([expect.objectContaining({ id: row!.id, status: "succeeded", attempt: 2 })]);
     expect((await runRow(runId)).status).toBe("succeeded");
+    // TK-06 / Q5-05: the downstream Idempotency-Key depends on the row id only -> identical before and after the takeover.
+    expect(downstream.map((d) => d.idem)).toEqual([requestKey(runId, row!.id), requestKey(runId, row!.id)]);
+  });
+
+  it("TK-06 a retried OpenAPI call sends the same Idempotency-Key = sha256(runId:toolCallId) hex on every attempt", async () => {
+    resetNet();
+    const { runId } = await newRun();
+    modelReplies.push(() => reply({ content: "", tool_calls: [call(WRITE, { v: 1 })] }), () => reply({ content: "done" }));
+    downstreamStatus.push(503);
+    await executeRun(runId, `w-k-${suffix}`);
+    const [row] = await toolRows(runId);
+    expect(row).toMatchObject({ status: "succeeded", attempt: 2 });
+    expect(downstream.map((d) => [d.method, d.idem])).toEqual([["POST", requestKey(runId, row!.id)], ["POST", requestKey(runId, row!.id)]]);
+    expect(requestKey(runId, row!.id)).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it("TK-05 interrupted approval rejected: call rejected (tool message says interrupted, not retried), Run continues, downstream unchanged", async () => {

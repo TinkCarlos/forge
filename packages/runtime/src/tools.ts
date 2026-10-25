@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { config, ForgeError, type AgentSpec } from "@forge/core";
 import type { ResolvedTool } from "@forge/capabilities";
 import { LeaseLostError, parseJsonValue, repos, type RunRow, type ToolCallRow } from "@forge/store";
@@ -19,6 +20,14 @@ const INTERRUPTED_EXPIRED_MESSAGE =
  * Dedup key of one tool call (Q5): the call_model step's run_steps.seq and the call's index in that step's toolCalls.
  * The provider's tool call id is not part of it (providers omit it or repeat it across steps).
  */
+/**
+ * r5 §3.1 downstream `Idempotency-Key` of a tool call: sha256 hex of `<runId>:<tool_calls.id>`. Depends on the row id only,
+ * so it is the same on every attempt and before / after a takeover. Not the tool_calls.idempotency_key column.
+ */
+export function toolRequestKey(runId: string, toolCallId: string): string {
+  return createHash("sha256").update(`${runId}:${toolCallId}`).digest("hex");
+}
+
 export function toolIdempotencyKey(runId: string, modelStep: number, stepIndex: number): string {
   return `${runId}:s${modelStep}:${stepIndex}`;
 }
@@ -99,9 +108,10 @@ async function executeToolCall(run: RunRow, stored: OpenToolCall, tools: Map<str
   await repos.updateToolCall(stored.id, { status: "running", attempt: nextAttempt });
   await emit(run.id, "tool.started", { toolCallId: stored.id, tool: stored.tool_key, risk: stored.risk_level });
   const started = Date.now();
+  const idempotencyKey = toolRequestKey(run.id, stored.id);
   const executed = await withToolRetries(config.TOOL_MAX_ATTEMPTS, nextAttempt, async () => {
     try {
-      const outcome = await tool.execute(args, { signal });
+      const outcome = await tool.execute(args, { signal, idempotencyKey });
       assertLeaseHeld(signal); // no retry / tool.retried after an abort
       return outcome;
     } catch (error) {
