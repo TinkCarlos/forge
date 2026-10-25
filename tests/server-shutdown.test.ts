@@ -4,7 +4,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 // P3-07 (pure): SIGTERM / SIGINT -> start the runtime drain (stops claiming at once, r5 §4) -> stop taking requests
 // (app.close) -> wait for the drain -> close the DB pool -> exit 0. A failing step is logged and the exit code is
 // non-zero (no unhandled rejection); a hard timeout forces exit 1. A drain that ran out of WORKER_DRAIN_TIMEOUT_MS
-// logs phase=drain_timeout with the Run ids and exits 1. A second signal does not start a second shutdown.
+// logs phase=run_drain_timeout with the Run ids and drainMs and exits 1; the process backstop (timeoutMs) logs
+// phase=drain_timeout. A second signal does not start a second shutdown.
 const { createShutdown } = await import("../apps/api/src/shutdown.js");
 
 function deps(over: Partial<Record<string, unknown>> = {}) {
@@ -190,7 +191,7 @@ describe("P3-07 graceful shutdown", () => {
     expect(order).toEqual(["close", "closePool", "exit:0"]);
   });
 
-  it("drain timed out -> phase drain_timeout with the Run ids, pool still closed, exit 1", async () => {
+  it("Run drain timed out -> phase run_drain_timeout with runIds and drainMs, normal close continues, exit 1 last", async () => {
     const info = vi.fn();
     const { d, order } = deps({
       info,
@@ -199,8 +200,21 @@ describe("P3-07 graceful shutdown", () => {
     await createShutdown(d as never)("SIGTERM");
     expect(order).toEqual(["close", "closePool", "exit:1"]);
     const phases = info.mock.calls.map(([, fields]) => (fields as { phase: string }).phase);
-    expect(phases).toEqual(["signal", "app_close", "drain_timeout", "stop_runtime", "pool_end", "exit"]);
-    expect(info.mock.calls[2]![1]).toMatchObject({ phase: "drain_timeout", runIds: ["r-1", "r-2"] });
+    expect(phases).toEqual(["signal", "app_close", "run_drain_timeout", "stop_runtime", "pool_end", "exit"]);
+    expect(info.mock.calls[2]![1]).toMatchObject({ phase: "run_drain_timeout", runIds: ["r-1", "r-2"], drainMs: 35_000 });
+    expect(info.mock.calls.at(-1)![1]).toMatchObject({ phase: "exit", code: 1 });
+  });
+
+  it("process backstop (timeoutMs - 1000) logs phase drain_timeout {code:1}, never run_drain_timeout, and exits 1", async () => {
+    vi.useFakeTimers();
+    const info = vi.fn();
+    const { d } = deps({ info, close: vi.fn(() => new Promise<void>(() => undefined)) });
+    void createShutdown(d as never)("SIGTERM").catch(() => undefined);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(d.exit).toHaveBeenCalledWith(1);
+    const phases = info.mock.calls.map(([, fields]) => (fields as { phase: string }).phase);
+    expect(phases).toEqual(["signal", "drain_timeout", "exit"]);
+    expect(info.mock.calls[1]![1]).toMatchObject({ phase: "drain_timeout", code: 1 });
   });
 
   it("drainRuntime rejects -> logged, pool still closed, exit 1", async () => {
@@ -245,11 +259,14 @@ describe("P3-07 graceful shutdown", () => {
     }
   });
 
-  it("the standalone worker drains, logs drain_timeout, closes the pool and exits 1 on timeout", () => {
+  it("the standalone worker drains, logs run_drain_timeout, closes the pool and exits 1 on timeout; its hard stop is drain_timeout", () => {
     const src = readFileSync(new URL("../apps/worker/src/main.ts", import.meta.url), "utf8");
     expect(src).toMatch(/drainRuntime\(/);
     expect(src).not.toMatch(/stopRuntime/);
-    expect(src).toContain('"drain_timeout"');
+    expect(src).toMatch(/phase: "run_drain_timeout", signal, runIds: result\.runIds, drainMs: result\.ms/);
+    // Hard stop at drain + 5 s (process-level backstop): phase drain_timeout, exit 1. No other name for it.
+    expect(src).toMatch(/setTimeout\(\(\) => \{\s*console\.error\(JSON\.stringify\(\{ phase: "drain_timeout", signal, code: 1, ms: config\.WORKER_DRAIN_TIMEOUT_MS \+ 5000 \}\)\);\s*process\.exit\(1\);/);
+    expect(src).not.toContain("hard_stop");
     expect(src).toMatch(/pool\.end\(\)/);
     expect(src).toMatch(/WORKER_DRAIN_TIMEOUT_MS \+ 5_?000/);
     expect(src).toMatch(/if \(result\.timedOut\) \{\s*code = 1;/);
