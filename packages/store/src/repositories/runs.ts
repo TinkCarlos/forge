@@ -10,6 +10,9 @@ import type { ApprovalRow, ClaimedRun, MessageRow, RunRow, RunStepRow, ToolCallR
 // scope's Run). 0 affected rows: the lease is re-checked and a lost lease throws LeaseLostError (the write is dropped).
 const CHILD_FENCE = (table: string) => `EXISTS (SELECT 1 FROM runs fence_run WHERE fence_run.id = ${table}.run_id AND (fence_run.id <> ? OR fence_run.claimed_by = ?))`;
 
+/** Run statuses after which nothing runs any more (same set as runtime TERMINAL / isRunFinished). */
+const TERMINAL_RUN_STATUSES: ReadonlySet<string> = new Set(["succeeded", "failed", "cancelled", "budget_exhausted"]);
+
 async function assertLeaseOwned(runId: string, owner: string): Promise<void> {
   const row = await one<{ held: number }>("SELECT 1 AS held FROM runs WHERE id = ? AND claimed_by = ?", [runId, owner]);
   if (!row) throw new LeaseLostError();
@@ -170,6 +173,23 @@ export const runsRepo = {
     if (!sets.length) return;
     params.push(id);
     const owner = fenceOwnerFor(id);
+    if (fields.status && TERMINAL_RUN_STATUSES.has(fields.status)) {
+      // Architect ruling (front-end observation 2): a Run reaching a terminal status closes its still pending approvals
+      // (status `expired`, as the decide path does for a finished Run) in the same transaction as the status write, so
+      // they leave the pending list. A dropped fenced write (lease lost) rolls both back. Decided approvals are kept.
+      const values = params as Array<string | number | boolean | Date | null>;
+      await transaction(async (conn) => {
+        const [updated] = owner === null
+          ? await conn.execute(`UPDATE runs SET ${sets.join(", ")} WHERE id = ?`, values)
+          : await conn.execute(`UPDATE runs SET ${sets.join(", ")} WHERE id = ? AND claimed_by = ?`, [...values, owner]);
+        if (owner !== null && (updated as ResultSetHeader).affectedRows === 0) {
+          const [held] = await conn.query("SELECT 1 AS held FROM runs WHERE id = ? AND claimed_by = ?", [id, owner]);
+          if (!(held as unknown[]).length) throw new LeaseLostError();
+        }
+        await conn.execute("UPDATE approvals SET status = 'expired', decided_at = CURRENT_TIMESTAMP(3) WHERE run_id = ? AND status = 'pending'", [id]);
+      });
+      return;
+    }
     if (owner === null) {
       await execute(`UPDATE runs SET ${sets.join(", ")} WHERE id = ?`, params);
       return;
