@@ -7,6 +7,7 @@ import { reqId } from "./http-helpers.js";
 export function installErrorHandler(app: FastifyInstance): void {
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof ForgeError) {
+      if (error.headers) reply.headers(error.headers);
       reply.status(error.httpStatus).send({
         error: {
           code: error.code,

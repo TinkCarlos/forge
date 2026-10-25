@@ -172,6 +172,8 @@ export class ForgeError extends Error {
     public readonly httpStatus = 400,
     public readonly details?: unknown,
     public readonly retryable = false,
+    /** Extra response headers set by the error handler (e.g. Retry-After on 429). */
+    public readonly headers?: Readonly<Record<string, string>>,
   ) {
     super(message);
     this.name = "ForgeError";

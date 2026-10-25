@@ -29,6 +29,8 @@ interface AppContext {
   app: Record<string, unknown>;
 }
 
+/** Retry-After (seconds) for the daily quota when the DB cannot report the time to its next midnight. */
+const DAILY_RETRY_AFTER_FALLBACK = 3600;
 const rateBuckets = new Map<string, { minute: number; count: number }>();
 
 /** The app's current scopes (api_apps.scopes_json); anything but an array of strings counts as none. */
@@ -56,7 +58,11 @@ async function openApp(request: FastifyRequest, scope: string): Promise<AppConte
   } else {
     bucket.count += 1;
     const limit = Number(app.rate_limit_per_minute ?? 60);
-    if (bucket.count > limit) throw new ForgeError("OPN-4502", "请求频率超限", 429, { limit, window: "minute" }, true);
+    if (bucket.count > limit) {
+      // P3: Retry-After = whole seconds left in the current fixed one-minute window (at least 1).
+      const retryAfter = Math.max(1, Math.ceil(((minute + 1) * 60000 - Date.now()) / 1000));
+      throw new ForgeError("OPN-4502", "请求频率超限", 429, { limit, window: "minute" }, true, { "Retry-After": String(retryAfter) });
+    }
   }
   return { principal, app };
 }
@@ -68,7 +74,12 @@ async function openApp(request: FastifyRequest, scope: string): Promise<AppConte
  */
 async function assertDailyQuota(app: Record<string, unknown>): Promise<void> {
   const runCount = await repos.countAppRunsToday(String(app.id));
-  if (runCount >= Number(app.daily_quota ?? 1000)) throw new ForgeError("OPN-4501", "应用今日配额已用完", 429);
+  if (runCount < Number(app.daily_quota ?? 1000)) return;
+  // P3: Retry-After = seconds to the next 00:00 in the DB session time zone (the window countAppRunsToday uses),
+  // clamped to 1..86400. If MySQL cannot tell (null or query error) the documented fallback is 3600.
+  const seconds = await repos.secondsUntilNextDbDay().catch(() => null);
+  const retryAfter = seconds === null ? DAILY_RETRY_AFTER_FALLBACK : Math.min(86_400, Math.max(1, Math.ceil(seconds)));
+  throw new ForgeError("OPN-4501", "应用今日配额已用完", 429, undefined, false, { "Retry-After": String(retryAfter) });
 }
 
 function openPresentRun(run: RunRow) {

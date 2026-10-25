@@ -78,6 +78,15 @@ export const openPlatformRepo = {
     );
     return Number(row?.count ?? 0);
   },
+  /**
+   * Seconds from now to 00:00 of the next day in the DB session time zone, i.e. when countAppRunsToday's
+   * CURRENT_DATE() window resets. Computed by MySQL so app and DB time zones cannot disagree; null if unavailable.
+   */
+  async secondsUntilNextDbDay(): Promise<number | null> {
+    const row = await one<{ s: number | string | null }>("SELECT TIMESTAMPDIFF(SECOND, NOW(), CURRENT_DATE() + INTERVAL 1 DAY) AS s");
+    const seconds = Number(row?.s);
+    return row?.s === null || row?.s === undefined || !Number.isFinite(seconds) ? null : seconds;
+  },
   async getIdempotency(scope: string, key: string): Promise<Record<string, unknown> | null> {
     return one("SELECT * FROM idempotency_keys WHERE scope = ? AND idempotency_key = ?", [scope, key]);
   },
