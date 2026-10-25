@@ -464,7 +464,7 @@ Pi 内置 bash/文件工具在服务端禁用。文档解析与浏览器在独�
 | 工具 4xx 业务错误 | 不重试，作为工具结果交还模型 |
 | 工具 5xx/超时 | 重试（幂等键保护）；用尽后作为工具错误交还模型 |
 | Worker 崩溃 | 目标：Temporal 重放，已完成 Activity 不重做。过渡实现见 8.7：租约过期后重领，已落库步骤不重做；被打断的只读工具调用重跑一次，有副作用的调用不自动重发，改为 `reason=interrupted` 的审批由人确认（过期按驳回）；OpenAPI 请求带 `Idempotency-Key`（同一调用的各次尝试相同） |
-| Worker 停机 | 排空：不再领新 Run，模型调用立即中止，工具调用等其完成并落库，写 `run.released` 后释放租约；超过 `WORKER_DRAIN_TIMEOUT_MS`（默认 35000）中止其余调用，按 Worker 崩溃处理 |
+| Worker 停机 | 排空：不再领新 Run，模型调用立即中止，工具调用等其完成并落库，写 `run.released` 后释放租约；超过 `WORKER_DRAIN_TIMEOUT_MS`（默认 35000，API 进程封顶 5000）中止其余调用，按 Worker 崩溃处理；只有工具调用全部结束的 Run 才释放租约，其余等租约过期 |
 | 审批超时 | 按策略驳回，Run 继续或失败（Agent 配置）；过期后不能再决定；到期超过 `APPROVAL_EXPIRED_GRACE_SECONDS`（默认 900）仍未收尾时系统驳回，Run 以 `APR-2102` 失败 |
 | 取消 | 取消 Activity；保留部分消息；事件与状态一致 |
 | Webhook 失败 | 指数退避重试；超限停用 + 告警；可手动重放 |

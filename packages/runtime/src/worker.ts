@@ -1,7 +1,7 @@
 import { config } from "@forge/core";
 import { repos, type ClaimedRun } from "@forge/store";
 import { AUTH_GC_INTERVAL_MS, collectExpiredAuth } from "./auth-gc.js";
-import { drainRuns, isDraining, resetDrain, type DrainResult } from "./drain.js";
+import { drainRuns, isDraining, resetDrain, type DrainOptions, type DrainResult } from "./drain.js";
 import { claimNext, claimRun, currentWorkerId } from "./lease.js";
 import { leaseTiming } from "./lease-timing.js";
 import { runClaimed } from "./loop.js";
@@ -87,11 +87,13 @@ export function stopRuntime(): void {
 
 /**
  * r5 §4 graceful drain (API with the embedded worker and the standalone worker): stop the ticks and claiming, abort
- * model calls, let tool calls finish, release the leases (`run.released {reason:"drain"}`), at most `timeoutMs`
- * (WORKER_DRAIN_TIMEOUT_MS). On timeout the remaining Runs are aborted (rows left as they are, leases released best
- * effort) and `timedOut` is true: the caller logs phase=run_drain_timeout and exits 1 after its normal close.
+ * model calls, let tool calls finish, at most `timeoutMs` (WORKER_DRAIN_TIMEOUT_MS; the API caps it at 5000). On
+ * timeout the remaining Runs are aborted (rows left as they are) and `timedOut` is true: the caller logs
+ * phase=run_drain_timeout and exits 1 after its normal close. Then the release step (ruling 15:39, at most
+ * `releaseMs`, default 1000): a Run whose tool calls have all ended gets `run.released {reason:"drain"}` and its lease
+ * released; the others keep the lease until it expires. `handoffs` has one entry per Run for the run_handoff lines.
  */
-export async function drainRuntime(timeoutMs: number = config.WORKER_DRAIN_TIMEOUT_MS): Promise<DrainResult> {
+export async function drainRuntime(timeoutMs: number = config.WORKER_DRAIN_TIMEOUT_MS, options: DrainOptions = {}): Promise<DrainResult> {
   stopRuntime();
-  return drainRuns(timeoutMs);
+  return drainRuns(timeoutMs, options);
 }

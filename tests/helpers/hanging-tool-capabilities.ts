@@ -11,6 +11,9 @@ export async function resolveTools(spec: AgentSpec): Promise<Map<string, Resolve
   const tools = await realResolveTools(spec);
   const raw = process.env[HANGING_TOOLS_ENV];
   if (!raw) return tools;
-  for (const [name, tool] of hangingTools(JSON.parse(raw) as HangingToolOptions)) tools.set(name, tool);
+  const parsed = JSON.parse(raw) as HangingToolOptions | HangingToolOptions[];
+  for (const options of Array.isArray(parsed) ? parsed : [parsed]) {
+    for (const [name, tool] of hangingTools(options)) tools.set(name, tool);
+  }
   return tools;
 }

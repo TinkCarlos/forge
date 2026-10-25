@@ -5,6 +5,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execute, one, repos } from "@forge/store";
+import { expectHandoffMapping } from "./helpers/run-handoff.js";
 import { freePort } from "./helpers/sse-client.js";
 
 // Architect ruling 15:17 (1): the standalone worker (real child process) gets SIGTERM while a tool call it runs never
@@ -56,7 +57,7 @@ function onDown(req: IncomingMessage, res: ServerResponse): void {
   arrived();
 }
 
-type Line = { phase?: string; runIds?: string[]; drainMs?: number; code?: number };
+type Line = { phase?: string; runIds?: string[]; drainMs?: number; code?: number; runId?: string; takeover?: string; reason?: string };
 
 beforeAll(async () => {
   modelServer = createServer(onModel);
@@ -135,12 +136,17 @@ describe("standalone worker: Run drain timeout on SIGTERM", () => {
     const lines: Line[] = out.split("\n").filter((line) => line.startsWith("{")).map((line) => { try { return JSON.parse(line) as Line; } catch { return {}; } });
     const phases = lines.map((line) => line.phase).filter(Boolean);
     expect(code).toBe(1);
-    expect(phases).toEqual(["run_drain_timeout"]); // the drain + 5 s backstop (drain_timeout) never fired
+    // The drain + 5 s backstop (drain_timeout) never fired. Ruling 15:39: then one run_handoff line per Run.
+    expect(phases).toEqual(["run_drain_timeout", "run_handoff"]);
     const timeout = lines.find((line) => line.phase === "run_drain_timeout")!;
     expect(timeout.runIds).toContain(runId);
     expect(timeout.drainMs).toBeGreaterThanOrEqual(DRAIN_MS);
     expect(tookMs).toBeLessThan(DRAIN_MS + 5000);
     const after = (await one<{ status: string; claimed_by: string | null }>("SELECT status, claimed_by FROM runs WHERE id = ?", [runId]))!;
     expect(after).toEqual({ status: "running", claimed_by: null }); // released: claimable at once by the next poll
+    // The web tool honours the abort: its call ended, so the lease was released (drained -> released).
+    const handoffs = lines.filter((line) => line.phase === "run_handoff");
+    expect(handoffs.map(({ runId: id, takeover, reason }) => ({ runId: id, takeover, reason }))).toEqual([{ runId, takeover: "released", reason: "drained" }]);
+    expectHandoffMapping(handoffs as never);
   }, 60_000);
 });
