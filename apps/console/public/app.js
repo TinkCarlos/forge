@@ -535,11 +535,13 @@ async function renderRuns() {
 
 // R9：Worker 接手中断后转人工确认的审批（reason=interrupted）。reason 缺失（老后端）或未知值一律按 policy 处理。
 const INTERRUPTED_BADGE_TEXT = "执行中断，可能已执行过";
-// 批准/驳回一条已处理、已被接手替换、已过期或并发输掉的审批：409 + 其中一个码（APR-2104 审批已处理或已过期，APR-2103 并发决定）。
-// 码集合只在这一行定义；CFG-8503 是通用「资源状态冲突」，不在集合里，照普通错误提示。
-// 后端统一用 APR-2104，APR-2103 仅作兜底。
-const APPROVAL_STALE_CODES = new Set(["APR-2104", "APR-2103"]);
+// 批准/驳回一条已处理、已被接手替换、已过期或并发输掉的审批：409 + 其中一个码（APR-2104 审批已处理或已过期，APR-2103 并发决定，
+// RUN-7005 审批仍 pending 但所属 Run 已结束）。码集合只在这一行定义，只用于审批操作；其他操作收到 RUN-7005 照旧走 errorText。
+// CFG-8503 是通用「资源状态冲突」，不在集合里，照普通错误提示。后端统一用 APR-2104，APR-2103 仅作兜底。
+const APPROVAL_STALE_CODES = new Set(["APR-2104", "APR-2103", "RUN-7005"]);
 const APPROVAL_STALE_TEXT = "该审批已失效，请刷新后处理新的审批";
+// RUN-7005 的专门文案（和 /next/ 一致）。
+const APPROVAL_RUN_FINISHED_TEXT = "Run 已结束，此审批已失效";
 
 function approvalReason(approval) {
   return approval?.reason === "interrupted" ? "interrupted" : "policy";
@@ -1171,9 +1173,9 @@ const app = {
       try {
         await api(`/admin/api/approvals/${idSeg(id)}/decide`, { method: "POST", body: { decision, comment: data.get("comment") } });
       } catch (error) {
-        // R9：审批已失效（被接手替换 / 已处理 / 已过期）：专门提示，关确认框并刷新列表，不弹后端原文。
+        // R9：审批已失效（被接手替换 / 已处理 / 已过期 / Run 已结束）：专门提示，关确认框并刷新列表，不弹后端原文。
         if (error?.status !== 409 || !APPROVAL_STALE_CODES.has(error.code)) throw error;
-        toast(`${APPROVAL_STALE_TEXT}（错误码 ${error.code}）`, "error");
+        toast(`${error.code === "RUN-7005" ? APPROVAL_RUN_FINISHED_TEXT : APPROVAL_STALE_TEXT}（错误码 ${error.code}）`, "error");
         await renderApprovals();
         return;
       }
