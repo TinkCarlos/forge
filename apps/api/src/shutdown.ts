@@ -44,8 +44,9 @@ function countResources(names: string[]): Record<string, number> {
 /**
  * drain (started first, so nothing new is claimed) -> close -> wait for the drain -> closePool -> exit line -> logger
  * flush -> exit(code). A failing step is logged, the later steps still run and the exit code is 1; the returned
- * promise never rejects. A Run drain that timed out logs phase=drain_timeout with the Run ids and the exit is 1 (those
- * Runs are taken over after their lease expires). A second call (second signal) returns the first shutdown.
+ * promise never rejects. A Run drain that timed out logs phase=run_drain_timeout with runIds and drainMs, the close
+ * continues and the exit is 1 (those Runs are taken over by another worker: their lease is released best effort,
+ * otherwise after it expires). A second call (second signal) returns the first shutdown.
  *
  * Exit and the 10 s limit (timeoutMs): the drain (Run drain, close, closePool) has until timeoutMs - 1000. If it is
  * not done by then the backstop logs drain_timeout, flushes for at most BACKSTOP_FLUSH_MS and exits 1. Otherwise the
@@ -134,6 +135,7 @@ export function createShutdown(deps: ShutdownDeps): (signal: string) => Promise<
       const timer = setTimeout(() => {
         if (finishing) return;
         deps.log(`shutdown (${signal}) timed out after ${deps.timeoutMs} ms`);
+        // Process-level backstop: phase drain_timeout (the Run drain running out is run_drain_timeout).
         step("drain_timeout", { code: 1 });
         step("exit", exitFields(1));
         void finish(1, BACKSTOP_FLUSH_MS);
@@ -156,7 +158,7 @@ export function createShutdown(deps: ShutdownDeps): (signal: string) => Promise<
         const result = await drain;
         if (result.timedOut) {
           code = 1;
-          step("drain_timeout", { runIds: result.runIds, drainMs: result.ms });
+          step("run_drain_timeout", { runIds: result.runIds, drainMs: result.ms });
         }
       } catch (error) {
         code = 1;

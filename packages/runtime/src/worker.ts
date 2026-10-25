@@ -89,7 +89,7 @@ export function stopRuntime(): void {
  * r5 §4 graceful drain (API with the embedded worker and the standalone worker): stop the ticks and claiming, abort
  * model calls, let tool calls finish, release the leases (`run.released {reason:"drain"}`), at most `timeoutMs`
  * (WORKER_DRAIN_TIMEOUT_MS). On timeout the remaining Runs are aborted (rows left as they are, leases released best
- * effort) and `timedOut` is true: the caller logs phase=drain_timeout and exits 1.
+ * effort) and `timedOut` is true: the caller logs phase=run_drain_timeout and exits 1 after its normal close.
  */
 export async function drainRuntime(timeoutMs: number = config.WORKER_DRAIN_TIMEOUT_MS): Promise<DrainResult> {
   stopRuntime();
