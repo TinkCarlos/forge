@@ -36,7 +36,7 @@ minio:9000/9001
 
 | 资源 | 副本 | 说明 |
 | --- | --- | --- |
-| `forge-api` Deployment | 1（见 §14） | ClusterIP；`/healthz`、`/readyz`；SSE 关闭代理缓冲。会话、OIDC 登录状态和 RPM 计数都存在进程内存里，共享存储做好之前只跑 1 个副本 |
+| `forge-api` Deployment | 1+（见 §14） | ClusterIP；`/healthz`、`/readyz`；SSE 关闭代理缓冲。会话和 OIDC 登录状态存在 MySQL（`auth_sessions`、`auth_oidc_states`，迁移 007），可以跑多个副本。RPM 计数仍在各进程内存里、按进程分别计数，实际每分钟上限 = 配置值 × 副本数。每个副本自带一个 20 连接的池（§11） |
 | `forge-worker-llm` Deployment | 1–3 | `llm`/`main` 队列；按模型并发扩 |
 | `forge-worker-tools` Deployment | 2+ | `http`/`mcp`/`docparse`/`browser`；按资源拆 |
 | `forge-migrate` Job | 1 | 发布时运行；备份后执行；不自动重跑 |
@@ -181,6 +181,28 @@ minio:9000/9001
 
 其他变化（不影响部署和调用方）：测试框架升级到 vitest 4，不再依赖 tinypool；只影响开发和 CI，运行时依赖不变。
 
+### 6.3 第三次推送之后的版本升级须知（会话存储）
+
+这一版把会话和 OIDC 登录状态从 API 进程内存搬到 MySQL，`forge-api` 可以跑多个副本（§3）。
+
+发布前：
+
+- **先备份，再等确认**：迁移 007 在任何真实库（预发、生产）执行前，先按 §6 第 1 步做一次全量备份，并等 Cursor Jackson 确认后再执行。
+- **迁移 007 不破坏数据，可以重复执行**：只新增 `auth_sessions` 和 `auth_oidc_states` 两张表（`CREATE TABLE IF NOT EXISTS`），不改、不删已有表和数据。重复执行只输出 `Migration 007_auth_sessions already applied`。
+
+发布后的变化：
+
+1. **所有人需要重新登录一次**：旧版本放在进程内存里的会话不迁移，切换后表是空的。之后 API 重启或滚动升级不再让用户掉线。
+2. **停用用户立即退出**：管理端把用户状态改成停用时，同一个事务里删除该用户的全部会话，所有副本上立即返回 401（以前要等这个用户的下一个请求才失效）。停用部门的行为不变：该部门用户的下一个请求返回 401。
+3. **会话按绝对时间过期**：从登录起算 `SESSION_TTL_SECONDS`（默认 8 小时，范围 300–86400，不变），中途访问不会续期。库里只存 token 和 OIDC state 的 SHA-256，不存明文；不记录 IP 和 UA，也不限制每个用户的会话数。
+4. **过期清理**：Worker 每 10 分钟删除一次过期的会话和 OIDC 登录状态，每批 1000 行，用 `GET_LOCK('forge:auth-gc', 0)` 保证同一时刻只有一个 Worker 在删。清理没跑也不影响正确性：所有查询都带 `expires_at` 条件，过期的行一律不认。
+5. **数据库负载**：每个带会话的请求多一次 `auth_sessions` 主键查询；`last_seen_at` 最多每 5 分钟写一次。连接池上限仍是每进程 20（§11），并发高于 20 时排队。数据库不可用时，带会话的请求返回 503 SYS-9003，不会当成未登录。
+
+回滚：
+
+- **只回滚代码，不删表**。两张表留着闲置，不需要任何删表或改 `schema_migrations` 的步骤。回滚后会话回到进程内存，所有人再重新登录一次。
+- 回滚之后再次升级时，先清空两张表（语句见 §7），再启动新版本的 API，避免回滚期间留下的旧会话行重新生效。迁移 007 已经记录过，不会重复建表。
+
 ## 7. 备份与恢复
 
 | 项 | 方案 |
@@ -192,7 +214,16 @@ minio:9000/9001
 | 主密钥 | 单独托管；丢失将无法解密凭据 |
 | 恢复演练 | 每月一次；RPO ≤ 24h（binlog 可到 15min），RTO ≤ 4h |
 
-恢复顺序：MySQL → 对象存储 → Temporal → API/Worker → 控制台 → 冒烟。禁止直接覆盖生产库；恢复到新库并切换。
+恢复顺序：MySQL → 清空会话表 → 对象存储 → Temporal → API/Worker → 控制台 → 冒烟。禁止直接覆盖生产库；恢复到新库并切换。
+
+全量备份的流程不变（`auth_sessions`、`auth_oidc_states` 照常包含在全量备份里，不单独处理）。但 **MySQL 从备份恢复后，启动 API 和 Worker 之前，必须先在恢复出的库上清空这两张表**：
+
+```sql
+DELETE FROM auth_sessions;
+DELETE FROM auth_oidc_states;
+```
+
+不清空的话，旧备份里还没过期的会话会重新生效：包括备份之后才登出的会话，以及备份之后才被停用的用户的会话（恢复出的库里这个用户还是启用状态）。清空后所有人需要重新登录一次。
 
 ## 8. 健康、监控与日志
 
@@ -241,7 +272,7 @@ minio:9000/9001
 | API | 2 × (2 vCPU / 4 GB) |
 | Worker | 2 × (4 vCPU / 8 GB)，按队列拆 |
 | 对象存储 | 500 GB 起 |
-| 连接池 | API 每实例 20；Worker 每进程 10；MySQL `max_connections` 300 |
+| 连接池 | API、Worker 每个进程一个池，上限 20（`packages/store/src/db.ts`：`connectionLimit: 20`、`waitForConnections: true`、`queueLimit: 0`，代码写死，没有环境变量可调）。超过 20 的并发查询在进程内排队，不会多开连接。总连接数上限约为 20 ×（API 副本数 + Worker 进程数），再加迁移 Job；MySQL `max_connections` 300 |
 
 ## 12. 故障排查
 
@@ -273,5 +304,6 @@ minio:9000/9001
 
 ## 14. 已知风险
 
-- **会话存在 API 进程内存里**（`packages/identity/src/index.ts:35` 的会话和 OIDC state，`apps/api/src/routes/open.ts` 的 RPM 计数）：API 一重启，所有人都要重新登录；跑多个副本时，请求落到别的副本就会 401，SSO 回调也会失败，RPM 上限按副本数放大。所以 `forge-api` 目前只跑 1 个副本，不能靠加副本扩容。发布时尽量放在低峰，并提前通知用户需要重新登录。控制台 SSE 断线后自动重连 3 次，大约能撑 9 秒，停机超过这个时间，用户要手动点刷新。
+- **RPM 计数存在 API 进程内存里**（`apps/api/src/routes/open.ts:34` 的 `rateBuckets`）：每个副本各自计数，`forge-api` 跑多个副本时，实际每分钟上限 = 配置值 × 副本数；API 重启后计数清零。需要精确限流时，在统一 Nginx 上另做限流。
+- **API 重启时的 SSE**：会话已经存在 MySQL，重启不再让用户重新登录；但控制台 SSE 断线后只自动重连 3 次，大约能撑 9 秒，单个副本停机超过这个时间，打开着的 Run 弹窗要手动点刷新。滚动升级（`maxUnavailable: 0`、多副本）可以避免。
 - **测试依赖的已知漏洞（1.2 已解决）**：1.1 用的 vitest 3 依赖链上有 tinypool（GHSA-5gmw-xhrv-c9v3、GHSA-85c8-ppgw-ccpr）和 vitest / @vitest/mocker（GHSA-82fw-gwwq-j7x9、GHSA-qxg6-89mg-rqv8）的漏洞，都是 devDependencies，不进生产运行时。1.2 升级到 vitest 4.1.12 后不再依赖 tinypool，`pnpm audit --dev` 没有已知漏洞。还停在 1.1 的环境不要对不可信分支直接跑测试。
