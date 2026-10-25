@@ -99,15 +99,24 @@ export const capabilitiesRepo = {
     params.push(id);
     await execute(`UPDATE mcp_servers SET ${sets.join(", ")} WHERE id = ?`, params);
   },
-  async replaceMcpTools(serverId: string, tools: Array<{ name: string; description?: string; inputSchema?: unknown; risk?: string }>): Promise<void> {
+  /**
+   * r5 resync: upsert by (server_id, name) keeping id / created_at (history references tools by key), re-enable a tool
+   * that is back upstream, and disable (never delete) tools no longer listed upstream. readOnly defaults to false.
+   */
+  async replaceMcpTools(serverId: string, tools: Array<{ name: string; description?: string; inputSchema?: unknown; risk?: string; readOnly?: boolean }>): Promise<void> {
     await transaction(async (conn) => {
-      await conn.execute("DELETE FROM mcp_tools WHERE server_id = ?", [serverId]);
       for (const tool of tools) {
         await conn.execute(
-          "INSERT INTO mcp_tools (id, server_id, name, description, input_schema_json, risk_level) VALUES (?, ?, ?, ?, ?, ?)",
-          [ulidWithPrefix("mct"), serverId, tool.name, tool.description ?? "", json(tool.inputSchema ?? {}), tool.risk ?? "medium"],
+          `INSERT INTO mcp_tools (id, server_id, name, description, input_schema_json, risk_level, read_only, enabled) VALUES (?, ?, ?, ?, ?, ?, ?, 1) AS up
+           ON DUPLICATE KEY UPDATE description = up.description, input_schema_json = up.input_schema_json, risk_level = up.risk_level, read_only = up.read_only, enabled = 1`,
+          [ulidWithPrefix("mct"), serverId, tool.name, tool.description ?? "", json(tool.inputSchema ?? {}), tool.risk ?? "medium", tool.readOnly === true ? 1 : 0],
         );
       }
+      const names = tools.map((tool) => tool.name);
+      await conn.execute(
+        `UPDATE mcp_tools SET enabled = 0 WHERE server_id = ? AND enabled = 1${names.length ? ` AND name NOT IN (${names.map(() => "?").join(", ")})` : ""}`,
+        [serverId, ...names],
+      );
     });
   },
   async listMcpTools(serverId: string): Promise<Record<string, unknown>[]> {
@@ -135,15 +144,22 @@ export const capabilitiesRepo = {
     );
     return id;
   },
-  async replaceTools(sourceId: string, tools: Array<{ name: string; operationId: string; method: string; path: string; description?: string; inputSchema?: unknown; risk?: string }>): Promise<void> {
+  /** r5 resync, same rules as replaceMcpTools: upsert by (source_id, name) keeping id, disable (never delete) removed tools. */
+  async replaceTools(sourceId: string, tools: Array<{ name: string; operationId: string; method: string; path: string; description?: string; inputSchema?: unknown; risk?: string; readOnly?: boolean }>): Promise<void> {
     await transaction(async (conn) => {
-      await conn.execute("DELETE FROM tools WHERE source_id = ?", [sourceId]);
       for (const tool of tools) {
         await conn.execute(
-          "INSERT INTO tools (id, source_id, name, operation_id, method, path, description, input_schema_json, risk_level) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-          [ulidWithPrefix("tol"), sourceId, tool.name, tool.operationId, tool.method.toUpperCase(), tool.path, tool.description ?? "", json(tool.inputSchema ?? {}), tool.risk ?? "low"],
+          `INSERT INTO tools (id, source_id, name, operation_id, method, path, description, input_schema_json, risk_level, read_only, enabled) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1) AS up
+           ON DUPLICATE KEY UPDATE operation_id = up.operation_id, method = up.method, path = up.path, description = up.description,
+             input_schema_json = up.input_schema_json, risk_level = up.risk_level, read_only = up.read_only, enabled = 1`,
+          [ulidWithPrefix("tol"), sourceId, tool.name, tool.operationId, tool.method.toUpperCase(), tool.path, tool.description ?? "", json(tool.inputSchema ?? {}), tool.risk ?? "low", tool.readOnly === true ? 1 : 0],
         );
       }
+      const names = tools.map((tool) => tool.name);
+      await conn.execute(
+        `UPDATE tools SET enabled = 0 WHERE source_id = ? AND enabled = 1${names.length ? ` AND name NOT IN (${names.map(() => "?").join(", ")})` : ""}`,
+        [sourceId, ...names],
+      );
     });
   },
   async listToolsBySourceKey(sourceKey: string): Promise<Record<string, unknown>[]> {

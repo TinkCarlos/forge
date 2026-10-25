@@ -205,21 +205,21 @@ export const runsRepo = {
     const row = await one<{ maxSeq: number | null }>("SELECT MAX(seq) AS maxSeq FROM messages WHERE run_id = ?", [runId]);
     return Number(row?.maxSeq ?? 0) + 1;
   },
-  async addToolCall(input: { runId: string; toolKey: string; args: unknown; risk: string; status?: string; approvalId?: string | null; idempotencyKey?: string | null; attempt?: number }): Promise<string> {
+  async addToolCall(input: { runId: string; toolKey: string; args: unknown; risk: string; status?: string; approvalId?: string | null; idempotencyKey?: string | null; attempt?: number; readOnly?: boolean }): Promise<string> {
     if (input.idempotencyKey) {
       const existing = await one<{ id: string }>("SELECT id FROM tool_calls WHERE run_id = ? AND idempotency_key = ?", [input.runId, input.idempotencyKey]);
       if (existing) return existing.id;
     }
     const id = ulidWithPrefix("tcl");
-    const values = [id, input.runId, input.toolKey, json(input.args), input.risk, input.status ?? "running", input.approvalId ?? null, input.idempotencyKey ?? null, input.attempt ?? 1];
+    const values = [id, input.runId, input.toolKey, json(input.args), input.risk, input.status ?? "running", input.approvalId ?? null, input.idempotencyKey ?? null, input.attempt ?? 1, input.readOnly === true ? 1 : 0];
     const owner = fenceOwnerFor(input.runId);
     try {
       if (owner === null) {
-        await execute("INSERT INTO tool_calls (id, run_id, tool_key, args_json, risk_level, status, approval_id, idempotency_key, attempt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", values);
+        await execute("INSERT INTO tool_calls (id, run_id, tool_key, args_json, risk_level, status, approval_id, idempotency_key, attempt, read_only) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", values);
         return id;
       }
       const result = await execute(
-        "INSERT INTO tool_calls (id, run_id, tool_key, args_json, risk_level, status, approval_id, idempotency_key, attempt) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ? FROM runs WHERE id = ? AND claimed_by = ?",
+        "INSERT INTO tool_calls (id, run_id, tool_key, args_json, risk_level, status, approval_id, idempotency_key, attempt, read_only) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM runs WHERE id = ? AND claimed_by = ?",
         [...values, input.runId, owner],
       );
       if (result.affectedRows === 0) throw new LeaseLostError();
