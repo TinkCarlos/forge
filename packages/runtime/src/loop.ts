@@ -13,6 +13,7 @@ import { callModel, type LlmResult, type LlmUsage } from "@forge/models";
 import { parseJsonValue, repos, withRunLease, type ClaimedRun, type RunRow } from "@forge/store";
 import { buildSystemPrompt, compressContext } from "./context.js";
 import { emit } from "./events.js";
+import { registerRun } from "./drain.js";
 import { claimRun, currentWorkerId } from "./lease.js";
 import { leaseTiming } from "./lease-timing.js";
 import { appendMessage, messageOf } from "./messages.js";
@@ -68,7 +69,7 @@ export async function finalize(
   }
 }
 
-async function runLoop(run: RunRow, workerId: string, lease: AbortSignal): Promise<void> {
+async function runLoop(run: RunRow, workerId: string, lease: AbortSignal, drain: AbortSignal): Promise<void> {
   const lostLease = () => lease.aborted;
   const agent = await repos.getAgent(run.agent_id);
   if (!agent) throw errors.notFound("Agent 不存在");
@@ -85,8 +86,10 @@ async function runLoop(run: RunRow, workerId: string, lease: AbortSignal): Promi
   const maxContextTokens = spec.limits?.maxContextTokens ?? config.DEFAULT_MAX_CONTEXT_TOKENS;
   const candidates = modelCandidates(spec);
 
+  // r5 §4: a drain aborts model calls (not tool calls); the loop returns at the next check and the lease is released.
+  const modelSignal = AbortSignal.any([lease, drain]);
   while (true) {
-    if (lostLease()) return;
+    if (lostLease() || drain.aborted) return;
     const fresh = await repos.getRun(run.id);
     if (!fresh) return;
     if (fresh.claimed_by && fresh.claimed_by !== workerId) return;
@@ -106,6 +109,7 @@ async function runLoop(run: RunRow, workerId: string, lease: AbortSignal): Promi
       return;
     }
     if (openState === "waiting") return;
+    if (drain.aborted) return;
 
     const historyRows = await repos.listThreadMessages(fresh.thread_id);
     const currentRows = historyRows.filter((row) => row.run_id === fresh.id);
@@ -160,7 +164,7 @@ async function runLoop(run: RunRow, workerId: string, lease: AbortSignal): Promi
           tools: [...tools.values()].map((tool) => tool.definition),
           temperature: spec.model.temperature,
           maxTokens: spec.model.maxTokens,
-          signal: lease,
+          signal: modelSignal,
         });
         // P3-09: a result that arrives after the lease was lost is dropped; the step stays running for the next owner.
         assertLeaseHeld(lease);
@@ -175,6 +179,8 @@ async function runLoop(run: RunRow, workerId: string, lease: AbortSignal): Promi
         break;
       } catch (error) {
         assertLeaseHeld(lease);
+        // Drained mid-call: write nothing, the step stays running (the next owner marks it MDL-3001 and calls again).
+        if (drain.aborted) return;
         const forgeError = error instanceof ForgeError ? error : errors.model(String(error));
         lastError = forgeError;
         await repos.finishRunStep(stepId, {
@@ -307,6 +313,7 @@ export async function runClaimed(claimed: ClaimedRun, workerId = currentWorkerId
     }
   });
   const lease = new AbortController();
+  const drain = registerRun(run.id, () => lease.abort());
   let confirmedAt = Date.now();
   let inFlight = false;
   const timer = setInterval(() => {
@@ -330,7 +337,7 @@ export async function runClaimed(claimed: ClaimedRun, workerId = currentWorkerId
   try {
     await withRunLease(run.id, workerId, async () => {
       try {
-        await runLoop(run, workerId, lease.signal);
+        await runLoop(run, workerId, lease.signal, drain.signal);
       } catch (error) {
         if (lease.signal.aborted || error instanceof LeaseLostError) return;
         const forgeError = error instanceof ForgeError ? error : new ForgeError("SYS-9001", String(error), 500);
@@ -346,10 +353,25 @@ export async function runClaimed(claimed: ClaimedRun, workerId = currentWorkerId
     });
   } finally {
     clearInterval(timer);
-    // After a lease loss the DB may still be unreachable: the release is best effort (the lease expires anyway).
-    if (lease.signal.aborted) await repos.releaseRunLease(run.id, workerId).catch(() => undefined);
-    else await repos.releaseRunLease(run.id, workerId);
+    try {
+      if (drain.signal.aborted && !lease.signal.aborted) await announceDrainRelease(run.id, workerId);
+      // After a lease loss the DB may still be unreachable: the release is best effort (the lease expires anyway).
+      if (lease.signal.aborted) await repos.releaseRunLease(run.id, workerId).catch(() => undefined);
+      else await repos.releaseRunLease(run.id, workerId);
+    } finally {
+      drain.done();
+    }
   }
+}
+
+/**
+ * r5 §4: before a drained Run's lease is released, `run.released {reason:"drain"}` is written inside the lease fence
+ * (only while this worker still holds it and the Run is not finished; otherwise nothing is written and no error).
+ */
+async function announceDrainRelease(runId: string, workerId: string): Promise<void> {
+  const fresh = await repos.getRun(runId).catch(() => null);
+  if (!fresh || fresh.claimed_by !== workerId || TERMINAL.includes(fresh.status)) return;
+  await withRunLease(runId, workerId, () => emit(runId, "run.released", { reason: "drain" })).catch(() => undefined);
 }
 
 export async function executeRun(runId: string, workerId = currentWorkerId()): Promise<void> {
