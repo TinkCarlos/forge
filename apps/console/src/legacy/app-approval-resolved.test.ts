@@ -3,12 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
  * SSE approval.resolved（旧版控制台 public/app.js）：Run 进入终态时后端把挂着的 pending 审批改成 expired，
- * 事务提交后发 approval.resolved { approvalId, status: 'expired' }（排在 Run 终态事件之前）。
- * - status=expired：按已失效处理，不弹错误、不写 console.error：
+ * 事务提交后发 approval.resolved { approvalId, decision: 'expired' }（排在 Run 终态事件之前；公开契约字段是 decision）。
+ * - decision=expired：按已失效处理，不弹错误、不写 console.error：
  *   - approvalId 在当前审批列表里 → 从列表移除（审批页正显示时按本地数据重渲染，不重新请求）；
  *   - 该审批的确认框正开着 → 关掉，并给一条中性（非 error）轻提示「此审批已失效」；
  *   - 当前页面没有这个审批 → 静默忽略。
- * - 其他 status（approved / rejected …）保持现有行为（只记事件日志）；未知 status / 缺字段容错，不抛异常。
+ * - 其他 decision（approved / rejected …）保持现有行为（只记事件日志）；未知值 / 缺字段容错，不抛异常。
+ * - 不兼容读 status：只带 status:'expired'、不带 decision 的事件静默忽略。
  * - 唯一的 SSE 入口是 Run 弹窗（connectRunStream）；审批列表页本身不订阅 SSE。
  */
 const APP = readFileSync(new URL('../../public/app.js', import.meta.url), 'utf8')
@@ -180,12 +181,12 @@ let consoleError: ReturnType<typeof vi.spyOn>
 beforeEach(() => { consoleError = vi.spyOn(console, 'error').mockImplementation(() => {}) })
 afterEach(() => { expect(consoleError).not.toHaveBeenCalled(); consoleError.mockRestore() })
 
-describe('approval.resolved status=expired：审批列表', () => {
+describe('approval.resolved decision=expired：审批列表', () => {
   it('approvalId 在列表里：移除这一行（按本地数据重渲染，不重新请求），不弹任何提示', async () => {
     const h = approvalsHarness({ [LIST]: list(approval(X, RUN_X), approval(Y, RUN_Y)) })
     await h.app.renderApprovals()
     expect(h.content()).toContain(RUN_X)
-    h.app.onApprovalResolved({ approvalId: X, status: 'expired' })
+    h.app.onApprovalResolved({ approvalId: X, decision: 'expired' })
     await flush()
     expect(h.content()).not.toContain(RUN_X)
     expect(h.content()).toContain(RUN_Y)
@@ -197,7 +198,7 @@ describe('approval.resolved status=expired：审批列表', () => {
   it('移除最后一条：显示空状态', async () => {
     const h = approvalsHarness({ [LIST]: list(approval(X, RUN_X)) })
     await h.app.renderApprovals()
-    h.app.onApprovalResolved({ approvalId: X, status: 'expired' })
+    h.app.onApprovalResolved({ approvalId: X, decision: 'expired' })
     await flush()
     expect(h.content()).toContain('没有待审批')
     expect(h.toasts()).toEqual([])
@@ -208,7 +209,7 @@ describe('approval.resolved status=expired：审批列表', () => {
     await h.app.renderApprovals()
     h.state.tab = 'runs'
     h.els['#content'].innerHTML = 'RUNS-PAGE'
-    h.app.onApprovalResolved({ approvalId: X, status: 'expired' })
+    h.app.onApprovalResolved({ approvalId: X, decision: 'expired' })
     await flush()
     expect(h.content()).toBe('RUNS-PAGE')
     expect(h.state.approvals).toEqual([])
@@ -218,20 +219,20 @@ describe('approval.resolved status=expired：审批列表', () => {
     const h = approvalsHarness({ [LIST]: list(approval(X, RUN_X)) })
     await h.app.renderApprovals()
     h.els['#content'].innerHTML = 'UNCHANGED'
-    h.app.onApprovalResolved({ approvalId: 'apr_01M5PK6G1GPZ3APBN3QNZZ', status: 'expired' })
+    h.app.onApprovalResolved({ approvalId: 'apr_01M5PK6G1GPZ3APBN3QNZZ', decision: 'expired' })
     await flush()
     expect(h.content()).toBe('UNCHANGED')
     expect(h.toasts()).toEqual([])
   })
 })
 
-describe('approval.resolved status=expired：确认框', () => {
+describe('approval.resolved decision=expired：确认框', () => {
   it('该审批的确认框开着：关掉，并给中性轻提示「此审批已失效」（不是 error），列表同时移除', async () => {
     const h = approvalsHarness({ [LIST]: list(approval(X, RUN_X), approval(Y, RUN_Y)) })
     await h.app.renderApprovals()
     await h.app.decideApproval(X, 'approved')
     expect(h.modal.open).toBe(true)
-    h.app.onApprovalResolved({ approvalId: X, status: 'expired' })
+    h.app.onApprovalResolved({ approvalId: X, decision: 'expired' })
     await flush()
     expect(h.modal.open).toBe(false)
     expect(h.toasts()).toEqual([EXPIRED_TEXT])
@@ -246,7 +247,7 @@ describe('approval.resolved status=expired：确认框', () => {
     const h = approvalsHarness({ [LIST]: list(approval(X, RUN_X)) })
     await h.app.renderApprovals()
     await h.app.decideApproval(X, 'rejected')
-    h.app.onApprovalResolved({ approvalId: X, status: 'expired' })
+    h.app.onApprovalResolved({ approvalId: X, decision: 'expired' })
     expect(h.modal.open).toBe(false)
     expect(h.toasts()).toEqual([EXPIRED_TEXT])
   })
@@ -255,7 +256,7 @@ describe('approval.resolved status=expired：确认框', () => {
     const h = approvalsHarness({ [LIST]: list(approval(X, RUN_X), approval(Y, RUN_Y)) })
     await h.app.renderApprovals()
     await h.app.decideApproval(Y, 'approved')
-    h.app.onApprovalResolved({ approvalId: X, status: 'expired' })
+    h.app.onApprovalResolved({ approvalId: X, decision: 'expired' })
     await flush()
     expect(h.modal.open).toBe(true)
     expect(h.toasts()).toEqual([])
@@ -268,19 +269,19 @@ describe('approval.resolved status=expired：确认框', () => {
     await h.app.decideApproval(X, 'approved')
     h.modal.close()
     h.modal.showModal() // 例如随后打开的 Run 弹窗
-    h.app.onApprovalResolved({ approvalId: X, status: 'expired' })
+    h.app.onApprovalResolved({ approvalId: X, decision: 'expired' })
     expect(h.modal.open).toBe(true)
     expect(h.toasts()).toEqual([])
   })
 })
 
-describe('approval.resolved 其他 status / 异常数据：保持现有行为，不抛异常', () => {
-  it.each(['approved', 'rejected', 'pending', 'weird-status'])('status=%s：列表和确认框都不动，不提示', async (status) => {
+describe('approval.resolved 其他 decision / 异常数据：保持现有行为，不抛异常', () => {
+  it.each(['approved', 'rejected', 'pending', 'weird-status'])('decision=%s：列表和确认框都不动，不提示', async (decision) => {
     const h = approvalsHarness({ [LIST]: list(approval(X, RUN_X)) })
     await h.app.renderApprovals()
     await h.app.decideApproval(X, 'approved')
     const before = h.content()
-    expect(() => h.app.onApprovalResolved({ approvalId: X, status })).not.toThrow()
+    expect(() => h.app.onApprovalResolved({ approvalId: X, decision })).not.toThrow()
     await flush()
     expect(h.content()).toBe(before)
     expect(h.modal.open).toBe(true)
@@ -291,9 +292,10 @@ describe('approval.resolved 其他 status / 异常数据：保持现有行为，
     ['undefined', undefined],
     ['null', null],
     ['字符串', 'expired'],
-    ['缺 approvalId', { status: 'expired' }],
-    ['approvalId 不是字符串', { approvalId: 42, status: 'expired' }],
-    ['缺 status', { approvalId: X }],
+    ['缺 approvalId', { decision: 'expired' }],
+    ['approvalId 不是字符串', { approvalId: 42, decision: 'expired' }],
+    ['缺 decision', { approvalId: X }],
+    ['只有 status=expired、没有 decision（不兼容读 status）', { approvalId: X, status: 'expired' }],
   ])('data=%s：不抛异常，不改动', async (_label, data) => {
     const h = approvalsHarness({ [LIST]: list(approval(X, RUN_X)) })
     await h.app.renderApprovals()
@@ -305,11 +307,37 @@ describe('approval.resolved 其他 status / 异常数据：保持现有行为，
   })
 })
 
+describe('不兼容读 status：只看 decision', () => {
+  it('只带 status=expired、不带 decision：列表不移除、确认框不关、不提示', async () => {
+    const h = approvalsHarness({ [LIST]: list(approval(X, RUN_X)) })
+    await h.app.renderApprovals()
+    await h.app.decideApproval(X, 'approved')
+    const before = h.content()
+    expect(() => h.app.onApprovalResolved({ approvalId: X, status: 'expired' })).not.toThrow()
+    await flush()
+    expect(h.content()).toBe(before)
+    expect(h.state.approvals).toHaveLength(1)
+    expect(h.modal.open).toBe(true)
+    expect(h.toasts()).toEqual([])
+  })
+
+  it('status 与 decision 同时存在时以 decision 为准：decision=approved + status=expired 不处理', async () => {
+    const h = approvalsHarness({ [LIST]: list(approval(X, RUN_X)) })
+    await h.app.renderApprovals()
+    await h.app.decideApproval(X, 'approved')
+    h.app.onApprovalResolved({ approvalId: X, decision: 'approved', status: 'expired' })
+    await flush()
+    expect(h.state.approvals).toHaveLength(1)
+    expect(h.modal.open).toBe(true)
+    expect(h.toasts()).toEqual([])
+  })
+})
+
 describe('接线：Run 弹窗（唯一的 SSE 入口）收到 approval.resolved', () => {
   it('expired：记事件日志，并把底下审批页里的这一条移除；不提示、不重新请求列表', async () => {
     const h = runHarness([approval(X, RUN_X), approval(Y, RUN_Y)])
     await h.app.openRun(RUN_X)
-    h.es().emit('approval.resolved', 7, { approvalId: X, status: 'expired' })
+    h.es().emit('approval.resolved', 7, { approvalId: X, decision: 'expired' })
     await flush()
     expect(h.log()).toHaveLength(1)
     expect(h.log()[0]).toContain('approval.resolved')
@@ -324,7 +352,7 @@ describe('接线：Run 弹窗（唯一的 SSE 入口）收到 approval.resolved'
   it('expired 后紧跟 run.failed：照常结束流，Run 弹窗不被关掉', async () => {
     const h = runHarness([approval(X, RUN_X)])
     await h.app.openRun(RUN_X)
-    h.es().emit('approval.resolved', 7, { approvalId: X, status: 'expired' })
+    h.es().emit('approval.resolved', 7, { approvalId: X, decision: 'expired' })
     h.es().emit('run.failed', 8, { status: 'failed', output: null, error: { code: 'APR-2102', message: 'x' } })
     await flush()
     expect(h.log()).toHaveLength(2)
@@ -333,15 +361,16 @@ describe('接线：Run 弹窗（唯一的 SSE 入口）收到 approval.resolved'
     expect(h.toasts()).toEqual([])
   })
 
-  it('approved / 未知 status：只记日志，列表不动', async () => {
+  it('approved / 未知 decision / 只带 status=expired：只记日志，列表不动', async () => {
     const h = runHarness([approval(X, RUN_X)])
     await h.app.openRun(RUN_X)
     h.content.innerHTML = 'UNCHANGED'
-    h.es().emit('approval.resolved', 7, { approvalId: X, status: 'approved' })
-    h.es().emit('approval.resolved', 8, { approvalId: X, status: '???' })
+    h.es().emit('approval.resolved', 7, { approvalId: X, decision: 'approved' })
+    h.es().emit('approval.resolved', 8, { approvalId: X, decision: '???' })
     h.es().emit('approval.resolved', 9, null)
+    h.es().emit('approval.resolved', 10, { approvalId: X, status: 'expired' })
     await flush()
-    expect(h.log()).toHaveLength(3)
+    expect(h.log()).toHaveLength(4)
     expect(h.content.innerHTML).toBe('UNCHANGED')
     expect(h.state.approvals).toHaveLength(1)
   })
@@ -350,7 +379,7 @@ describe('接线：Run 弹窗（唯一的 SSE 入口）收到 approval.resolved'
     const h = runHarness([], 'runs')
     await h.app.openRun(RUN_X)
     h.content.innerHTML = 'RUNS-PAGE'
-    h.es().emit('approval.resolved', 7, { approvalId: X, status: 'expired' })
+    h.es().emit('approval.resolved', 7, { approvalId: X, decision: 'expired' })
     await flush()
     expect(h.content.innerHTML).toBe('RUNS-PAGE')
     expect(h.toasts()).toEqual([])
@@ -399,7 +428,7 @@ describe('护栏：审批操作的 409 处理不变', () => {
     await h.app.decideApproval(X, 'approved')
     await h.submit()
     expect(h.toasts()).toEqual(['已批准，Run 将继续'])
-    h.app.onApprovalResolved({ approvalId: X, status: 'expired' })
+    h.app.onApprovalResolved({ approvalId: X, decision: 'expired' })
     expect(h.toasts()).toEqual(['已批准，Run 将继续'])
   })
 })

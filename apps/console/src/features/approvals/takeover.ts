@@ -44,14 +44,14 @@ export function handleDecideError(error: unknown, on: { close: () => void; refre
   if (error instanceof ApiError && error.status === 409) on.refresh()
 }
 
-/** SSE approval.resolved status=expired 时确认框开着的中性轻提示（和旧版一致）。 */
+/** SSE approval.resolved decision=expired 时确认框开着的中性轻提示（和旧版一致）。 */
 export const APPROVAL_RESOLVED_EXPIRED_TOAST = '此审批已失效'
 
 /**
- * SSE approval.resolved：只处理 status=expired（Run 已进入终态、审批被后端置为失效），不弹 error、不写 console.error。
+ * SSE approval.resolved { approvalId, decision }：只处理 decision=expired（Run 已进入终态、审批被后端置为失效），不弹 error、不写 console.error。
  * - approvalId 在当前列表里（has）→ remove（页面可直接从缓存移除，或刷新列表）；
  * - 该审批的确认框正开着（dialogApprovalId 相同）→ closeDialog，并给中性轻提示（sonner 默认样式，不是 error）；
- * - 其他 status / 未知 status / 缺字段 / 页面上没有这个审批：静默忽略。
+ * - 其他 decision / 未知值 / 缺字段 / 页面上没有这个审批：静默忽略。不读 status（只带 status 的事件同样忽略）。
  * 注：/next/ 目前没有 SSE 订阅，这里先提供纯逻辑，审批页接上 SSE 后调用。
  */
 export function handleApprovalResolved(
@@ -59,8 +59,8 @@ export function handleApprovalResolved(
   on: { has: (id: string) => boolean; remove: (id: string) => void; dialogApprovalId: string | null; closeDialog: () => void },
 ): void {
   if (!data || typeof data !== 'object') return
-  const { approvalId, status } = data as { approvalId?: unknown; status?: unknown }
-  if (status !== 'expired' || typeof approvalId !== 'string' || !approvalId) return
+  const { approvalId, decision } = data as { approvalId?: unknown; decision?: unknown }
+  if (decision !== 'expired' || typeof approvalId !== 'string' || !approvalId) return
   const dialogOpen = on.dialogApprovalId === approvalId
   if (dialogOpen) {
     on.closeDialog()

@@ -542,7 +542,7 @@ const APPROVAL_STALE_CODES = new Set(["APR-2104", "APR-2103", "RUN-7005"]);
 const APPROVAL_STALE_TEXT = "该审批已失效，请刷新后处理新的审批";
 // RUN-7005 的专门文案（和 /next/ 一致）。
 const APPROVAL_RUN_FINISHED_TEXT = "Run 已结束，此审批已失效";
-// SSE approval.resolved status=expired（Run 进入终态时后端让挂着的审批失效）：确认框正开着时的中性轻提示（和 /next/ 一致）。
+// SSE approval.resolved decision=expired（Run 进入终态时后端让挂着的审批失效）：确认框正开着时的中性轻提示（和 /next/ 一致）。
 const APPROVAL_RESOLVED_EXPIRED_TEXT = "此审批已失效";
 
 function approvalReason(approval) {
@@ -577,13 +577,13 @@ async function renderApprovals({ refetch = true } = {}) {
 }
 
 /**
- * SSE approval.resolved：只处理 status=expired（Run 已进入终态、审批被后端置为失效），不弹错误、不写 console.error。
+ * SSE approval.resolved { approvalId, decision }：只处理 decision=expired（Run 已进入终态、审批被后端置为失效），不弹错误、不写 console.error。
  * - approvalId 在当前审批列表里：从列表移除；审批页正显示时按本地数据重渲染。
  * - 该审批的确认框正开着：关掉，并给中性轻提示（kind=info，没有专门样式，显示为默认深色底，不是红色 error）。
- * - 其他 status / 未知 status / 缺字段 / 页面上没有这个审批：静默忽略。
+ * - 其他 decision / 未知值 / 缺字段 / 页面上没有这个审批：静默忽略。不读 status（只带 status 的事件同样忽略）。
  */
 function onApprovalResolved(data) {
-  if (!data || typeof data !== "object" || data.status !== "expired") return;
+  if (!data || typeof data !== "object" || data.decision !== "expired") return;
   const id = data.approvalId;
   if (typeof id !== "string" || !id) return;
   const approvals = Array.isArray(state.approvals) ? state.approvals : [];
