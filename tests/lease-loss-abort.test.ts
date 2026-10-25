@@ -38,6 +38,7 @@ const repos = {
   listThreadMessages: vi.fn(async () => []),
   failRunningSteps: vi.fn(async () => 0),
   addRunStep: vi.fn(async () => "stp_1"),
+  addRunStepWithSeq: vi.fn(async () => ({ id: "stp_1", seq: 1 })),
   finishRunStep: vi.fn(async () => undefined),
   updateRun: vi.fn(async () => undefined),
   updateToolCall: vi.fn(async () => undefined),
@@ -190,12 +191,14 @@ describe("P3-09 writes run inside the lease fence", () => {
     repos.heartbeatRun.mockResolvedValue(true);
     const scopes: unknown[] = [];
     repos.addRunStep.mockImplementation(async () => { scopes.push(leaseScope()); return "stp_1"; });
+    repos.addRunStepWithSeq.mockImplementation(async () => { scopes.push(leaseScope()); return { id: "stp_1", seq: 1 }; });
     callModel.mockResolvedValue({ content: "ok", toolCalls: [], usage: { inputTokens: 1, outputTokens: 1, costUsd: 0 } });
     await runClaimed(claimed(), "w1");
     expect(scopes.length).toBeGreaterThan(0);
     for (const scope of scopes) expect(scope).toEqual({ runId: RUN.id, owner: "w1" });
     expect(leaseScope()).toBeUndefined();
     repos.addRunStep.mockImplementation(async () => "stp_1");
+    repos.addRunStepWithSeq.mockImplementation(async () => ({ id: "stp_1", seq: 1 }));
   });
 
   it("a fenced write rejected (another worker owns the lease) stops the execution: no failed finalize, release still runs", async () => {

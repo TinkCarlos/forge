@@ -46,7 +46,8 @@ export default async function adminRunRoutes(app: FastifyInstance): Promise<void
       messages: messages.map((message) => ({ id: message.id, seq: message.seq, role: message.role, content: maskMessageContent(message.role, message.content_json), createdAt: message.created_at })),
       // Tool arguments AND results are masked (same rules as args_preview, structure kept; U-12): a tool may echo
       // credentials back (Authorization headers, token responses). Stored rows keep the raw values.
-      toolCalls: toolCalls.map((call) => {
+      // call_id (the provider's tool call id) is audit-only and never leaves the DB (Q5): every API id is our row id.
+      toolCalls: toolCalls.map(({ call_id: _providerId, ...call }) => {
         const args = maskArgsDeep(call.args_json);
         const result = maskArgsDeep(call.result_json);
         return { ...call, args_json: args, args, result_json: result, result, result_text: maskArgsDeep(call.result_text) };
