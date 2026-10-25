@@ -142,6 +142,27 @@ describe("session store: shared across instances", () => {
     expect(await getSession(session.token)).toBeNull();
   });
 
+  it("SS-16: rejecting an expired session runs no DELETE; the row stays for the cleanup job (401, row present after the request)", async () => {
+    const session = await admin();
+    await pool.execute("UPDATE auth_sessions SET expires_at = ? WHERE token_hash = ?", [new Date(Date.now() - 1000), sha256Hex(session.token)]);
+    const spies = [vi.spyOn(pool, "query"), vi.spyOn(pool, "execute")];
+    let res: LightMyRequestResponse;
+    let lookedUp: unknown;
+    try {
+      res = await sessionOn(appA, session);
+      lookedUp = await getSession(session.token);
+    } finally {
+      const sql = spies.flatMap((spy) => spy.mock.calls.map((call) => String(call[0]).trim()));
+      for (const spy of spies) spy.mockRestore();
+      expect(sql.some((text) => /auth_sessions/i.test(text))).toBe(true);
+      expect(sql.filter((text) => /^DELETE\b/i.test(text))).toEqual([]);
+    }
+    expect(res.statusCode).toBe(401);
+    expect(lookedUp).toBeNull();
+    expect(await rowOf(session)).not.toBeNull();
+    await repos.deleteAuthSession(sha256Hex(session.token));
+  });
+
   it("createSession is stored with the configured absolute TTL", async () => {
     const session = await createSession({ type: "user", id: (await admin()).userId, name: "x", role: "platform_admin", orgUnitId: null, dataScope: "all" });
     const row = await rowOf(session);

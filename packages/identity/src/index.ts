@@ -101,10 +101,8 @@ export async function getSession(token: string | undefined): Promise<StoredSessi
   const now = new Date();
   return identityLookup(async () => {
     const row = await repos.getAuthSession(tokenHash, now);
-    if (!row) {
-      await repos.deleteExpiredAuthSession(tokenHash, now);
-      return null;
-    }
+    // A missing or expired row is only rejected; the row is removed by the auth GC job (collectExpiredAuth), not here.
+    if (!row) return null;
     if (new Date(row.last_seen_at).getTime() < now.getTime() - SESSION_LAST_SEEN_THROTTLE_MS) {
       await repos.touchAuthSession(tokenHash, now, new Date(now.getTime() - SESSION_LAST_SEEN_THROTTLE_MS));
     }

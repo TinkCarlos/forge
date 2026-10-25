@@ -40,10 +40,6 @@ export const authSessionsRepo = {
   async deleteAuthSession(tokenHash: string): Promise<void> {
     await execute("DELETE FROM auth_sessions WHERE token_hash = ?", [tokenHash]);
   },
-  /** Drops one session row only if it is already expired (lazy cleanup on a rejected lookup). */
-  async deleteExpiredAuthSession(tokenHash: string, now: Date): Promise<void> {
-    await execute("DELETE FROM auth_sessions WHERE token_hash = ? AND expires_at <= ?", [tokenHash, now]);
-  },
   async createOidcState(input: { stateHash: string; verifier: string; nonce: string; returnTo: string; now: Date; expiresAt: Date }): Promise<void> {
     await execute(
       "INSERT INTO auth_oidc_states (state_hash, verifier, nonce, return_to, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)",
