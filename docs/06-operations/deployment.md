@@ -49,6 +49,8 @@ minio:9000/9001
 
 要求：
 - `RollingUpdate`，`maxUnavailable: 0`（数据库迁移兼容前提下）。
+- `forge-api` 的 `terminationGracePeriodSeconds` 设为 20。API 收到 SIGTERM 后最晚约 9.5 秒退出（§12.1），剩下的时间留给 preStop 摘流量。不要设到 10 以下，否则 Kubernetes 会在日志写完之前 SIGKILL，最后几行日志（包括 `exit`）会丢。
+- API 设了 `EMBEDDED_WORKER=false` 时，API 进程不再执行 Run，Run 只由独立 Worker（`pnpm start:worker`）领取。这时至少要部署一个独立 Worker，否则 Run 会一直排队。
 - 所有 Pod 非 root、只读根文件系统（除缓存/临时目录）、资源 requests/limits。
 - API/Worker 的 `/readyz` 依赖 MySQL/Redis/Temporal；启动时配置校验失败直接退出。
 - Worker 使用 Temporal Worker Versioning（P1）或部署时先滚动 API 再 Worker。
@@ -187,13 +189,13 @@ minio:9000/9001
 
 发布前：
 
-- **先备份，再等确认**：迁移 007 在任何真实库（预发、生产）执行前，先按 §6 第 1 步做一次全量备份，并等 Cursor Jackson 确认后再执行。
+- **先备份，再等确认**：迁移 007 在任何真实库（预发、生产）执行前，先按 §6 第 1 步做一次全量备份，并等发布负责人确认后再执行。
 - **迁移 007 不破坏数据，可以重复执行**：只新增 `auth_sessions` 和 `auth_oidc_states` 两张表（`CREATE TABLE IF NOT EXISTS`），不改、不删已有表和数据。重复执行只输出 `Migration 007_auth_sessions already applied`。
 
 第一次升级（从内存会话切到数据库会话）必须在单副本下完成，按下面的顺序：
 
 1. 先按 §6 第 1 步做全量备份；
-2. 等 Cursor Jackson 确认后，再跑迁移 007；
+2. 等发布负责人确认后，再跑迁移 007；
 3. 旧版本全部下线后（例如先缩到 0，或用 `Recreate` 策略），以 1 个副本起新版本；
 4. 确认新版本正常（`/readyz`、登录、冒烟）后，再扩成多副本。
 
@@ -302,6 +304,32 @@ DELETE FROM auth_oidc_states;
 | 数据越权 | 立即禁用相关角色/策略，审计访问，按安全事件处理 |
 | 迁移失败 | 停止滚动、回滚应用、检查锁/DDL 兼容；不要直接 downgrade |
 
+### 12.1 API 停机日志
+
+API 收到 SIGTERM 或 SIGINT 后，每走完一步就记一行 info 日志，字段是 `phase`（步骤名）、`phaseSeq`（记录顺序）、`ms`（距收到信号的毫秒数）。正常顺序如下：
+
+| phase | 含义 |
+| --- | --- |
+| `signal` | 收到信号 |
+| `readyz_not_ready` | 开始关闭 HTTP 服务，`/readyz` 改为返回 503，之后的响应都带 `Connection: close` |
+| `listener_closed` | 停止监听，关掉没在用的连接；`count` 是关掉的连接数，没有连接时也会记，`count` 为 0 |
+| `sse_ended` | 结束所有事件流；`count` 是结束的流数，没有流时也会记，`count` 为 0 |
+| `on_close` | 在途请求处理完，HTTP 服务已关闭 |
+| `app_close` | 关闭 HTTP 服务这一步结束 |
+| `stop_runtime` | 停止内置 Worker 和定时任务的轮询 |
+| `pool_end` | 关闭数据库连接池 |
+| `exit` | 最后一行；`code` 是退出码，`activeResources` 是退出前还开着的资源 |
+
+看日志时注意：
+
+- **按 `phaseSeq` 排序，不要按行在文件里的先后。** 日志是异步写出的，退出时可能有一段先记的内容后到 stdout，行序会乱；`phaseSeq` 是进程内统一递增的序号，代表真实顺序。`ms` 不能拿来排序：`readyz_not_ready`、`listener_closed`、`sse_ended`、`on_close` 这四行从 Fastify 开始关闭时起算，比其他几行晚几毫秒。
+- **`exit` 一定是最后一个 phase。** 记下 `exit` 之后不会再有新的 phase 行（下面的 `flush_timeout` 例外，它直接写 stderr）。
+- **`drain_timeout`（需要告警）：** 这一行是 info 级，同时会有一条 error 级的 `timed out after 10000 ms`。出现它说明收到信号 9 秒后关闭还没走完（例如数据库完全无响应，连接池一直关不掉，或者某个连接只发了一半请求头就卡住）。这时进程记 `drain_timeout`，紧接着记 `exit`（`code` 为 1），再最多花 0.5 秒写日志后退出，最晚约 9.5 秒。没走完的步骤之后不会再记。
+- **`flush_timeout`（warn 级）：** 出现这一行就说明 `exit` 之后日志没在时限内写完（时限 2 秒，并保证在 9.5 秒内退出）。它绕过日志库直接写到 stderr，`exit` 之前的行可能有丢失；退出码不受影响，仍和 `exit` 行的 `code` 一致。
+- **退出码：** 0 表示每一步都成功；任何一步失败（失败原因另记一行 error）或走了 `drain_timeout`，都是 1。
+
+进行中的 Run 不等它跑完，API 退出后由其他 Worker 接手（§14）。
+
 ## 13. 运维操作边界
 
 - 生产数据库变更只通过发布流程；禁止手工改表/修数据（紧急修复需审批与记录）。
@@ -315,4 +343,7 @@ DELETE FROM auth_oidc_states;
 
 - **RPM 计数存在 API 进程内存里**（`apps/api/src/routes/open.ts:34` 的 `rateBuckets`）：每个副本各自计数，`forge-api` 跑多个副本时，实际每分钟上限 = 配置值 × 副本数；API 重启后计数清零。需要精确限流时，在统一 Nginx 上另做限流。
 - **API 重启时的 SSE**：会话已经存在 MySQL，重启不再让用户重新登录；但控制台 SSE 断线后只自动重连 3 次，大约能撑 9 秒，单个副本停机超过这个时间，打开着的 Run 弹窗要手动点刷新。滚动升级（`maxUnavailable: 0`、多副本）可以避免。
+- **数据库完全无响应时 API 停机要等满 9 秒**：关闭连接池会等在途查询结束，这一步没有单独的时限，只能靠 9 秒的兜底：记 `drain_timeout`，以退出码 1 退出，`exit` 行照常写出（§12.1）。后续计划给关闭连接池单独加时限。
+- **API 停机时进行中的 Run 不等待**：API 退出时不等内置 Worker 上正在跑的 Run 结束。能释放租约时会尽量释放，释放不了的要等租约（`LEASE_TTL_SECONDS`，默认 30 秒）到期后才由其他 Worker 重新领取，接手前会有一段停顿。
+- **二分查找要跳过两个提交**：`425aef5` 和 `6146e37` 单独检出时类型检查不通过（后面的提交已修好），`git bisect` 时请用 `git bisect skip 425aef5 6146e37`。这是个别情况，以后的提交都要求单独能通过检查。
 - **测试依赖的已知漏洞（1.2 已解决）**：1.1 用的 vitest 3 依赖链上有 tinypool（GHSA-5gmw-xhrv-c9v3、GHSA-85c8-ppgw-ccpr）和 vitest / @vitest/mocker（GHSA-82fw-gwwq-j7x9、GHSA-qxg6-89mg-rqv8）的漏洞，都是 devDependencies，不进生产运行时。1.2 升级到 vitest 4.1.12 后不再依赖 tinypool，`pnpm audit --dev` 没有已知漏洞。还停在 1.1 的环境不要对不可信分支直接跑测试。
