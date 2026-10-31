@@ -2,10 +2,10 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 /**
- * push 6：cancel 新约定——批准之后再 cancel 一律接受，返回 202「已请求取消」，
- * Run 上记取消标记，当前这次工具调用结束后才停下（cancel 这条路不再返回 409）。
+ * push 6：cancel 新约定——批准之后再 cancel 一律接受，返回原来的 200（请求已接受，当前步骤结束后停止），
+ * Run 上记取消标记，当前这次工具调用结束后才停下（未结束的 Run 不再返回 409；已结束的 Run 照旧 409 RUN-7005）。
  * 旧版控制台 app.cancelRun：
- * - 2xx（202 / 200）：提示「已请求取消，当前步骤结束后停止」，刷新运行列表；
+ * - 任何 2xx：提示「已请求取消，当前步骤结束后停止」，刷新运行列表；
  *   Run 详情弹窗开着且是这条 Run 时，不关弹窗，按 REST 刷新弹窗里的 Run（SSE 继续等 run.cancelled）。
  * - 失败：照旧 toast(errorText(error), "error")，不显示成功提示，不刷新。
  */
@@ -86,9 +86,9 @@ function harness(routes: Record<string, Resp>, { modalRunId }: { modalRunId?: st
 
 const LIST_OK: Resp = { status: 200, body: { items: [{ id: RUN_ID, agentName: 'Bot', status: 'running', triggerType: 'api', costUsd: 0, createdAt: null }] } }
 
-describe('旧版 cancelRun：202「已请求取消」', () => {
-  it('列表里点取消，返回 202：提示「已请求取消，当前步骤结束后停止」，刷新运行列表', async () => {
-    const h = harness({ [CANCEL]: { status: 202, body: { id: RUN_ID, status: 'running', cancelRequested: true } }, [LIST]: LIST_OK })
+describe('旧版 cancelRun：200「已请求取消」', () => {
+  it('列表里点取消，返回 200：提示「已请求取消，当前步骤结束后停止」，刷新运行列表', async () => {
+    const h = harness({ [CANCEL]: { status: 200, body: { id: RUN_ID, status: 'running' } }, [LIST]: LIST_OK })
     await h.app.cancelRun(RUN_ID)
     expect(h.toasts()).toEqual([REQUESTED])
     expect(h.toastKind()).toBe('toast ok')
@@ -104,15 +104,15 @@ describe('旧版 cancelRun：202「已请求取消」', () => {
     expect(h.calls).toContain(`GET ${LIST}`)
   })
 
-  it('202 响应体为空也按成功处理', async () => {
-    const h = harness({ [CANCEL]: { status: 202 }, [LIST]: LIST_OK })
+  it('200 响应体为空也按成功处理', async () => {
+    const h = harness({ [CANCEL]: { status: 200 }, [LIST]: LIST_OK })
     await h.app.cancelRun(RUN_ID)
     expect(h.toasts()).toEqual([REQUESTED])
     expect(h.calls).toContain(`GET ${LIST}`)
   })
 
   it('Run 弹窗开着（同一条 Run）：不关弹窗，按 REST 刷新弹窗里的 Run，并刷新列表', async () => {
-    const h = harness({ [CANCEL]: { status: 202, body: {} }, [DETAIL]: { status: 200, body: runBody('running') }, [LIST]: LIST_OK }, { modalRunId: RUN_ID })
+    const h = harness({ [CANCEL]: { status: 200, body: {} }, [DETAIL]: { status: 200, body: runBody('running') }, [LIST]: LIST_OK }, { modalRunId: RUN_ID })
     await h.app.cancelRun(RUN_ID)
     expect(h.toasts()).toEqual([REQUESTED])
     expect(h.modal.open).toBe(true)
@@ -123,7 +123,7 @@ describe('旧版 cancelRun：202「已请求取消」', () => {
   })
 
   it('Run 弹窗里刷新到已取消：状态栏显示 cancelled，不再有「取消 Run」按钮', async () => {
-    const h = harness({ [CANCEL]: { status: 202, body: {} }, [DETAIL]: { status: 200, body: runBody('cancelled') }, [LIST]: LIST_OK }, { modalRunId: RUN_ID })
+    const h = harness({ [CANCEL]: { status: 200, body: {} }, [DETAIL]: { status: 200, body: runBody('cancelled') }, [LIST]: LIST_OK }, { modalRunId: RUN_ID })
     await h.app.cancelRun(RUN_ID)
     expect(h.modal.open).toBe(true)
     expect(h.els['#run-toolbar'].innerHTML).toContain('cancelled')
