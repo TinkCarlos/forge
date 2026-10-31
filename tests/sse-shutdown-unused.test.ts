@@ -98,7 +98,7 @@ describe("A20: listener_closed counts the never-used connections closed in the s
     expect(unused.destroyed).toBe(true);
   });
 
-  it.fails("Node >= 26.4 (simulated): server.close() destroys the never-used connection itself -> still count 1", async () => {
+  it("Node >= 26.4 (simulated): server.close() destroys the never-used connection itself -> still count 1", async () => {
     const h = await harness();
     const unused = await unusedConnection(h);
     behaveLikeNode26(h.server, h.accepted);
@@ -107,7 +107,7 @@ describe("A20: listener_closed counts the never-used connections closed in the s
     expect(unused.destroyed).toBe(true);
   });
 
-  it.fails("a connection that had sent a request before the close is not counted, also when Node closes it (simulated >= 26.4)", async () => {
+  it("a connection that had sent a request before the close is not counted, also when Node closes it (simulated >= 26.4)", async () => {
     const h = await harness();
     const used = await usedConnection(h);
     const unused = await unusedConnection(h);
@@ -118,7 +118,7 @@ describe("A20: listener_closed counts the never-used connections closed in the s
     expect(unused.destroyed).toBe(true);
   });
 
-  it.fails("a connection accepted after the snapshot (inside server.close()) is not counted, and is still closed", async () => {
+  it("a connection accepted after the snapshot (inside server.close()) is not counted, and is still closed", async () => {
     const h = await harness();
     const unused = await unusedConnection(h);
     // A second listener hands over a connection that has sent nothing, as if accepted while the close runs.
