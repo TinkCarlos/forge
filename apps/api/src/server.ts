@@ -33,6 +33,10 @@ const shutdown = createShutdown({
   writeStderrSync: (line) => {
     writeSync(2, `${line}\n`);
   },
+  // r6 A19: the exit_call line (time from the signal to process.exit, monotonic), synchronously, after the flush.
+  reportExit: (line) => {
+    writeSync(2, `${line}\n`);
+  },
 });
 const onSignal = (signal: string): void => {
   shutdown(signal).catch(() => process.exit(1));

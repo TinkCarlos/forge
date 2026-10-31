@@ -439,7 +439,7 @@ describe("shutdown deadline budget (ruling 15:39)", () => {
 // the last phase.
 describe("A19: time from the signal to exit(code), on a monotonic clock", () => {
   type Fields = Record<string, unknown>;
-  it.fails("a wall-clock step back during the shutdown changes neither the phase ms nor the exit report", async () => {
+  it("a wall-clock step back during the shutdown changes neither the phase ms nor the exit report", async () => {
     vi.useFakeTimers();
     const fields: Fields[] = [];
     const reportExit = vi.fn((_line: string): void => undefined);
@@ -454,7 +454,7 @@ describe("A19: time from the signal to exit(code), on a monotonic clock", () => 
     expect(JSON.parse(reportExit.mock.calls[0]![0])).toMatchObject({ event: "exit_call", ms: 300, code: 0 });
   });
 
-  it.fails("exit report: written right before exit(code), after the flush called back; ms counts the flush too; not a phase line", async () => {
+  it("exit report: written right before exit(code), after the flush called back; ms counts the flush too; not a phase line", async () => {
     vi.useFakeTimers();
     const events: string[] = [];
     const { d } = flushDeps(
@@ -472,7 +472,7 @@ describe("A19: time from the signal to exit(code), on a monotonic clock", () => 
     expect(line).not.toHaveProperty("phase");
   });
 
-  it.fails("exit report on the backstop path with a stuck flush: code 1 at 9000 + 500 ms, once", async () => {
+  it("exit report on the backstop path with a stuck flush: code 1 at 9000 + 500 ms, once", async () => {
     vi.useFakeTimers();
     const reportExit = vi.fn((_line: string): void => undefined);
     const { d } = flushDeps({ reportExit, close: vi.fn(() => new Promise<void>(() => undefined)) });
