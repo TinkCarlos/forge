@@ -19,6 +19,7 @@ import { leaseTiming } from "./lease-timing.js";
 import { appendMessage, messageOf } from "./messages.js";
 import { decideAfterModelError, modelCandidates } from "./model-loop.js";
 import { repairCount, repairMessage, validateOutput } from "./output.js";
+import { describeTickError } from "./tick-guard.js";
 import { assertLeaseHeld, LeaseLostError, settleToolCalls, toolIdempotencyKey } from "./tools.js";
 import { deliverDueWebhooks, enqueueRunWebhook } from "./webhook.js";
 
@@ -426,9 +427,39 @@ export async function cancelRun(runId: string): Promise<void> {
   const run = await repos.getRun(runId);
   if (!run) return;
   if (TERMINAL.includes(run.status)) throw new ForgeError(RUN_FINISHED_CODE, "Run 已结束，不能取消", 409, { status: run.status });
-  await repos.requestCancel(runId);
-  if (run.status === "queued" || run.status === "waiting_approval") {
-    await finalize(run, "cancelled");
+  // r6 decide-cancel-race: a cancel of a Run that has not finished is never refused. Committed under the Run's row lock
+  // (serialized with decideApproval): a decision committed first is kept and the executing Run stops once the tool
+  // call in hand has ended (cancelledAfterTools); a cancel committed first makes the decision lose (409 APR-2104).
+  const requested = await repos.requestCancelSerialized(runId);
+  if (requested.result === "missing") return;
+  if (requested.result === "finished") throw new ForgeError(RUN_FINISHED_CODE, "Run 已结束，不能取消", 409, { status: requested.status });
+  if (requested.status === "queued" || requested.status === "waiting_approval") {
+    // Nobody executes it: finished here (claimRun no longer claims a waiting Run with the cancel flag). The cancel is
+    // committed either way; if finishing fails, the worker's cancel sweep finishes the Run (never left to a re-cancel).
+    await finishCancelRequestedRun(runId).catch((error: unknown) => {
+      console.error(`Run ${runId} cancel accepted, finishing deferred to the cancel sweep: ${describeTickError(error)}`);
+    });
+  }
+}
+
+/**
+ * r6: finishes a cancel-requested Run that nobody executes (queued or waiting_approval) as cancelled, with the normal
+ * terminal rules: the lease is taken first (claimCancelRequestedRun) and the terminal write is fenced, so its pending
+ * approvals become expired in the same transaction and approval.resolved {approvalId, decision:"expired"} is emitted
+ * before run.cancelled; when the lease is lost meanwhile nothing is written or emitted. False when the Run was not
+ * taken (already finished, being executed, or another finisher holds it).
+ */
+export async function finishCancelRequestedRun(runId: string, workerId = currentWorkerId()): Promise<boolean> {
+  const run = await repos.claimCancelRequestedRun(runId, workerId, config.LEASE_TTL_SECONDS);
+  if (!run) return false;
+  try {
+    await withRunLease(runId, workerId, () => finalize(run, "cancelled"));
+    return true;
+  } catch (error) {
+    if (error instanceof LeaseLostError) return false;
+    throw error;
+  } finally {
+    await repos.releaseRunLease(runId, workerId).catch(() => undefined);
   }
 }
 

@@ -183,8 +183,7 @@ describe("decide (approve) and cancel on the same Run", () => {
     expect(code(again)).toBe("RUN-7005");
   });
 
-  // RED (r6 decide-cancel-race): fails until the fix; the fix commit turns it.fails into it.
-  it.fails("(2) approve and cancel concurrently, cancel wins on the pending approval: approve 409 APR-2104, the tool runs 0 times, the Run is cancelled", { timeout: 30_000 }, async () => {
+  it("(2) approve and cancel concurrently, cancel wins on the pending approval: approve 409 APR-2104, the tool runs 0 times, the Run is cancelled", { timeout: 30_000 }, async () => {
     const seeded = await seedWaiting();
     // Deterministic interleaving: the approve arrives after the cancel is committed, just before the cancel's terminal
     // write (inside repos.updateRun for status cancelled).
@@ -230,8 +229,7 @@ describe("decide (approve) and cancel on the same Run", () => {
     expect(await effectsOf(seeded)).toBe(0);
   });
 
-  // RED (r6 decide-cancel-race): fails until the fix; the fix commit turns it.fails into it.
-  it.fails("finish failed after the cancel was committed: cancel still 200, the approve loses, the cancel sweep finishes the Run (approval expired, approval.resolved before run.cancelled)", { timeout: 30_000 }, async () => {
+  it("finish failed after the cancel was committed: cancel still 200, the approve loses, the cancel sweep finishes the Run (approval expired, approval.resolved before run.cancelled)", { timeout: 30_000 }, async () => {
     const seeded = await seedWaiting();
     const hook = onCancelledWrite(seeded.runId, async () => {
       throw new Error("simulated terminal write failure");
@@ -265,8 +263,7 @@ describe("decide (approve) and cancel on the same Run", () => {
     expect(await effectsOf(seeded)).toBe(0);
   });
 
-  // RED (r6 decide-cancel-race): fails until the fix; the fix commit turns it.fails into it.
-  it.fails("cancel sweep loses the lease before its terminal write: nothing is written or emitted; a later sweep finishes the Run", { timeout: 30_000 }, async () => {
+  it("cancel sweep loses the lease before its terminal write: nothing is written or emitted; a later sweep finishes the Run", { timeout: 30_000 }, async () => {
     const seeded = await seedWaiting();
     // A cancel that is committed but not finished (as after a failed finish).
     await execute("UPDATE runs SET cancel_requested = 1 WHERE id = ?", [seeded.runId]);
@@ -290,5 +287,30 @@ describe("decide (approve) and cancel on the same Run", () => {
     expect(await runStatus(seeded.runId)).toBe("cancelled");
     expect(await approvalStatus(seeded)).toBe("expired");
     expect((await eventsOf(seeded.runId)).slice(before).map((row) => row.type)).toEqual(["approval.resolved", "run.cancelled"]);
+  });
+
+  it("(3) concurrent approve and cancel (12 rounds): cancel on the unfinished Run is never refused (200, never 409), the Run always ends cancelled; approve refused (APR-2104) -> tool 0 times, approve accepted -> at most once", { timeout: 120_000 }, async () => {
+    for (let round = 0; round < 12; round += 1) {
+      // The long hanging tool keeps an approved Run unfinished well past the cancel, so the cancel always meets a Run
+      // that has not finished (cancel on a finished Run stays 409 RUN-7005, see (1)).
+      const seeded = await seedWaiting(EFFECT_LONG);
+      // Alternate which request is sent first so both orders of arrival are covered.
+      const [decided, cancelled] = round % 2 === 0
+        ? await Promise.all([decide(seeded.approvalId), cancel(seeded.runId)])
+        : await Promise.all([cancel(seeded.runId), decide(seeded.approvalId)]).then(([c, d]) => [d, c] as const);
+      const label = `round ${round}: decide ${decided.statusCode} ${decided.body} / cancel ${cancelled.statusCode} ${cancelled.body}`;
+      expect(cancelled.statusCode, label).toBe(200);
+      const status = await settled(seeded.runId);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const effects = await effectsOf(seeded);
+      expect(status, label).toBe("cancelled");
+      if (decided.statusCode === 200) {
+        expect(effects, label).toBeLessThanOrEqual(1);
+      } else {
+        expect(decided.statusCode, label).toBe(409);
+        expect(code(decided), label).toBe("APR-2104");
+        expect(effects, `${label}: cancel won but the tool ran`).toBe(0);
+      }
+    }
   });
 });
