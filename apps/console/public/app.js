@@ -1120,7 +1120,7 @@ const app = {
     }
   },
 
-  // cancel 约定：2xx（通常 202）= 已接受取消请求，Run 在当前这次工具调用结束后才停下，所以此刻 Run 多半仍是 running。
+  // cancel 约定：2xx（各入口沿用 200）= 已接受取消请求，Run 在当前这次工具调用结束后才停下，所以此刻 Run 多半仍是 running。
   // Run 弹窗开着且是这条 Run：不关弹窗，按 REST 刷新弹窗里的 Run，SSE 继续等 run.cancelled；同时刷新列表。
   async cancelRun(id) {
     try {
