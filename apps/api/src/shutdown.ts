@@ -64,11 +64,12 @@ export const BACKSTOP_FLUSH_MS = 500;
 /** r4: time kept free before timeoutMs for process.exit itself (pino's exit hook, libuv teardown). */
 const EXIT_MARGIN_MS = 500;
 /**
- * r6 A19: room for timers firing late before the backstop's exit point (timeoutMs - EXIT_MARGIN_MS - this = 9490 ms
- * at the default 10 s). Measured on Node 22: each timer fires 0-2 ms late (a19 MEASURE.md); a fixed 500 ms flush after
- * a late drain timer put exit(1) at 9503-9504 ms, over the 9500 ms the grace period is promised.
+ * r6 A19 (ruling 14:06): room for timers firing late before the backstop's exit point (timeoutMs - EXIT_MARGIN_MS -
+ * this = 9400 ms at the default 10 s), so exit(1) is still called by 9500 ms when the flush timer fires up to 100 ms
+ * late. Measured on Node 22: each timer fires 0-2 ms late (a19 MEASURE.md); a fixed 500 ms flush after a late drain
+ * timer put exit(1) at 9503-9504 ms, over the 9500 ms the grace period is promised.
  */
-const BACKSTOP_TIMER_SLACK_MS = 10;
+const BACKSTOP_TIMER_SLACK_MS = 100;
 /** Ruling 15:39: cap of the API's Run drain (WORKER_DRAIN_TIMEOUT_MS above it is cut to this). */
 export const RUN_DRAIN_CAP_MS = 5000;
 /** Ruling 15:39: cap of the lease release step. */
