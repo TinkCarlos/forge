@@ -1183,11 +1183,14 @@ const app = {
     }
   },
 
+  // cancel 约定：2xx（各入口沿用 200）= 已接受取消请求，Run 在当前这次工具调用结束后才停下，所以此刻 Run 多半仍是 running。
+  // Run 弹窗开着且是这条 Run：不关弹窗，按 REST 刷新弹窗里的 Run，SSE 继续等 run.cancelled；同时刷新列表。
   async cancelRun(id) {
     try {
       await api(`/admin/api/runs/${idSeg(id)}/cancel`, { method: "POST", body: {} });
-      toast("取消请求已提交");
-      $("#modal").close();
+      toast("已请求取消，当前步骤结束后停止");
+      const view = state.runView;
+      if (view && view.runId === id) await syncRunFromRest(view);
       await renderRuns();
     } catch (error) {
       toast(errorText(error), "error");
