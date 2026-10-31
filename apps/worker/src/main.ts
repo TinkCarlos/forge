@@ -11,11 +11,19 @@ console.log("Forge worker started");
 // only once all tool calls of its Run have ended (release step at most 1 s); then one run_handoff line per Run
 // {runId, takeover, reason}. The process backstop (hard stop) at drain + 5 s logs phase=drain_timeout and exits 1
 // whatever is still pending.
+// r6 pool-end-cap: pool.end() gets at most POOL_END_CAP_MS (and never past the hard stop). A database that stops
+// answering leaves mysql2's end() pending for good; when the limit runs out: phase=pool_end_timeout {signal,
+// poolEndMs}, exit 1.
+/** pool.end() limit on shutdown (the API's close slice is the same 1000 ms). */
+const POOL_END_CAP_MS = 1000;
+/** Kept between the end of the pool.end() limit and the hard stop, so the limit always runs out first. */
+const HARD_STOP_MARGIN_MS = 100;
 let stopping = false;
 const shutdown = async (signal: string): Promise<void> => {
   if (stopping) return;
   stopping = true;
   console.log("Forge worker stopping");
+  const hardStopAt = Date.now() + config.WORKER_DRAIN_TIMEOUT_MS + 5000;
   const hardStop = setTimeout(() => {
     console.error(JSON.stringify({ phase: "drain_timeout", signal, code: 1, ms: config.WORKER_DRAIN_TIMEOUT_MS + 5000 }));
     process.exit(1);
@@ -40,10 +48,28 @@ const shutdown = async (signal: string): Promise<void> => {
     code = 1;
     console.error(JSON.stringify({ phase: "drain_failed", signal, error: error instanceof Error ? error.name : "Error" }));
   }
-  try {
-    await pool.end();
-  } catch {
+  const poolEndMs = Math.max(0, Math.min(POOL_END_CAP_MS, hardStopAt - HARD_STOP_MARGIN_MS - Date.now()));
+  let poolTimer: ReturnType<typeof setTimeout> | undefined;
+  const poolEnded = await Promise.race([
+    Promise.resolve()
+      .then(() => pool.end())
+      .then(
+        () => true,
+        () => {
+          code = 1;
+          return true;
+        },
+      ),
+    // Not unref'd (unlike the hard stop): a pending end() holds no handle of its own, so without this timer the
+    // process would just run out of work and exit 0.
+    new Promise<false>((resolve) => {
+      poolTimer = setTimeout(() => resolve(false), poolEndMs);
+    }),
+  ]);
+  clearTimeout(poolTimer);
+  if (!poolEnded) {
     code = 1;
+    console.error(JSON.stringify({ phase: "pool_end_timeout", signal, poolEndMs }));
   }
   clearTimeout(hardStop);
   process.exit(code);

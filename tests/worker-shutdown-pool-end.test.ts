@@ -20,8 +20,7 @@ afterAll(() => {
 type Line = { phase?: string; signal?: string; poolEndMs?: number; code?: number };
 
 describe("standalone worker: pool.end() that never resolves is cut at 1000 ms", () => {
-  // RED (r6 pool-end-cap, worker): fails until the fix; the fix commit turns it.fails into it.
-  it.fails("pool_end_timeout {poolEndMs: 1000} as the last phase, exit 1, well before the drain + 5 s hard stop", async () => {
+  it("pool_end_timeout {poolEndMs: 1000} as the last phase, exit 1, well before the drain + 5 s hard stop", async () => {
     const env: NodeJS.ProcessEnv = { ...process.env, NODE_ENV: "test", WORKER_DRAIN_TIMEOUT_MS: String(DRAIN_MS), WORKER_POLL_MS: "200" };
     const preloads = ["preload-signal-ready.mjs", "preload-pending-pool-end.mjs"].flatMap((file) => ["--import", pathToFileURL(join(HELPERS, file)).href]);
     const child = spawn(process.execPath, ["--import", "tsx", ...preloads, "apps/worker/src/main.ts"], { cwd: ROOT_DIR, env, stdio: ["ignore", "pipe", "pipe"] });
