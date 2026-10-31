@@ -11,6 +11,12 @@ import { expect } from "vitest";
 /** Parent side: from kill() to the exit event, only a backstop (spawn, signal delivery and reaping included). */
 export const PARENT_BACKSTOP_MS = 12_000;
 
+/** Every phase of an API shutdown with nothing left to drain, in phaseSeq order (shutdown.ts + plugins/sse-shutdown.ts). */
+export const ALL_PHASES = ["signal", "readyz_not_ready", "listener_closed", "sse_ended", "on_close", "app_close", "stop_runtime", "pool_end", "exit"];
+
+/** "exit 0 within 2 s" of the API child with nothing to drain: bounded on its own exit_call ms (see a19 MEASURE.md). */
+export const FAST_EXIT_MS = 2000;
+
 /** The last `chars` characters of a child's output, for assertion messages. */
 export const tail = (output: string, chars = 1500): string => output.slice(-chars);
 
@@ -77,4 +83,23 @@ export function recordTiming(test: string, fields: Record<string, unknown>): voi
   const file = process.env.SHUTDOWN_TIMING_LOG;
   if (!file) return;
   appendFileSync(file, `${JSON.stringify({ test, at: new Date().toISOString(), ...fields })}\n`);
+}
+
+/**
+ * A clean, fast API shutdown: exit 0, the phases exactly `phases` in order, the child's exit_call within `maxMs`, the
+ * parent's time (kill -> exit event) only as the backstop. Returns the phase lines.
+ */
+export function expectCleanExit(
+  proc: { output: () => string },
+  result: { code: number | null | "timeout"; ms: number },
+  options: { test: string; maxMs?: number; phases?: string[] },
+): PhaseLine[] {
+  const output = proc.output();
+  expect(result.code, tail(output)).toBe(0);
+  const phases = jsonPhases(output);
+  expectPhaseOrder(phases, options.phases ?? ALL_PHASES, output);
+  const call = expectChildExit(output, { code: 0, maxMs: options.maxMs ?? FAST_EXIT_MS });
+  recordTiming(options.test, { exitCallMs: call.ms, exitPhaseMs: phases.at(-1)?.ms, parentMs: result.ms });
+  expectParentBackstop(result.ms, output);
+  return phases;
 }

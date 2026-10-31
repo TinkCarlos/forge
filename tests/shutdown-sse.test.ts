@@ -6,6 +6,7 @@ import { execute, repos } from "@forge/store";
 import { buildApp } from "../apps/api/src/app.js";
 import { cleanupRealSessions, realSession, sessionHeaders } from "./helpers/real-session.js";
 import { freePort, keepAliveGet, openSse, partialRequest, probeNewConnection, rawConnection, startApiProcess, type ApiProcess } from "./helpers/sse-client.js";
+import { FAST_EXIT_MS, expectChildExit, expectCleanExit, expectParentBackstop, recordTiming, tail } from "./helpers/shutdown-assert.js";
 
 // SIG-xx (r4 shutdown): on SIGTERM the API ends every open SSE stream itself (no completed / shutdown event, the
 // connection is simply finished, so EventSource reconnects with Last-Event-ID), stops listening BEFORE ending them
@@ -31,12 +32,15 @@ async function newRun(): Promise<string> {
 }
 const adminPath = (runId: string) => `/admin/api/runs/${runId}/events`;
 const openPath = (runId: string) => `/open/v1/runs/${runId}/events`;
+// r6 A19: info level, so the phase lines are there to assert the order on.
 async function api(): Promise<ApiProcess> {
-  const proc = await startApiProcess();
+  const proc = await startApiProcess({ LOG_LEVEL: "info" });
   processes.push(proc);
   return proc;
 }
 /** SIGTERM, then wait at most `limitMs` for the exit; returns code and elapsed ms (code "timeout" when still alive). */
+// r6 A19: result.ms is the parent's time (spawned child, signal delivery, reaping): only a backstop. "Within 2 s" is
+// bounded on the child's own exit_call ms (signal -> exit(code), monotonic, after the logger flush).
 async function sigterm(proc: ApiProcess, limitMs: number): Promise<{ code: number | null | "timeout"; ms: number }> {
   const sent = Date.now();
   proc.child.kill("SIGTERM");
@@ -74,6 +78,10 @@ afterAll(async () => {
   await cleanupRealSessions();
 });
 
+/** The ms of shutdown.ts (from the signal) and of plugins/sse-shutdown.ts (from preClose): two zeros, two series. */
+const SIGNAL_SERIES = ["signal", "app_close", "stop_runtime", "pool_end", "exit"];
+const PRECLOSE_SERIES = ["readyz_not_ready", "listener_closed", "sse_ended", "on_close"];
+
 describe("SIG: SIGTERM with open SSE streams (API child process)", () => {
   it("SIG-09: every shutdown step logs one info line with ms, in order; no timer is left at exit", { timeout: 60_000 }, async () => {
     // Test-only slow libuv thread pool (tests/helpers/preload-slow-threadpool.mjs): pino's asynchronous write of the
@@ -89,8 +97,9 @@ describe("SIG: SIGTERM with open SSE streams (API child process)", () => {
     await idle.response();
     const unused = await rawConnection(proc.port);
     const result = await sigterm(proc, 12_000);
-    expect(result.code, proc.output().slice(-800)).toBe(0);
-    expect(result.ms).toBeLessThan(2000);
+    expect(result.code, tail(proc.output())).toBe(0);
+    expectParentBackstop(result.ms, proc.output());
+    const call = expectChildExit(proc.output(), { code: 0, maxMs: FAST_EXIT_MS });
     await Promise.all([stream.finished, idle.closed, unused.closed]);
 
     const arrived = proc
@@ -116,12 +125,20 @@ describe("SIG: SIGTERM with open SSE streams (API child process)", () => {
       "pool_end",
       "exit",
     ]);
+    const dump = steps.map((entry) => JSON.stringify(entry)).join("\n");
     for (const entry of steps) {
       expect(entry.level, entry.phase).toBe(30); // info
-      expect(typeof entry.ms, entry.phase).toBe("number");
-      expect(entry.ms, entry.phase).toBeLessThan(2000);
+      expect(typeof entry.ms, `${entry.phase}\n${dump}`).toBe("number");
+    }
+    // r6 A19: no fixed per-phase cap. Within each ms series (two zeros, see plugins/sse-shutdown.ts) the ms never
+    // goes back; the whole shutdown is bounded by the exit phase and the child's exit_call (flush included).
+    for (const series of [SIGNAL_SERIES, PRECLOSE_SERIES]) {
+      const ms = steps.filter((entry) => series.includes(entry.phase)).map((entry) => entry.ms);
+      expect(ms, dump).toEqual([...ms].sort((a, b) => a - b));
     }
     const byPhase = Object.fromEntries(steps.map((entry) => [entry.phase, entry]));
+    expect(byPhase.exit!.ms, dump).toBeLessThanOrEqual(call.ms);
+    recordTiming("SIG-09", { exitCallMs: call.ms, exitPhaseMs: byPhase.exit!.ms, parentMs: result.ms, phases: Object.fromEntries(steps.map((entry) => [entry.phase, entry.ms])) });
     expect(byPhase.listener_closed).toMatchObject({ listening: false, unusedConnectionsClosed: 1, count: 1 });
     expect(byPhase.sse_ended).toMatchObject({ streams: 1, count: 1 });
     expect(byPhase.exit).toMatchObject({ code: 0 });
@@ -140,8 +157,8 @@ describe("SIG: SIGTERM with open SSE streams (API child process)", () => {
     const stream = await openSse(proc.port, adminPath(runId), adminHeaders);
     await stream.waitFor(1);
     const result = await sigterm(proc, 12_000);
-    expect(result.code, proc.output().slice(-500)).toBe(0);
-    expect(result.ms).toBeLessThan(2000);
+    const phases = expectCleanExit(proc, result, { test: "SIG-01" });
+    expect(phases.find((entry) => entry.phase === "sse_ended"), tail(proc.output())).toMatchObject({ streams: 1 });
     expect(await stream.finished).toBe("end");
     expect(stream.events.map((e) => e.id)).toEqual([1]);
     expect(stream.raw()).not.toMatch(/event: (run\.completed|run\.succeeded|completed|shutdown|close)/);
@@ -159,8 +176,8 @@ describe("SIG: SIGTERM with open SSE streams (API child process)", () => {
       await openSse(proc.port, openPath(b), { authorization: `Bearer ${openKey}` }),
     ];
     const result = await sigterm(proc, 12_000);
-    expect(result.code, proc.output().slice(-500)).toBe(0);
-    expect(result.ms).toBeLessThan(2000);
+    const phases = expectCleanExit(proc, result, { test: "SIG-02" });
+    expect(phases.find((entry) => entry.phase === "sse_ended"), tail(proc.output())).toMatchObject({ streams: 4 });
     expect(await Promise.all(streams.map((s) => s.finished))).toEqual(["end", "end", "end", "end"]);
   });
 
@@ -169,8 +186,8 @@ describe("SIG: SIGTERM with open SSE streams (API child process)", () => {
     const ready = await fetch(`http://127.0.0.1:${proc.port}/readyz`);
     expect(ready.status).toBe(200);
     const result = await sigterm(proc, 12_000);
-    expect(result.code, proc.output().slice(-500)).toBe(0);
-    expect(result.ms).toBeLessThan(2000);
+    const phases = expectCleanExit(proc, result, { test: "SIG-03" });
+    expect(phases.find((entry) => entry.phase === "sse_ended"), tail(proc.output())).toMatchObject({ streams: 0 });
   });
 
   it("SIG-04: reconnect with the same Last-Event-ID to a new API process -> no seq repeated, none lost", { timeout: 90_000 }, async () => {

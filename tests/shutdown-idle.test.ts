@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { keepAliveGet, rawConnection, startApiProcess, type ApiProcess } from "./helpers/sse-client.js";
+import { expectCleanExit, tail } from "./helpers/shutdown-assert.js";
 
 // Shutdown with no SSE stream but a connection that is open and has no request in flight (QA on 99289c0: SIGTERM
 // sometimes still waited the full 10 s with no SSE and the last request finished). Real API child process.
@@ -7,8 +8,12 @@ const children: ApiProcess[] = [];
 afterAll(() => {
   for (const proc of children) if (proc.child.exitCode === null) proc.child.kill("SIGKILL");
 });
+// r6 A19: info level for the phase lines; "within 2 s" is the child's own exit_call ms (signal -> exit(code), after
+// the flush), the parent's kill -> exit time only a 12 s backstop. The wait for the exit is 12 s, so a slow exit is
+// reported with its numbers instead of "timeout".
+const WAIT_MS = 12_000;
 async function api(): Promise<ApiProcess> {
-  const proc = await startApiProcess();
+  const proc = await startApiProcess({ LOG_LEVEL: "info" });
   children.push(proc);
   return proc;
 }
@@ -27,20 +32,18 @@ describe("IDLE: SIGTERM with an idle connection and no SSE stream", () => {
     conn.write(keepAliveGet("/healthz"));
     expect(await conn.response()).toMatch(/^HTTP\/1\.1 200/);
     await new Promise((resolve) => setTimeout(resolve, 100));
-    const result = await sigterm(proc, 2000);
-    expect(result.code, proc.output().slice(-600)).toBe(0);
-    expect(result.ms).toBeLessThan(2000);
-    expect(proc.output()).not.toContain("timed out");
+    const result = await sigterm(proc, WAIT_MS);
+    expectCleanExit(proc, result, { test: "IDLE-01" });
+    expect(proc.output(), tail(proc.output())).not.toContain("timed out");
   });
 
   it("IDLE-02: one connection opened but no request sent yet (browser preconnect / proxy pool) -> exit 0 within 2 s", { timeout: 30_000 }, async () => {
     const proc = await api();
     const conn = await rawConnection(proc.port);
     await new Promise((resolve) => setTimeout(resolve, 100));
-    const result = await sigterm(proc, 2000);
-    expect(result.code, proc.output().slice(-600)).toBe(0);
-    expect(result.ms).toBeLessThan(2000);
-    expect(proc.output()).not.toContain("timed out");
+    const result = await sigterm(proc, WAIT_MS);
+    expectCleanExit(proc, result, { test: "IDLE-02" });
+    expect(proc.output(), tail(proc.output())).not.toContain("timed out");
     expect(await conn.closed).toBe("");
   });
 
@@ -55,7 +58,7 @@ describe("IDLE: SIGTERM with an idle connection and no SSE stream", () => {
     const [line, ...rest] = keepAliveGet("/admin/api/agents").split("\r\n");
     conn.write(`${line}\r\n`);
     await new Promise((resolve) => setTimeout(resolve, 50));
-    const exit = sigterm(proc, 2000);
+    const exit = sigterm(proc, WAIT_MS);
     await new Promise((resolve) => setTimeout(resolve, 50));
     conn.write(rest.join("\r\n"));
     const second = await conn.response(first.length);
@@ -63,8 +66,7 @@ describe("IDLE: SIGTERM with an idle connection and no SSE stream", () => {
     expect(second.toLowerCase()).toContain("connection: close");
     expect((await conn.closed).length).toBe(first.length + second.length);
     const result = await exit;
-    expect(result.code, proc.output().slice(-600)).toBe(0);
-    expect(result.ms).toBeLessThan(2000);
+    expectCleanExit(proc, result, { test: "IDLE-03" });
   });
 
   it("IDLE-04: a proxy sends a request on an idle or never-used connection right after SIGTERM -> a Connection: close answer or a clean close with no response byte, exit 0 within 2 s", { timeout: 60_000 }, async () => {
@@ -78,7 +80,7 @@ describe("IDLE: SIGTERM with an idle connection and no SSE stream", () => {
           offset = (await conn.response()).length;
         }
         await new Promise((resolve) => setTimeout(resolve, 50));
-        const exit = sigterm(proc, 2000);
+        const exit = sigterm(proc, WAIT_MS);
         await new Promise((resolve) => setTimeout(resolve, delayMs));
         conn.write(keepAliveGet("/admin/api/agents"));
         const answer = (await conn.closed).slice(offset);
@@ -89,8 +91,7 @@ describe("IDLE: SIGTERM with an idle connection and no SSE stream", () => {
           expect(answer.toLowerCase(), what).toContain("connection: close");
         }
         const result = await exit;
-        expect(result.code, `${what}: ${proc.output().slice(-400)}`).toBe(0);
-        expect(result.ms, what).toBeLessThan(2000);
+        expectCleanExit({ output: () => `${proc.output()}\n(${what})` }, result, { test: `IDLE-04 ${what}` });
       }
     }
   });
