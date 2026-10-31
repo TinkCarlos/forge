@@ -516,4 +516,30 @@ describe("A19: time from the signal to exit(code), on a monotonic clock", () => 
     expect(JSON.parse(reportExit.mock.calls[0]![0])).toMatchObject({ event: "exit_call", ms: 9490, code: 1 });
     vi.restoreAllMocks();
   });
+
+  // Ruling 14:06 (r6 A19): the backstop's exit point leaves 100 ms for a late timer and process.exit, so a flush timer
+  // that fires 50 ms late still calls exit(1) by 9500 ms (the grace period's promise; SIG-10b asserts <= 9500).
+  it.fails("a backstop flush timer firing 50 ms late: exit(1) at 9450 ms, still <= 9500 (exit point 9400 = timeoutMs - 600)", async () => {
+    vi.useFakeTimers();
+    const realNow = performance.now.bind(performance);
+    let lateMs = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => realNow() + lateMs);
+    const reportExit = vi.fn((_line: string): void => undefined);
+    // The flush timer fired 50 ms late: flush_timeout and the exit right after it are 50 ms further from the signal.
+    const writeStderrSync = vi.fn((_line: string): void => {
+      lateMs = 50;
+    });
+    const { d } = flushDeps({ reportExit, writeStderrSync, close: vi.fn(() => new Promise<void>(() => undefined)) });
+    try {
+      void createShutdown(d as never)("SIGTERM").catch(() => undefined);
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(d.exit).toHaveBeenCalledWith(1);
+      expect(writeStderrSync).toHaveBeenCalledTimes(1);
+      const exitCall = JSON.parse(reportExit.mock.calls[0]![0]) as { ms: number; code: number };
+      expect(exitCall.ms, JSON.stringify(exitCall)).toBeLessThanOrEqual(9500);
+      expect(exitCall).toMatchObject({ event: "exit_call", ms: 9450, code: 1 });
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
 });
