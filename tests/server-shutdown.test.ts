@@ -355,6 +355,71 @@ describe("shutdown deadline budget (ruling 15:39)", () => {
     expect(d.exit).toHaveBeenCalledWith(0);
   });
 
+  // r6 pool-end-cap: a database that does not answer any more can leave pool.end() pending for good (mysql2 waits for
+  // the in-flight queries). pool.end gets the 1000 ms close slice of the 9000 ms deadline (less when the flush would
+  // not fit any more); when it runs out: phase pool_end_timeout, then the normal flush, then exit (last), code 1.
+  // RED (r6 pool-end-cap): fails until the fix; the fix commit turns it.fails into it.
+  it.fails("pool.end() never resolves: pool_end_timeout {poolEndMs: 1000} after 1000 ms, then the flush, exit 1 last, no drain_timeout", async () => {
+    vi.useFakeTimers();
+    const info = vi.fn();
+    const flushed: number[] = [];
+    const flush = vi.fn((done: () => void): void => { flushed.push(Date.now()); done(); });
+    const { d, writeStderrSync } = flushDeps({ info, closePool: vi.fn(() => new Promise<void>(() => undefined)) }, flush);
+    const startedAt = Date.now();
+    void createShutdown(d as never)("SIGTERM");
+    await vi.advanceTimersByTimeAsync(999);
+    expect(d.exit).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(d.exit).toHaveBeenCalledWith(1);
+    expect(flushed).toEqual([startedAt + 1000]);
+    const lines = info.mock.calls.map(([, fields]) => fields as Record<string, unknown>);
+    expect(lines.map((line) => line.phase)).toEqual(["signal", "app_close", "stop_runtime", "pool_end_timeout", "exit"]);
+    expect(lines.find((line) => line.phase === "pool_end_timeout")).toMatchObject({ poolEndMs: 1000, ms: 1000 });
+    expect(lines.at(-1)).toMatchObject({ phase: "exit", code: 1 });
+    expect(writeStderrSync).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(d.exit).toHaveBeenCalledTimes(1);
+    expect(lines.map((line) => line.phase)).not.toContain("drain_timeout");
+  });
+
+  // RED (r6 pool-end-cap): fails until the fix; the fix commit turns it.fails into it.
+  it.fails("worst case with pool.end() hanging too: drain 5000 + release 1000 + pool.end 1000 + flush 2000, exit 1 by the 9000 ms deadline, no drain_timeout", async () => {
+    vi.useFakeTimers();
+    const info = vi.fn();
+    const drainRuntime = vi.fn((budget: Budget) => new Promise((resolve) => setTimeout(() => resolve({
+      timedOut: true, runIds: ["r-1"], ms: budget.drainMs, releaseTimedOut: true, releaseMs: budget.releaseMs,
+      handoffs: [{ runId: "r-1", takeover: "lease_expiry", reason: "tool_inflight" }],
+    }), budget.drainMs + budget.releaseMs)));
+    const { d, writeStderrSync } = flushDeps({ info, runDrainTimeoutMs: 35_000, drainRuntime, closePool: vi.fn(() => new Promise<void>(() => undefined)) });
+    void createShutdown(d as never)("SIGTERM");
+    await vi.advanceTimersByTimeAsync(8_999);
+    expect(d.exit).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(d.exit).toHaveBeenCalledWith(1);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(d.exit).toHaveBeenCalledTimes(1);
+    const lines = info.mock.calls.map(([, fields]) => fields as Record<string, unknown>);
+    expect(lines.map((line) => line.phase)).toEqual(["signal", "app_close", "run_drain_timeout", "run_handoff", "stop_runtime", "pool_end_timeout", "exit"]);
+    expect(lines.find((line) => line.phase === "pool_end_timeout")).toMatchObject({ poolEndMs: 1000, ms: 7000 });
+    expect(JSON.parse(writeStderrSync.mock.calls[0]![0] as string)).toMatchObject({ phase: "flush_timeout", timeoutMs: 2000, code: 1 });
+  });
+
+  // RED (r6 pool-end-cap): fails until the fix; the fix commit turns it.fails into it.
+  it.fails("pool.end() gets only what is left before the deadline minus the flush: a slow close leaves it 0 ms", async () => {
+    vi.useFakeTimers();
+    const info = vi.fn();
+    const flush = vi.fn((done: () => void): void => done());
+    const { d } = flushDeps({ info, close: vi.fn(() => new Promise<void>((resolve) => setTimeout(resolve, 7_500))), closePool: vi.fn(() => new Promise<void>(() => undefined)) }, flush);
+    void createShutdown(d as never)("SIGTERM");
+    await vi.advanceTimersByTimeAsync(7_500);
+    expect(d.exit).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(d.exit).toHaveBeenCalledWith(1);
+    const lines = info.mock.calls.map(([, fields]) => fields as Record<string, unknown>);
+    expect(lines.find((line) => line.phase === "pool_end_timeout")).toMatchObject({ poolEndMs: 0 });
+    expect(lines.at(-1)).toMatchObject({ phase: "exit", code: 1 });
+  });
+
   it("server.ts passes WORKER_DRAIN_TIMEOUT_MS and the budget through to drainRuntime", () => {
     const src = readFileSync(new URL("../apps/api/src/server.ts", import.meta.url), "utf8");
     expect(src).toMatch(/runDrainTimeoutMs: config\.WORKER_DRAIN_TIMEOUT_MS/);
