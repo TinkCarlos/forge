@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { execute, one, repos } from "@forge/store";
 import { expectHandoffMapping } from "./helpers/run-handoff.js";
 import { freePort } from "./helpers/sse-client.js";
+import { recordTiming, tail } from "./helpers/shutdown-assert.js";
 
 // Architect ruling 15:17 (1): the standalone worker (real child process) gets SIGTERM while a tool call it runs never
 // answers. The Run drain runs out of WORKER_DRAIN_TIMEOUT_MS -> one line phase=run_drain_timeout with runIds and
@@ -133,15 +134,19 @@ describe("standalone worker: Run drain timeout on SIGTERM", () => {
     child.kill("SIGTERM");
     const code = await Promise.race([exited, new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`worker did not exit\n${out}`)), DRAIN_MS + 10_000))]);
     const tookMs = Date.now() - signalledAt;
+    // r6 A19: the standalone worker reports no signal -> exit time of its own (apps/worker/src/main.ts has no
+    // signal/exit phases), so the hard stop is bounded on the parent's kill -> exit time; drainMs is the worker's.
     const lines: Line[] = out.split("\n").filter((line) => line.startsWith("{")).map((line) => { try { return JSON.parse(line) as Line; } catch { return {}; } });
     const phases = lines.map((line) => line.phase).filter(Boolean);
-    expect(code).toBe(1);
+    expect(code, tail(out)).toBe(1);
     // The drain + 5 s backstop (drain_timeout) never fired. Ruling 15:39: then one run_handoff line per Run.
-    expect(phases).toEqual(["run_drain_timeout", "run_handoff"]);
+    expect(phases, tail(out)).toEqual(["run_drain_timeout", "run_handoff"]);
     const timeout = lines.find((line) => line.phase === "run_drain_timeout")!;
-    expect(timeout.runIds).toContain(runId);
-    expect(timeout.drainMs).toBeGreaterThanOrEqual(DRAIN_MS);
-    expect(tookMs).toBeLessThan(DRAIN_MS + 5000);
+    expect(timeout.runIds, tail(out)).toContain(runId);
+    // Configured value - 1: drain.ts measures with Date.now, a timer can fire 1 ms "early" on that clock (DR-03).
+    expect(timeout.drainMs, tail(out)).toBeGreaterThanOrEqual(DRAIN_MS - 1);
+    recordTiming("worker-run-drain-timeout", { drainMs: timeout.drainMs, tookMs });
+    expect(tookMs, tail(out)).toBeLessThan(DRAIN_MS + 5000);
     const after = (await one<{ status: string; claimed_by: string | null }>("SELECT status, claimed_by FROM runs WHERE id = ?", [runId]))!;
     expect(after).toEqual({ status: "running", claimed_by: null }); // released: claimable at once by the next poll
     // The web tool honours the abort: its call ended, so the lease was released (drained -> released).

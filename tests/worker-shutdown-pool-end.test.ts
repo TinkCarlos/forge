@@ -3,12 +3,18 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { SIGNAL_READY } from "./helpers/sse-client.js";
+import { recordTiming, tail } from "./helpers/shutdown-assert.js";
 
 // r6 pool-end-cap, standalone worker (real child process, apps/worker/src/main.ts): the database stops answering, so
 // pool.end() never resolves (test preload tests/helpers/preload-pending-pool-end.mjs: end() returns a promise that
 // never settles and holds no handle). pool.end gets at most 1000 ms, still inside the drain + 5 s hard stop: then one
 // line phase=pool_end_timeout {signal, poolEndMs} and exit 1. The hard stop (phase=drain_timeout) is not reached.
 // *_test DB only.
+// r6 A19: the worker reports no signal -> exit time of its own (no signal/exit phases in apps/worker/src/main.ts), so
+// these bounds stay on the parent's kill -> exit time: lower bound the configured 1000 ms - 1, upper bound from
+// a19 MEASURE.md, every assertion with the worker's output.
+/** No Run in flight: the 1000 ms pool.end cut plus start of the close and the process exit (MEASURE.md). */
+const NO_RUN_EXIT_MAX_MS = 4000;
 const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..");
 const HELPERS = join(ROOT_DIR, "tests", "helpers");
 const DRAIN_MS = 3000;
@@ -41,13 +47,14 @@ describe("standalone worker: pool.end() that never resolves is cut at 1000 ms", 
     const tookMs = Date.now() - signalledAt;
     const lines: Line[] = out.split("\n").filter((line) => line.startsWith("{")).map((line) => { try { return JSON.parse(line) as Line; } catch { return {}; } });
     const phases = lines.map((line) => line.phase).filter(Boolean);
-    expect(code, out).toBe(1);
-    expect(phases, out).not.toContain("drain_timeout");
-    expect(phases.at(-1), out).toBe("pool_end_timeout");
-    expect(lines.find((line) => line.phase === "pool_end_timeout")).toMatchObject({ signal: "SIGTERM", poolEndMs: 1000 });
-    expect(tookMs, out).toBeGreaterThanOrEqual(1000);
+    recordTiming("worker-pool-end", { tookMs, phases });
+    expect(code, tail(out)).toBe(1);
+    expect(phases, tail(out)).not.toContain("drain_timeout");
+    expect(phases.at(-1), tail(out)).toBe("pool_end_timeout");
+    expect(lines.find((line) => line.phase === "pool_end_timeout"), tail(out)).toMatchObject({ signal: "SIGTERM", poolEndMs: 1000 });
+    expect(tookMs, tail(out)).toBeGreaterThanOrEqual(1000 - 1);
     // Inside the hard stop (drain + 5 s), and nowhere near it: no Run was in flight, so the drain returned at once.
-    expect(tookMs, out).toBeLessThan(DRAIN_MS + 5000);
-    expect(tookMs, out).toBeLessThan(4000);
+    expect(tookMs, tail(out)).toBeLessThan(DRAIN_MS + 5000);
+    expect(tookMs, tail(out)).toBeLessThanOrEqual(NO_RUN_EXIT_MAX_MS);
   }, 60_000);
 });
