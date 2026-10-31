@@ -19,9 +19,12 @@ import { nextPhaseSeq } from "../phase-seq.js";
 //  3. Idle keep-alive sockets left by the ended streams are closed so server.close() can complete; every response
 //     sent while draining carries Connection: close. In-flight requests finish, then the process exits 0.
 // Connections that are open but have not sent a single byte yet (browser preconnect, a proxy's spare upstream
-// connection) are closed in step 2 as well: Node 22's closeIdleConnections() (called by Fastify's
-// forceCloseConnections: 'idle' and by server.close()) does not count them as idle, so server.close() waited for them
-// until the 10 s backstop fired (exit 1) even with no SSE stream open (IDLE-02).
+// connection) are closed in step 2 as well. Who closes them depends on the Node version: on Node 22 and 24
+// closeIdleConnections() (called by server.close() and by Fastify's forceCloseConnections: 'idle') does not count
+// them as idle, so server.close() waited for them until the 10 s backstop fired (exit 1) even with no SSE stream open
+// (IDLE-02) and step 2 closes them; from Node 26.4 (nodejs/node#63470) closeIdleConnections() destroys them itself,
+// inside server.close(). Step 2 takes their snapshot before server.close() and counts those that are closed after it,
+// by Node or by us, so listener_closed reports the same count on every version (r6 A20).
 
 declare module "fastify" {
   interface FastifyInstance {
@@ -69,22 +72,21 @@ export function installSseShutdown(app: FastifyInstance): void {
     sockets.add(socket);
     socket.once("close", () => sockets.delete(socket));
   });
+  /** Connections that have not sent a byte yet and are still open. */
+  const unusedConnections = (): Socket[] => [...sockets].filter((socket) => socket.bytesRead === 0 && !socket.destroyed);
   /**
-   * Step 2: closes connections that never sent a byte (no request started, nothing to answer).
+   * Step 2, after server.close(): closes connections that never sent a byte (no request started, nothing to answer)
+   * and returns how many of `before` (taken before server.close()) are closed now, whoever closed them (Node >= 26.4
+   * already did inside server.close()). A connection that had sent a byte before is not counted; one accepted after
+   * the snapshot is closed but not counted.
    * Known limit (QA on ced7f76, 5/5): a connection that sent only part of its request headers and then stalls has
    * bytesRead > 0, so it is not closed here, and Node does not count it as idle either. server.close() waits for it
    * until the 10 s backstop in shutdown.ts fires and the process exits 1. Normal clients (browsers, proxies) send the
    * whole header block at once, so this does not happen with them; it is left as is on purpose.
    */
-  const closeUnusedConnections = (): number => {
-    let closed = 0;
-    for (const socket of sockets) {
-      if (socket.bytesRead === 0 && !socket.destroyed) {
-        socket.destroy();
-        closed += 1;
-      }
-    }
-    return closed;
+  const closeUnusedConnections = (before: Socket[]): number => {
+    for (const socket of unusedConnections()) socket.destroy();
+    return before.filter((socket) => socket.destroyed).length;
   };
 
   app.addHook("onRequest", async (request, reply) => {
@@ -122,8 +124,9 @@ export function installSseShutdown(app: FastifyInstance): void {
     const server = app.server;
     // Step 2, run to the end before done(). close() without a callback: Fastify's own server.close(cb) waits for the
     // connections. http.Server.close() also closes the idle keep-alive connections.
+    const unusedBeforeClose = unusedConnections();
     if (server.listening) server.close();
-    const unusedConnectionsClosed = closeUnusedConnections();
+    const unusedConnectionsClosed = closeUnusedConnections(unusedBeforeClose);
     step("listener_closed", { listening: server.listening, unusedConnectionsClosed, count: unusedConnectionsClosed });
     const streams = [...registry.streams];
     const ended = (): void => {
