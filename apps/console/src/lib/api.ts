@@ -40,7 +40,15 @@ export async function api<T = unknown>(path: string, options: { method?: string;
     reportNetworkError();
     throw new ApiError("网络连接失败", 0, NETWORK_ERROR_CODE);
   }
-  const text = await response.text();
+  let text: string;
+  try {
+    text = await response.text();
+  } catch (err) {
+    // 响应头已到、读 body 时断网：同 fetch 失败分支，不把浏览器英文原文（Failed to fetch / Load failed）显示出来。
+    if (err instanceof DOMException && err.name === "AbortError") throw err;
+    reportNetworkError();
+    throw new ApiError("网络连接失败", 0, NETWORK_ERROR_CODE);
+  }
   let payload: any = null;
   try {
     payload = text ? JSON.parse(text) : null;

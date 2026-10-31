@@ -36,3 +36,25 @@ describe('K-35 api() 断网', () => {
     expect(getApiAvailability()).toEqual({ status: 'unavailable', code: 'SYS-9002' })
   })
 })
+
+describe('NET-0001 读响应体时断网', () => {
+  /** 响应头已到，读 body 时连接断开：text() 抛浏览器原文 TypeError。 */
+  const brokenBody = (reason: unknown) => ({ status: 200, ok: true, text: () => Promise.reject(reason) }) as unknown as Response
+
+  it.each(['Failed to fetch', 'Load failed'])('text() 抛 TypeError（%s）时包成中文 ApiError + NET-0001，并标记 API 不可用', async (raw) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(brokenBody(new TypeError(raw))))
+    const err = await api('/admin/api/approvals').catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(ApiError)
+    expect(err).toMatchObject({ status: 0, code: 'NET-0001', message: '网络连接失败' })
+    expect((err as Error).message).not.toContain(raw)
+    expect(err).not.toBeInstanceOf(TypeError)
+    expect(getApiAvailability()).toEqual({ status: 'network', code: 'NET-0001' })
+  })
+
+  it('读 body 时被 abort 不算断网，原样抛出', async () => {
+    const abort = new DOMException('aborted', 'AbortError')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(brokenBody(abort)))
+    await expect(api('/admin/api/approvals')).rejects.toBe(abort)
+    expect(getApiAvailability().status).toBe('ok')
+  })
+})
