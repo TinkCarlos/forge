@@ -279,14 +279,14 @@ async function main(): Promise<void> {
   const streamedRun = await waitRun((id) => `/admin/api/runs/${id}`, String(streamed.runId));
   assert(streamedRun.status === "succeeded", "stream run failed");
   const liveEvents = await readEvents(String(streamed.runId));
-  const deltas = liveEvents.filter((event) => event.event === "message.delta");
-  assert(deltas.length >= 2, `expected multiple message.delta events, got ${deltas.length}`);
-  const seqs = deltas.map((event) => Number(event.id));
-  assert(seqs.every((seq, index) => index === 0 || seq > seqs[index - 1]!), "delta sequence is not increasing");
+  assert(!liveEvents.some((event) => event.event === "message.delta"), "SSE exposed disabled message.delta events");
+  assert(liveEvents.some((event) => event.event === "message.completed"), "SSE has no completed message");
+  assert(liveEvents.some((event) => event.event === "run.completed"), "SSE has no completed Run");
+  const seqs = liveEvents.map((event) => Number(event.id));
+  assert(seqs.every((seq, index) => Number.isInteger(seq) && seq > 0 && (index === 0 || seq > seqs[index - 1]!)), "event sequence is not increasing");
   const replay = await readEvents(String(streamed.runId), String(seqs[0]));
-  assert(!replay.some((event) => Number(event.id) === seqs[0]), "Last-Event-ID replayed the first delta");
-  assert(replay.some((event) => Number(event.id) > seqs[0]!), "Last-Event-ID dropped later events");
-  console.log("✓ SSE deltas resume after Last-Event-ID");
+  assert(JSON.stringify(replay) === JSON.stringify(liveEvents.slice(1)), "Last-Event-ID did not replay exactly the later events");
+  console.log("✓ SSE completed messages resume after Last-Event-ID without deltas");
 
   const versionId = String(agent.publishedVersionId ?? "");
   assert(versionId, "mcp-agent has no published version");

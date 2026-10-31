@@ -1554,7 +1554,9 @@ async function refreshRunStream() {
   renderStreamStatus(view);
 }
 
-function closeStream() {
+function closeStream(event) {
+  // 旧表单的 close 事件可能在同一 dialog 已复用为 Run 详情后才送达。
+  if (event?.type === "close" && $("#modal")?.open) return;
   const view = state.runView;
   state.runView = null;
   if (view) endRunStream(view);

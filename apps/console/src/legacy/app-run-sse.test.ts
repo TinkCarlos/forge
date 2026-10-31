@@ -30,6 +30,7 @@ function method(name: string): string {
 }
 
 class El {
+  open = false
   innerHTML = ''
   className = ''
   scrollTop = 0
@@ -41,8 +42,8 @@ class El {
   get textContent() { return this.innerHTML.replace(/<[^>]*>/g, '') }
   appendChild(c: El) { this.children.push(c); return c }
   addEventListener(t: string, f: (e?: unknown) => void) { (this.listeners[t] ??= []).includes(f) || this.listeners[t].push(f) }
-  dispatch(t: string) { for (const f of this.listeners[t] ?? []) f({}) }
-  close() { this.dispatch('close') }
+  dispatch(t: string) { for (const f of this.listeners[t] ?? []) f({ type: t }) }
+  close() { this.open = false; this.dispatch('close') }
 }
 
 class FakeES {
@@ -91,6 +92,7 @@ function harness(initial: ReturnType<typeof run>) {
       return typeof r === 'function' ? (r as () => unknown)() : r
     },
     openModal: (_t: string, body: string) => {
+      modal.open = true
       for (const k of Object.keys(els)) delete els[k]
       for (const m of body.matchAll(/id="([^"]+)"/g)) els[m[1]] = new El()
       els['__body'] = Object.assign(new El(), { innerHTML: body })
@@ -282,6 +284,20 @@ describe('FE-R5 断线重连：只靠 EventSource 自带重连（Last-Event-ID�
 })
 
 describe('FE-R5 关闭弹窗', () => {
+  it('旧表单的 close 事件迟到时，不关闭已复用为 Run 详情的新事件流', async () => {
+    const h = await opened()
+    const es = h.es()
+    h.modal.dispatch('close')
+    expect(h.modal.open).toBe(true)
+    expect(es.closed).toBe(false)
+    h.reply(run('cancelled', [msg('m2', 2, 'assistant', '已取消')]))
+    es.emit('run.cancelled', 4, { status: 'cancelled' })
+    await flush()
+    expect(h.els['run-toolbar'].innerHTML).toContain('cancelled')
+    expect(h.messages()).toContain('已取消')
+    expect(h.state.runView).not.toBeNull()
+  })
+
   it('关弹窗后关流；旧连接再报错或来事件都不重连、不渲染', async () => {
     const h = await opened()
     const es = h.es()
