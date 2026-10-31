@@ -375,6 +375,7 @@ data: {"type":"run.completed","seq":15,"runId":"...","data":{"status":"succeeded
 
 - 已结束（`succeeded`、`failed`、`cancelled`、`budget_exhausted`）：`409 RUN-7005「Run 已结束，不能取消」`，`details.status` 为当前状态；和管理端、Connector 入口一致（#79 / I-RUN-06）。当前实现成功时返回 `200 { "ok": true, "status": "<取消后的实际状态>" }`（`queued`/`waiting_approval` 立即变为 `cancelled`；`running` 在 worker 停下前仍是 `running`），不再返回 `cancelling`。
 - 可取消状态：`queued`、`running`、`waiting_approval`。
+- 取消在当前工具调用结束后生效。
 - 取消不保证外部副作用回滚；文档明确提示调用方使用幂等写接口。
 - 成功返回 `200 { ok, status }`（见上）；`running` 的最终状态以查询 Run 为准。
 - 不存在或不属于本应用的 Run：`404 RUN-7001「Run 不存在」`，不写审计。
