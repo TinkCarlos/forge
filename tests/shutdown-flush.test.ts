@@ -102,8 +102,7 @@ describe("SIG-10: logger flush before exit, with a fixed 2000 ms limit", () => {
     expect(output).not.toContain("timed out");
   });
 
-  // r6 A19 red: exit(1) at 9503-9504 ms on the child's clock (drain timer and flush timer each 1-2 ms late).
-  it.fails("SIG-10b: the drain times out (a stalled half-sent request) and then the flush never calls back -> exit 1, drain_timeout, flush_timeout, all within 10 s", { timeout: 30_000 }, async () => {
+  it("SIG-10b: the drain times out (a stalled half-sent request) and then the flush never calls back -> exit 1, drain_timeout, flush_timeout, all within 10 s", { timeout: 30_000 }, async () => {
     const proc = await api({ preload: ["stuck-flush"] });
     // Only part of the request headers, then nothing: server.close() waits for it (known limit, plugins/sse-shutdown.ts).
     await partialRequest(proc.port, "/healthz", {});

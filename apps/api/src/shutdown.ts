@@ -63,6 +63,12 @@ export const FLUSH_TIMEOUT_MS = 2000;
 export const BACKSTOP_FLUSH_MS = 500;
 /** r4: time kept free before timeoutMs for process.exit itself (pino's exit hook, libuv teardown). */
 const EXIT_MARGIN_MS = 500;
+/**
+ * r6 A19: room for timers firing late before the backstop's exit point (timeoutMs - EXIT_MARGIN_MS - this = 9490 ms
+ * at the default 10 s). Measured on Node 22: each timer fires 0-2 ms late (a19 MEASURE.md); a fixed 500 ms flush after
+ * a late drain timer put exit(1) at 9503-9504 ms, over the 9500 ms the grace period is promised.
+ */
+const BACKSTOP_TIMER_SLACK_MS = 10;
 /** Ruling 15:39: cap of the API's Run drain (WORKER_DRAIN_TIMEOUT_MS above it is cut to this). */
 export const RUN_DRAIN_CAP_MS = 5000;
 /** Ruling 15:39: cap of the lease release step. */
@@ -182,18 +188,20 @@ export function createShutdown(deps: ShutdownDeps): (signal: string) => Promise<
       step("signal");
       // Backstop. Also what ends a shutdown held by a connection that sent only part of its request headers and
       // stalled: it is neither unused nor idle, so it is never closed (see closeUnusedConnections in
-      // plugins/sse-shutdown.ts) and the exit is 1 at timeoutMs - 1000 (+ at most BACKSTOP_FLUSH_MS of flush).
+      // plugins/sse-shutdown.ts) and the exit is 1 at timeoutMs - 1000 (+ at most BACKSTOP_FLUSH_MS of flush, cut so
+      // that exit(1) is called by backstopExitByMs on the monotonic clock even when this timer fired late).
       // Normal clients never do this.
       // Not unref'd: a drain can wait on a promise that holds no handle (nothing else keeps the event loop alive); an
       // unref'd timer let the process end there with code 0 and no exit line (SIG-12). Cleared on the normal path.
       const drainDeadlineMs = deps.timeoutMs - BACKSTOP_FLUSH_MS - EXIT_MARGIN_MS;
+      const backstopExitByMs = deps.timeoutMs - EXIT_MARGIN_MS - BACKSTOP_TIMER_SLACK_MS;
       const timer = setTimeout(() => {
         if (finishing) return;
         deps.log(`shutdown (${signal}) timed out after ${deps.timeoutMs} ms`);
         // Process-level backstop: phase drain_timeout (the Run drain running out is run_drain_timeout).
         step("drain_timeout", { code: 1 });
         step("exit", exitFields(1));
-        void finish(1, BACKSTOP_FLUSH_MS);
+        void finish(1, Math.max(0, Math.min(BACKSTOP_FLUSH_MS, Math.floor(backstopExitByMs - sinceSignal()))));
       }, drainDeadlineMs);
       const deadlineAt = startedWallAt + drainDeadlineMs;
       /** Time left before the deadline, on the monotonic clock. */
