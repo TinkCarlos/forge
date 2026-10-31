@@ -49,6 +49,12 @@ export interface ShutdownDeps {
   flush?: (done: () => void) => void;
   /** r4: write one line to stderr synchronously, bypassing the logger (used when the flush did not finish). */
   writeStderrSync?: (line: string) => void;
+  /**
+   * r6 A19: one JSON line {event: "exit_call", ms, code}, written synchronously right before exit(code), after the
+   * logger flush (or its timeout); ms is the time from the signal to this call on the monotonic clock, what a
+   * termination grace period sees. Not a phase line: exit stays the last phase.
+   */
+  reportExit?: (line: string) => void;
 }
 
 /** r4: limit for the logger flush after the exit line (fixed, not configurable). */
@@ -100,7 +106,12 @@ export function createShutdown(deps: ShutdownDeps): (signal: string) => Promise<
       let code = 0;
       // ms in these phase lines counts from the signal. plugins/sse-shutdown.ts logs its own phases with ms counted
       // from Fastify's preClose hook instead (a few ms later), so the two ms series do not share a zero.
-      const startedAt = Date.now();
+      // r6 A19: on the monotonic clock (performance.now), so a wall-clock step (NTP) does not move them; only
+      // deadlineAt, the absolute time handed to the drain, is wall-clock.
+      const startedAt = performance.now();
+      const startedWallAt = Date.now();
+      const sinceSignal = (): number => performance.now() - startedAt;
+      const elapsedMs = (): number => Math.round(sinceSignal());
       // phaseSeq: shared with plugins/sse-shutdown.ts (phase-seq.ts), the order the phases were logged in.
       // exit is the last phase: once it is logged (normal path or backstop), steps of a drain that finishes late are
       // not logged any more.
@@ -108,7 +119,7 @@ export function createShutdown(deps: ShutdownDeps): (signal: string) => Promise<
       const step = (phase: string, extra: Record<string, unknown> = {}): void => {
         if (exitLogged) return;
         if (phase === "exit") exitLogged = true;
-        deps.info?.(`shutdown (${signal}): ${phase}`, { phase, phaseSeq: nextPhaseSeq(), ms: Date.now() - startedAt, ...extra });
+        deps.info?.(`shutdown (${signal}): ${phase}`, { phase, phaseSeq: nextPhaseSeq(), ms: elapsedMs(), ...extra });
       };
       const exitFields = (exitCode: number): Record<string, unknown> => ({
         code: exitCode,
@@ -125,6 +136,11 @@ export function createShutdown(deps: ShutdownDeps): (signal: string) => Promise<
             if (exited) return;
             exited = true;
             clearTimeout(flushTimer);
+            try {
+              deps.reportExit?.(JSON.stringify({ level: 30, time: Date.now(), event: "exit_call", ms: elapsedMs(), code: exitCode, msg: `shutdown (${signal}): exit(${exitCode})` }));
+            } catch {
+              // stderr gone: nothing left to tell
+            }
             deps.exit(exitCode);
             resolve();
           };
@@ -132,7 +148,7 @@ export function createShutdown(deps: ShutdownDeps): (signal: string) => Promise<
             exitOnce();
             return;
           }
-          const flushStartedAt = Date.now();
+          const flushStartedAt = performance.now();
           // Not unref'd: while the flush hangs this timer is what keeps the process alive until the exit below.
           flushTimer = setTimeout(() => {
             if (exited) return;
@@ -141,8 +157,8 @@ export function createShutdown(deps: ShutdownDeps): (signal: string) => Promise<
               time: Date.now(),
               phase: "flush_timeout",
               phaseSeq: nextPhaseSeq(),
-              ms: Date.now() - startedAt,
-              flushMs: Date.now() - flushStartedAt,
+              ms: elapsedMs(),
+              flushMs: Math.round(performance.now() - flushStartedAt),
               timeoutMs: limitMs,
               code: exitCode,
               msg: `shutdown (${signal}): logger flush did not finish in ${limitMs} ms`,
@@ -179,9 +195,11 @@ export function createShutdown(deps: ShutdownDeps): (signal: string) => Promise<
         step("exit", exitFields(1));
         void finish(1, BACKSTOP_FLUSH_MS);
       }, drainDeadlineMs);
-      const deadlineAt = startedAt + drainDeadlineMs;
+      const deadlineAt = startedWallAt + drainDeadlineMs;
+      /** Time left before the deadline, on the monotonic clock. */
+      const leftMs = (): number => Math.floor(drainDeadlineMs - sinceSignal());
       const budget: DrainBudget = {
-        drainMs: Math.max(0, Math.min(deps.runDrainTimeoutMs ?? RUN_DRAIN_CAP_MS, RUN_DRAIN_CAP_MS, deadlineAt - Date.now())),
+        drainMs: Math.max(0, Math.min(deps.runDrainTimeoutMs ?? RUN_DRAIN_CAP_MS, RUN_DRAIN_CAP_MS, leftMs())),
         releaseMs: RELEASE_CAP_MS,
         deadlineAt,
       };
@@ -214,7 +232,7 @@ export function createShutdown(deps: ShutdownDeps): (signal: string) => Promise<
         deps.log(`shutdown (${signal}): draining the runtime failed`, error);
       }
       step("stop_runtime");
-      const poolEndMs = Math.max(0, Math.min(POOL_END_CAP_MS, deadlineAt - FLUSH_TIMEOUT_MS - Date.now()));
+      const poolEndMs = Math.max(0, Math.min(POOL_END_CAP_MS, leftMs() - FLUSH_TIMEOUT_MS));
       let poolTimer: ReturnType<typeof setTimeout> | undefined;
       const poolEnded = await Promise.race([
         Promise.resolve()
@@ -244,7 +262,7 @@ export function createShutdown(deps: ShutdownDeps): (signal: string) => Promise<
       if (finishing) return finishing;
       clearTimeout(timer);
       step("exit", exitFields(code));
-      const flushLimitMs = Math.max(0, Math.min(FLUSH_TIMEOUT_MS, deadlineAt - Date.now()));
+      const flushLimitMs = Math.max(0, Math.min(FLUSH_TIMEOUT_MS, leftMs()));
       return finish(code, flushLimitMs);
     })();
     return running;
