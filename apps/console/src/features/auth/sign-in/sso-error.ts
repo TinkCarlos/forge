@@ -10,7 +10,7 @@ import { SSO_ERROR_CODES } from '@forge/core/sso-error-codes'
 /** 后端白名单里的每个码 → 固定文案。 */
 export const SSO_ERROR_CODE_MESSAGES = Object.freeze({
   'HTP-4003': '单点登录暂不可用：身份提供方的地址被出站策略拦截，请联系管理员。',
-  'SSO-1201': '单点登录尚未配置，请使用账号密码登录或联系管理员。',
+  'SSO-1201': '单点登录暂不可用：尚未完成配置，或你的账号没有 Forge 访问角色，请联系管理员。',
   'SSO-1202': '暂时无法连接身份提供方，请稍后重试；如果反复出现，请联系管理员。',
   'SSO-1203': '登录状态已过期或无效，请重新发起单点登录。',
   'SSO-1204': '无法向身份提供方验证登录凭证，请重试；如果反复出现，请联系管理员。',
@@ -54,11 +54,12 @@ export function ssoErrorMessage(code: unknown): string | null {
   return isKnownCode(code) ? SSO_ERROR_CODE_MESSAGES[code] : SSO_ERROR_FALLBACK
 }
 
-/** 去掉 ssoError 后的同源相对地址（path + search + hash）；本来就没有这个参数时返回 null。 */
+/** 去掉登录错误参数，避免复制链接时带上 IdP 原文；保留其他参数与 hash。 */
 export function urlWithoutSsoError(href: string): string | null {
   const url = new URL(href)
-  if (!url.searchParams.has(SSO_ERROR_PARAM)) return null
-  url.searchParams.delete(SSO_ERROR_PARAM)
+  const params = [SSO_ERROR_PARAM, 'error', 'error_description', 'error_uri']
+  if (!params.some((param) => url.searchParams.has(param))) return null
+  for (const param of params) url.searchParams.delete(param)
   return `${url.pathname}${url.search}${url.hash}`
 }
 

@@ -30,6 +30,9 @@ describe('码表与后端白名单一致', () => {
 })
 
 describe('ssoErrorMessage', () => {
+  it('SSO-1201 同时说明未配置与缺少访问角色，不假定允许本地登录', () => {
+    expect(ssoErrorMessage('SSO-1201')).toBe('单点登录暂不可用：尚未完成配置，或你的账号没有 Forge 访问角色，请联系管理员。')
+  })
   it('SSO-1212（IdP 回调带 error=）显示固定中文文案', () => {
     expect(ssoErrorMessage('SSO-1212')).toBe('身份提供方拒绝了这次登录。如果你需要访问 Forge，请联系管理员开通。')
   })
@@ -80,6 +83,12 @@ describe('normalizeSsoError（路由 validateSearch 用）', () => {
 })
 
 describe('显示后从 URL 去掉 ssoError', () => {
+  it('清除所有 IdP 错误原文参数，保留 redirect、其他参数和 hash', () => {
+    expect(urlWithoutSsoError('https://forge.example/next/sign-in?ssoError=SSO-1212&error=access_denied&error_description=private&error_uri=https%3A%2F%2Fidp.example&redirect=%2Fnext%2Fagents&x=1#tab')).toBe(
+      '/next/sign-in?redirect=%2Fnext%2Fagents&x=1#tab'
+    )
+    expect(urlWithoutSsoError('https://forge.example/next/sign-in?error_description=private')).toBe('/next/sign-in')
+  })
   it('只去掉 ssoError，保留 redirect 和 hash', () => {
     expect(urlWithoutSsoError('https://forge.example/next/sign-in?ssoError=SSO-1212&redirect=%2Fnext%2Fagents#x')).toBe(
       '/next/sign-in?redirect=%2Fnext%2Fagents#x'

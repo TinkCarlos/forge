@@ -13,8 +13,8 @@ export function SignIn() {
   // 文案在首次渲染时定下来；随后把 ?ssoError= 从地址栏去掉（刷新 / 复制链接不再带着它），提示保持显示
   const [ssoMessage] = useState(() => ssoErrorMessage(ssoError))
   useEffect(() => {
-    if (ssoMessage) clearSsoErrorFromUrl()
-  }, [ssoMessage])
+    clearSsoErrorFromUrl()
+  }, [])
 
   return (
     <AuthLayout>
