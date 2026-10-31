@@ -8,6 +8,7 @@ import { execute, one, pool, query, repos } from "@forge/store";
 import { cleanupStubEffects, ensureStubEffectsTable, hangingToolChildEnv, hangingToolNames, readCount, sideEffectCount, stubEffects } from "./helpers/hanging-tool.js";
 import { expectHandoffMapping, type HandoffLine } from "./helpers/run-handoff.js";
 import { freePort } from "./helpers/sse-client.js";
+import { expectChildExit, expectParentBackstop, recordTiming, tail } from "./helpers/shutdown-assert.js";
 
 // Ruling 15:39 with real child processes (*_test DB, free ports): the API (embedded worker) runs a Run whose tool
 // call ignores the abort signal (tests/helpers/hanging-tool.ts). SIGTERM:
@@ -200,8 +201,9 @@ describe("run handoff on shutdown (ruling 15:39, child processes)", () => {
     const hung = await newRun(hangingToolNames(hangKey).effect); // the drain hangs: this tool ignores abort
     const locked = await newRun(hangingToolNames(shortKey).read); // the release hangs: tool ends, then its row is locked
     await waitFor("both tools started", async () => (await sideEffectCount(hangKey)) === 1 && (await readCount(shortKey)) === 1, 30_000, api.out);
-    api.child.kill("SIGTERM");
+    // r6 A19: taken before the kill (was after it, which made the parent's time too short); only the 12 s backstop.
     const sentAt = Date.now();
+    api.child.kill("SIGTERM");
     // The short tool ends during the drain and its Run hands over; then lock its row so the release UPDATE waits.
     await waitFor("short tool result stored", async () => (await one<{ n: number }>("SELECT COUNT(*) AS n FROM tool_calls WHERE run_id = ? AND status = 'succeeded'", [locked]))?.n === 1, 4000, api.out);
     await new Promise((resolve) => setTimeout(resolve, 500));
@@ -222,17 +224,21 @@ describe("run handoff on shutdown (ruling 15:39, child processes)", () => {
     }
     const { code, at } = await api.exited;
     const tookMs = at - sentAt;
-    expect(killed, api.out().slice(-2000)).toBeGreaterThanOrEqual(1);
-    expect(code, api.out().slice(-2000)).toBe(1);
-    expect(tookMs).toBeLessThan(9000);
+    expect(killed, tail(api.out(), 2000)).toBeGreaterThanOrEqual(1);
+    expect(code, tail(api.out(), 2000)).toBe(1);
+    // "gone before 9000 ms" (ruling 15:39) on the child's own clock: signal -> exit(1), after the stuck flush's cut.
+    const call = expectChildExit(api.out(), { code: 1, maxMs: 9000 - 1 });
+    recordTiming("SH-02", { exitCallMs: call.ms, parentMs: tookMs });
+    expectParentBackstop(tookMs, api.out());
     const phases = phaseLines(api.out()).filter((line) => line.phase !== "flush_timeout");
     const order = [...phases].sort((a, b) => (a.phaseSeq ?? 0) - (b.phaseSeq ?? 0)).map((line) => line.phase);
-    expect(order).not.toContain("drain_timeout");
-    expect(order.at(-1)).toBe("exit");
-    expect(phases.find((line) => line.phase === "exit")).toMatchObject({ code: 1 });
-    expect(order.indexOf("run_drain_timeout")).toBeGreaterThan(-1);
-    expect(order.indexOf("run_drain_timeout")).toBeLessThan(order.indexOf("release_timeout"));
-    expect(order.indexOf("release_timeout")).toBeLessThan(order.indexOf("run_handoff"));
+    const out = tail(api.out(), 2000);
+    expect(order, out).not.toContain("drain_timeout");
+    expect(order.at(-1), out).toBe("exit");
+    expect(phases.find((line) => line.phase === "exit"), out).toMatchObject({ code: 1 });
+    expect(order.indexOf("run_drain_timeout"), out).toBeGreaterThan(-1);
+    expect(order.indexOf("run_drain_timeout"), out).toBeLessThan(order.indexOf("release_timeout"));
+    expect(order.indexOf("release_timeout"), out).toBeLessThan(order.indexOf("run_handoff"));
     const handoffs = phases.filter((line) => line.phase === "run_handoff");
     expectHandoffMapping(handoffs);
     expect(new Map(handoffs.map((line) => [line.runId, [line.takeover, line.reason]]))).toEqual(new Map([
