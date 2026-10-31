@@ -84,10 +84,14 @@ describe("SIG: SIGTERM with open SSE streams (API child process)", () => {
     await repos.addEvent(runId, "run.started", { n: 1 });
     const stream = await openSse(proc.port, adminPath(runId), adminHeaders);
     await stream.waitFor(1);
+    // `unused` is opened before `idle`: rawConnection resolves on the client's connect, before the server accepted the
+    // socket, so opened last it could still be unaccepted when SIGTERM was handled (listener_closed count 0 under load).
+    // The listener accepts connections in arrival order, so once idle's /healthz response is back, `unused` (which
+    // connected earlier) has been accepted too.
+    const unused = await rawConnection(proc.port);
     const idle = await rawConnection(proc.port);
     idle.write(keepAliveGet("/healthz"));
     await idle.response();
-    const unused = await rawConnection(proc.port);
     const result = await sigterm(proc, 12_000);
     expect(result.code, proc.output().slice(-800)).toBe(0);
     expect(result.ms).toBeLessThan(2000);
