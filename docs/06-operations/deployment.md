@@ -50,6 +50,7 @@ minio:9000/9001
 要求：
 - `RollingUpdate`，`maxUnavailable: 0`（数据库迁移兼容前提下）。
 - `forge-api` 的 `terminationGracePeriodSeconds` 设为 20。API 收到 SIGTERM 后最晚约 9.5 秒退出（§12.1），剩下的时间留给 preStop 摘流量。不要设到 10 以下，否则 Kubernetes 会在日志写完之前 SIGKILL，最后几行日志（包括 `exit`）会丢。
+- 独立 Worker（`pnpm start:worker`）的 `terminationGracePeriodSeconds` 设为 50。规则是宽限期要大于 preStop + `WORKER_DRAIN_TIMEOUT_MS` + 5 秒硬停（默认 35 秒，合计约 45 秒）；调大 `WORKER_DRAIN_TIMEOUT_MS` 时同步调大宽限期，否则 Kubernetes 会在排空结束前 SIGKILL，进行中的 Run 只能等租约到期再接手。
 - API 设了 `EMBEDDED_WORKER=false` 时，API 进程不再执行 Run，Run 只由独立 Worker（`pnpm start:worker`）领取。这时至少要部署一个独立 Worker，否则 Run 会一直排队。
 - 所有 Pod 非 root、只读根文件系统（除缓存/临时目录）、资源 requests/limits。
 - API/Worker 的 `/readyz` 依赖 MySQL/Redis/Temporal；启动时配置校验失败直接退出。
@@ -84,6 +85,9 @@ minio:9000/9001
 | `TOOL_ALLOW_PRIVATE_NETWORK` | 否 | 已废弃：不再绕过出站校验，请改用 `OUTBOUND_ALLOWLIST` |
 | `MCP_ALLOWED_COMMANDS` | 否 | stdio MCP 命令白名单 |
 | `DEFAULT_TIMEZONE` | 否 | `Asia/Shanghai` |
+| `WORKER_DRAIN_TIMEOUT_MS` | 否 | 停机时等进行中 Run 的工具调用结束的上限（毫秒），0–300000 的整数，默认 35000。API 进程内置 Worker 最多等 5000（§12.1）；独立 Worker 按配置值等，超过后再给 5 秒，仍未退出就记 `drain_timeout` 并以退出码 1 退出。改它要同步改 §3 的宽限期 |
+| `LEASE_TTL_SECONDS` | 否 | Run 租约时长（秒），默认 30。Worker 停机时没能主动释放的租约，要等它到期后其他 Worker 才能接手（§14） |
+| `APPROVAL_EXPIRED_GRACE_SECONDS` | 否 | 审批过期后的宽限（秒），60–86400 的整数，默认 900，且必须大于 `WORKER_POLL_MS` 换算成的秒数，否则拒绝启动。审批过期超过这个时长仍未收尾，系统驳回，Run 以 `APR-2102` 失败；Worker 停机或维护窗口超过它时要算进去 |
 
 ### 4.2 SSO / Connector
 
@@ -214,6 +218,29 @@ minio:9000/9001
 - **只回滚代码，不删表**。两张表留着闲置，不需要任何删表或改 `schema_migrations` 的步骤。回滚后会话回到进程内存，所有人再重新登录一次。
 - 回滚之后再次升级时，先清空两张表（语句见 §7），再启动新版本的 API，避免回滚期间留下的旧会话行重新生效。迁移 007 已经记录过，不会重复建表。
 
+### 6.4 第五次推送之后的版本升级须知（Worker 接手，迁移 008）
+
+迁移 008 只加列，全部 `ALGORITHM=INSTANT`，不加索引（字段见 mysql-design.md）。MySQL 不能 INSTANT 时直接报错，不会悄悄复制整张表。重复执行只输出 `Migration 008_tool_side_effects already applied`。
+
+这一次升级是一次性例外，不能用新旧并存的滚动升级，按下面的顺序：
+
+1. 先按 §6 第 1 步做全量备份。
+2. 跑下面的只读统计，把结果报给发布负责人。它是升级后会被标为失败（`APR-2102`「审批已过期，Run 已终止」）的 Run 数。`@grace_s` 必须换成该环境实际的 `APPROVAL_EXPIRED_GRACE_SECONDS`，不要照抄 900；时间一律用 `UTC_TIMESTAMP(3)`，手动连库时会话时区可能是 +08:00，用 `NOW()` 会差 8 小时。
+   ```sql
+   SET @grace_s = 900;
+   SELECT COUNT(*) AS runs_to_fail FROM (
+     SELECT r.id, TIMESTAMPDIFF(SECOND, MIN(a.expires_at), UTC_TIMESTAMP(3)) AS overdue_s
+     FROM runs r JOIN approvals a ON a.run_id = r.id
+     WHERE r.status = 'waiting_approval' AND a.status IN ('pending', 'expired') AND a.expires_at < UTC_TIMESTAMP(3)
+     GROUP BY r.id
+   ) t WHERE t.overdue_s > @grace_s;
+   ```
+3. 等发布负责人确认后，再跑迁移（`pnpm db:migrate`）。
+4. 旧 Worker 全部缩到 0（包括 API 的内置 Worker），再起新版本。
+5. 确认新版本正常（`/readyz`、冒烟）后，之后的升级恢复 `maxUnavailable: 0` 滚动。
+
+回滚之后再次升级，第 2 步的统计要重新跑一遍、重新报数。
+
 ## 7. 备份与恢复
 
 | 项 | 方案 |
@@ -315,7 +342,10 @@ API 收到 SIGTERM 或 SIGINT 后，每走完一步就记一行 info 日志，�
 | `listener_closed` | 停止监听，关掉没在用的连接；`count` 是关掉的连接数，没有连接时也会记，`count` 为 0 |
 | `sse_ended` | 结束所有事件流；`count` 是结束的流数，没有流时也会记，`count` 为 0 |
 | `on_close` | 在途请求处理完，HTTP 服务已关闭 |
-| `app_close` | 关闭 HTTP 服务这一步结束 |
+| `app_close` | 关闭 HTTP 服务这一步结束（排空内置 Worker 上的 Run 与它同时进行） |
+| `run_drain_timeout` | 只在排空到上限时出现：`runIds` 是没排空的 Run，`drainMs` 是等了多久。退出码因此为 1 |
+| `release_timeout` | 只在释放租约超时时出现：`runIds`、`releaseMs` |
+| `run_handoff` | 每个进行中的 Run 一行：`runId`、`takeover`、`reason`，见下面的说明 |
 | `stop_runtime` | 停止内置 Worker 和定时任务的轮询 |
 | `pool_end` | 关闭数据库连接池 |
 | `exit` | 最后一行；`code` 是退出码，`activeResources` 是退出前还开着的资源 |
@@ -326,9 +356,14 @@ API 收到 SIGTERM 或 SIGINT 后，每走完一步就记一行 info 日志，�
 - **`exit` 一定是最后一个 phase。** 记下 `exit` 之后不会再有新的 phase 行（下面的 `flush_timeout` 例外，它直接写 stderr）。
 - **`drain_timeout`（需要告警）：** 这一行是 info 级，同时会有一条 error 级的 `timed out after 10000 ms`。出现它说明收到信号 9 秒后关闭还没走完（例如数据库完全无响应，连接池一直关不掉，或者某个连接只发了一半请求头就卡住）。这时进程记 `drain_timeout`，紧接着记 `exit`（`code` 为 1），再最多花 0.5 秒写日志后退出，最晚约 9.5 秒。没走完的步骤之后不会再记。
 - **`flush_timeout`（warn 级）：** 出现这一行就说明 `exit` 之后日志没在时限内写完（时限 2 秒，并保证在 9.5 秒内退出）。它绕过日志库直接写到 stderr，`exit` 之前的行可能有丢失；退出码不受影响，仍和 `exit` 行的 `code` 一致。
-- **退出码：** 0 表示每一步都成功；任何一步失败（失败原因另记一行 error）或走了 `drain_timeout`，都是 1。
+- **退出码：** 0 表示每一步都成功；任何一步失败（失败原因另记一行 error）、出现 `run_drain_timeout` 或走了 `drain_timeout`，都是 1。
+- **时间预算：** 从收到信号起统一截止 9000ms，每一步取「自身上限」和「剩余时间」中较小的一个：排空 Run 最多 5000ms（`WORKER_DRAIN_TIMEOUT_MS` 更小时按它），释放租约最多 1000ms，写日志最多 2000ms，剩下约 1000ms 关连接。
+- **`run_handoff`：** `takeover` 为 `released`（`reason` 为 `drained`）表示租约已主动释放，其他 Worker 约 1 秒内接手；为 `lease_expiry`（`reason` 为 `tool_inflight`、`release_timeout` 或 `release_error`）表示没释放，要等租约到期，约 20–31 秒后才接手，不会两边同时执行。排查「Run 停顿」时先按 `takeover` 区分。
+- **`run_drain_timeout`（需要关注）：** 没排空的 Run 里，模型调用已中止，还在执行的工具调用被放弃，这些 Run 的 `run_handoff` 都是 `lease_expiry`。核对 `runIds` 后续是否被接手。
 
-进行中的 Run 不等它跑完，API 退出后由其他 Worker 接手（§14）。
+独立 Worker 停机时写同样的 `run_drain_timeout`、`release_timeout`、`run_handoff` 行（字段相同，多一个 `signal`），每行一条 JSON，写到 stderr。它的硬停是 `WORKER_DRAIN_TIMEOUT_MS` + 5 秒，到点记 `drain_timeout`（`code` 为 1）并退出；排空本身出错时记 `drain_failed`。
+
+进行中的 Run 怎么接手见 §14。
 
 ## 13. 运维操作边界
 
@@ -344,7 +379,8 @@ API 收到 SIGTERM 或 SIGINT 后，每走完一步就记一行 info 日志，�
 - **RPM 计数存在 API 进程内存里**（`apps/api/src/routes/open.ts:34` 的 `rateBuckets`）：每个副本各自计数，`forge-api` 跑多个副本时，实际每分钟上限 = 配置值 × 副本数；API 重启后计数清零。需要精确限流时，在统一 Nginx 上另做限流。
 - **API 重启时的 SSE**：会话已经存在 MySQL，重启不再让用户重新登录；但控制台 SSE 断线后只自动重连 3 次，大约能撑 9 秒，单个副本停机超过这个时间，打开着的 Run 弹窗要手动点刷新。滚动升级（`maxUnavailable: 0`、多副本）可以避免。
 - **数据库完全无响应时 API 停机要等满 9 秒**：关闭连接池会等在途查询结束，这一步没有单独的时限，只能靠 9 秒的兜底：记 `drain_timeout`，以退出码 1 退出，`exit` 行照常写出（§12.1）。后续计划给关闭连接池单独加时限。
-- **API 停机时进行中的 Run 不等待**：API 退出时不等内置 Worker 上正在跑的 Run 结束。API 退出时不释放进行中 Run 的租约，要等租约（`LEASE_TTL_SECONDS`，默认 30 秒）到期后才由其他 Worker 接手，接手前会有一段停顿。
+- **API 停机时进行中的 Run 最多等 5 秒**：API 退出时先排空内置 Worker 上的 Run，最多 `min(WORKER_DRAIN_TIMEOUT_MS, 5000)` 毫秒：模型调用立即中止，工具调用最多等到这个上限，超时的被放弃。工具调用都已结束的 Run 会在 1 秒内释放租约，其他 Worker 约 1 秒内接手；仍有工具调用在执行、或释放超时/失败的 Run，要等租约（`LEASE_TTL_SECONDS`，默认 30 秒）到期后才由其他 Worker 接手，接手前会有约 20–31 秒的停顿（日志 `run_handoff`，§12.1）。接手还可能被 `MAX_CONCURRENT_RUNS`（默认 2）没有空位、排队中的 Run、领取失败后的退避拉长。
+- **审批后的工具调用仍在 API 进程里执行**：滚动发布 API 时，执行超过约 5 秒的工具调用会被放弃，由 Worker 接手；有副作用的调用需要重新审批（审批原因为 `interrupted`），发布期间出现重复审批属预期。
 - **工具执行期间的取消不生效**：Run 正在执行工具调用时发起的取消不会生效，Run 可能以 succeeded 结束；修复见后续版本。
 - **二分查找要跳过两个提交**：`425aef5` 和 `6146e37` 单独检出时类型检查不通过（后面的提交已修好），`git bisect` 时请用 `git bisect skip 425aef5 6146e37`。这是个别情况，以后的提交都要求单独能通过检查。
 - **测试依赖的已知漏洞（1.2 已解决）**：1.1 用的 vitest 3 依赖链上有 tinypool（GHSA-5gmw-xhrv-c9v3、GHSA-85c8-ppgw-ccpr）和 vitest / @vitest/mocker（GHSA-82fw-gwwq-j7x9、GHSA-qxg6-89mg-rqv8）的漏洞，都是 devDependencies，不进生产运行时。1.2 升级到 vitest 4.1.12 后不再依赖 tinypool，`pnpm audit --dev` 没有已知漏洞。还停在 1.1 的环境不要对不可信分支直接跑测试。
