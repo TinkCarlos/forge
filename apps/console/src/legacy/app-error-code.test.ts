@@ -37,4 +37,26 @@ describe('K-36 旧版错误提示带错误码', () => {
     })
     await expect(api('/admin/api/agents')).rejects.toMatchObject({ message: '网络连接失败', code: 'NET-0001' })
   })
+
+  it.each(['Failed to fetch', 'Load failed'])('读响应体时断网（text() 抛 TypeError：%s）也抛中文「网络连接失败」+ NET-0001，不显示原文', async (raw) => {
+    const api = load<(p: string) => Promise<unknown>>(['api'], 'api', {
+      fetch: () => Promise.resolve({ status: 200, ok: true, text: () => Promise.reject(new TypeError(raw)) }),
+      state: { session: null },
+      showLogin: () => {},
+    })
+    const err = await api('/admin/api/approvals').catch((e: unknown) => e)
+    expect(err).toMatchObject({ message: '网络连接失败', code: 'NET-0001' })
+    expect(err).not.toBeInstanceOf(TypeError)
+    expect((err as Error).message).not.toContain(raw)
+  })
+
+  it('读响应体时被 abort 原样抛出', async () => {
+    const abort = new DOMException('aborted', 'AbortError')
+    const api = load<(p: string) => Promise<unknown>>(['api'], 'api', {
+      fetch: () => Promise.resolve({ status: 200, ok: true, text: () => Promise.reject(abort) }),
+      state: { session: null },
+      showLogin: () => {},
+    })
+    await expect(api('/admin/api/approvals')).rejects.toBe(abort)
+  })
 })

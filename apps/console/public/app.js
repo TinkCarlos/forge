@@ -136,7 +136,16 @@ async function api(path, options = {}) {
     error.code = "NET-0001";
     throw error;
   }
-  const text = await response.text();
+  let text;
+  try {
+    text = await response.text();
+  } catch (err) {
+    // 响应头已到、读 body 时断网：同上统一成中文 + NET-0001；主动取消原样抛出
+    if (err?.name === "AbortError") throw err;
+    const error = new Error("网络连接失败");
+    error.code = "NET-0001";
+    throw error;
+  }
   let payload = null;
   try {
     payload = text ? JSON.parse(text) : null;
