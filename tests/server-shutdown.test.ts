@@ -430,3 +430,58 @@ describe("shutdown deadline budget (ruling 15:39)", () => {
     expect(src.indexOf('"run_handoff"')).toBeLessThan(src.lastIndexOf("process.exit(code)"));
   });
 });
+
+// r6 A19: the child-process tests bound the time from the signal to the exit(code) call as the child measures it,
+// not the parent's wall clock (which also counts spawning, signal delivery and reaping under load). That number has
+// to be trustworthy: a monotonic clock (performance.now, not moved when the wall clock is stepped), counted from the
+// signal handler to right before exit(code), after the logger flush. It is reported by one JSON line written
+// synchronously (reportExit, stderr in server.ts) {event: "exit_call", ms, code}; it is not a phase line, so exit stays
+// the last phase.
+describe("A19: time from the signal to exit(code), on a monotonic clock", () => {
+  type Fields = Record<string, unknown>;
+  it.fails("a wall-clock step back during the shutdown changes neither the phase ms nor the exit report", async () => {
+    vi.useFakeTimers();
+    const fields: Fields[] = [];
+    const reportExit = vi.fn((_line: string): void => undefined);
+    const { d } = deps({ reportExit, info: vi.fn((_m: string, f: Fields) => fields.push(f)), close: vi.fn(() => new Promise<void>((resolve) => setTimeout(resolve, 300))) });
+    const finished = createShutdown(d as never)("SIGTERM");
+    await vi.advanceTimersByTimeAsync(100);
+    vi.setSystemTime(Date.now() - 60_000); // the wall clock is stepped back a minute (NTP), performance.now is not
+    await vi.advanceTimersByTimeAsync(200);
+    await finished;
+    expect(fields.find((entry) => entry.phase === "exit"), JSON.stringify(fields)).toMatchObject({ ms: 300, code: 0 });
+    expect(reportExit, JSON.stringify(fields)).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(reportExit.mock.calls[0]![0])).toMatchObject({ event: "exit_call", ms: 300, code: 0 });
+  });
+
+  it.fails("exit report: written right before exit(code), after the flush called back; ms counts the flush too; not a phase line", async () => {
+    vi.useFakeTimers();
+    const events: string[] = [];
+    const { d } = flushDeps(
+      { reportExit: vi.fn((line: string) => { events.push(line); }) },
+      vi.fn((done: () => void): void => { setTimeout(done, 700); }),
+    );
+    d.exit = vi.fn((code: number) => { events.push(`exit:${code}`); });
+    const finished = createShutdown(d as never)("SIGTERM");
+    await vi.advanceTimersByTimeAsync(700);
+    await finished;
+    expect(events, JSON.stringify(events)).toHaveLength(2);
+    expect(events[1]).toBe("exit:0");
+    const line = JSON.parse(events[0]!) as Fields;
+    expect(line).toMatchObject({ event: "exit_call", ms: 700, code: 0 });
+    expect(line).not.toHaveProperty("phase");
+  });
+
+  it.fails("exit report on the backstop path with a stuck flush: code 1 at 9000 + 500 ms, once", async () => {
+    vi.useFakeTimers();
+    const reportExit = vi.fn((_line: string): void => undefined);
+    const { d } = flushDeps({ reportExit, close: vi.fn(() => new Promise<void>(() => undefined)) });
+    void createShutdown(d as never)("SIGTERM").catch(() => undefined);
+    await vi.advanceTimersByTimeAsync(9_500);
+    expect(d.exit).toHaveBeenCalledWith(1);
+    expect(reportExit).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(reportExit.mock.calls[0]![0])).toMatchObject({ event: "exit_call", ms: 9500, code: 1 });
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(reportExit).toHaveBeenCalledTimes(1);
+  });
+});
