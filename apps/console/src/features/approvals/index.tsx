@@ -7,6 +7,7 @@ import { onReject } from '@/lib/settle'
 import { api } from '@/lib/api'
 import { idSeg } from '@/lib/entity-id'
 import { useCan } from '@/hooks/use-can'
+import { useRefreshOnVisible } from '@/hooks/use-refresh-on-visible'
 import { shortTime } from '@/lib/format'
 import { clampPage, pageCount, showPager } from '@/lib/pagination'
 import { Button } from '@/components/ui/button'
@@ -85,6 +86,8 @@ export function Approvals() {
   const qc = useQueryClient()
   const [page, setPage] = useState(1)
   const { data, error, isPending, isPlaceholderData, refetch } = useQuery(approvalsQuery(page, SIZE))
+  // 还没有审批的实时推送：切回标签页时刷新一次当前页（2 秒内不重复，不轮询）；失败沿用下面的 TableError，不另弹 toast
+  useRefreshOnVisible(() => refetch())
   const [pending, setPending] = useState<Decision>(null)
   const [comment, setComment] = useState('')
   // K-29：没有 approval.decide（如 auditor）时只读，不显示批准/驳回

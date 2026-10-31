@@ -31,6 +31,8 @@ export const approvalsQuery = (page: number, pageSize: number) =>
       return { items, total: res.total }
     },
     placeholderData: (prev) => prev,
+    // 切回标签页的刷新交给 useRefreshOnVisible（带 2 秒节流），这里关掉 react-query 自带的聚焦刷新，免得生产环境一次切回刷两遍
+    refetchOnWindowFocus: false,
   })
 
 export const approvalsCountQuery = queryOptions({
