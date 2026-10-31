@@ -345,5 +345,6 @@ API 收到 SIGTERM 或 SIGINT 后，每走完一步就记一行 info 日志，�
 - **API 重启时的 SSE**：会话已经存在 MySQL，重启不再让用户重新登录；但控制台 SSE 断线后只自动重连 3 次，大约能撑 9 秒，单个副本停机超过这个时间，打开着的 Run 弹窗要手动点刷新。滚动升级（`maxUnavailable: 0`、多副本）可以避免。
 - **数据库完全无响应时 API 停机要等满 9 秒**：关闭连接池会等在途查询结束，这一步没有单独的时限，只能靠 9 秒的兜底：记 `drain_timeout`，以退出码 1 退出，`exit` 行照常写出（§12.1）。后续计划给关闭连接池单独加时限。
 - **API 停机时进行中的 Run 不等待**：API 退出时不等内置 Worker 上正在跑的 Run 结束。API 退出时不释放进行中 Run 的租约，要等租约（`LEASE_TTL_SECONDS`，默认 30 秒）到期后才由其他 Worker 接手，接手前会有一段停顿。
+- **工具执行期间的取消不生效**：Run 正在执行工具调用时发起的取消不会生效，Run 可能以 succeeded 结束；修复见后续版本。
 - **二分查找要跳过两个提交**：`425aef5` 和 `6146e37` 单独检出时类型检查不通过（后面的提交已修好），`git bisect` 时请用 `git bisect skip 425aef5 6146e37`。这是个别情况，以后的提交都要求单独能通过检查。
 - **测试依赖的已知漏洞（1.2 已解决）**：1.1 用的 vitest 3 依赖链上有 tinypool（GHSA-5gmw-xhrv-c9v3、GHSA-85c8-ppgw-ccpr）和 vitest / @vitest/mocker（GHSA-82fw-gwwq-j7x9、GHSA-qxg6-89mg-rqv8）的漏洞，都是 devDependencies，不进生产运行时。1.2 升级到 vitest 4.1.12 后不再依赖 tinypool，`pnpm audit --dev` 没有已知漏洞。还停在 1.1 的环境不要对不可信分支直接跑测试。
