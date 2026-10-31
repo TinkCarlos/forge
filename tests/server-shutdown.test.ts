@@ -484,4 +484,34 @@ describe("A19: time from the signal to exit(code), on a monotonic clock", () => 
     await vi.advanceTimersByTimeAsync(5_000);
     expect(reportExit).toHaveBeenCalledTimes(1);
   });
+
+  // The backstop's exit is bounded on an absolute point (timeoutMs - EXIT_MARGIN_MS - a timer slack), not drain
+  // deadline + 500: measured on Node 22 every timer fires 1-2 ms late, so the drain timer and the flush timer added up
+  // to exit(1) at 9503-9504 ms (a19/measure/sig10b-pre-*.log), over the 9500 ms of the grace period's promise.
+  it.fails("a backstop that fires late shortens its flush: exit(1) still at 9490 ms (timeoutMs - 500 - 10 slack)", async () => {
+    vi.useFakeTimers();
+    const realNow = performance.now.bind(performance);
+    let lateMs = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => realNow() + lateMs);
+    const reportExit = vi.fn((_line: string): void => undefined);
+    const { d, writeStderrSync } = flushDeps({
+      reportExit,
+      close: vi.fn(() => new Promise<void>(() => undefined)),
+      // The backstop timer fired 3 ms late: everything measured from here on is 3 ms further from the signal.
+      log: vi.fn(() => {
+        lateMs = 3;
+      }),
+    });
+    void createShutdown(d as never)("SIGTERM").catch(() => undefined);
+    await vi.advanceTimersByTimeAsync(9_000);
+    expect(d.log).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(486);
+    expect(d.exit).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(writeStderrSync).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(writeStderrSync.mock.calls[0]![0] as string)).toMatchObject({ phase: "flush_timeout", timeoutMs: 487, code: 1 });
+    expect(d.exit).toHaveBeenCalledWith(1);
+    expect(JSON.parse(reportExit.mock.calls[0]![0])).toMatchObject({ event: "exit_call", ms: 9490, code: 1 });
+    vi.restoreAllMocks();
+  });
 });
