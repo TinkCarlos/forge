@@ -15,8 +15,7 @@ const jsonPhases = (text: string): Phase[] =>
   text.split("\n").filter((line) => line.startsWith("{") && line.includes('"phase"')).map((line) => JSON.parse(line) as Phase);
 
 describe("pool-end-cap: pool.end() that never resolves is cut at the close slice", () => {
-  // RED (r6 pool-end-cap): fails until the fix; the fix commit turns it.fails into it.
-  it.fails("pool_end_timeout ~1000 ms after the signal, then flush, exit 1 last, no drain_timeout, gone well before 9000 ms", { timeout: 30_000 }, async () => {
+  it("pool_end_timeout ~1000 ms after the signal, then flush, exit 1 last, no drain_timeout, gone well before 9000 ms", { timeout: 30_000 }, async () => {
     const proc = await startApiProcess({ LOG_LEVEL: "info" }, { preload: ["pending-pool-end"] });
     children.push(proc);
     const sent = Date.now();

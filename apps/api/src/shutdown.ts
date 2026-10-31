@@ -61,6 +61,12 @@ const EXIT_MARGIN_MS = 500;
 export const RUN_DRAIN_CAP_MS = 5000;
 /** Ruling 15:39: cap of the lease release step. */
 export const RELEASE_CAP_MS = 1000;
+/**
+ * pool.end() limit: the 1000 ms close slice of the deadline (less when the flush would no longer fit before it). A
+ * database that stops answering leaves mysql2's end() pending for good (it waits for the in-flight queries); when the
+ * limit runs out: phase pool_end_timeout {poolEndMs}, exit code 1, then the normal flush and exit.
+ */
+export const POOL_END_CAP_MS = 1000;
 
 /** Counts of each resource type, e.g. { TCPSocketWrap: 1, Timeout: 2 }. */
 function countResources(names: string[]): Record<string, number> {
@@ -80,6 +86,7 @@ function countResources(names: string[]): Record<string, number> {
  * the deadline): Run drain min(runDrainTimeoutMs, RUN_DRAIN_CAP_MS) (then run_drain_timeout), lease release
  * RELEASE_CAP_MS (release_timeout when it ran out), flush FLUSH_TIMEOUT_MS; 8 s together, 1 s left for closing
  * connections. After the drain one run_handoff line per Run {runId, takeover, reason}, before stop_runtime and exit.
+ * The close slice also bounds pool.end() (POOL_END_CAP_MS): pool_end_timeout instead of pool_end, then flush and exit 1.
  *
  * Backstop (r4): if the drain (Run drain, close, closePool) is not done by the deadline the backstop logs
  * drain_timeout, flushes for at most BACKSTOP_FLUSH_MS and exits 1. A flush that does not call back in time writes
@@ -207,13 +214,32 @@ export function createShutdown(deps: ShutdownDeps): (signal: string) => Promise<
         deps.log(`shutdown (${signal}): draining the runtime failed`, error);
       }
       step("stop_runtime");
-      try {
-        await deps.closePool();
-      } catch (error) {
+      const poolEndMs = Math.max(0, Math.min(POOL_END_CAP_MS, deadlineAt - FLUSH_TIMEOUT_MS - Date.now()));
+      let poolTimer: ReturnType<typeof setTimeout> | undefined;
+      const poolEnded = await Promise.race([
+        Promise.resolve()
+          .then(() => deps.closePool())
+          .then(
+            () => true,
+            (error: unknown) => {
+              code = 1;
+              deps.log(`shutdown (${signal}): closing the database pool failed`, error);
+              return true;
+            },
+          ),
+        // Not unref'd, like the backstop: a pending end() holds no handle of its own.
+        new Promise<false>((resolve) => {
+          poolTimer = setTimeout(() => resolve(false), poolEndMs);
+        }),
+      ]);
+      clearTimeout(poolTimer);
+      if (poolEnded) {
+        step("pool_end");
+      } else {
         code = 1;
-        deps.log(`shutdown (${signal}): closing the database pool failed`, error);
+        deps.log(`shutdown (${signal}): closing the database pool did not finish in ${poolEndMs} ms`);
+        step("pool_end_timeout", { poolEndMs });
       }
-      step("pool_end");
       // The backstop already fired (drain_timeout): it does the exit, with code 1.
       if (finishing) return finishing;
       clearTimeout(timer);
