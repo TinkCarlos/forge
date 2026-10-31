@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomBytes } from "node:crypto";
+import { recordTiming } from "./helpers/shutdown-assert.js";
 
 // r5 §4 graceful drain (DR-01..05, in process; needs a *_test DB). drainRuntime stops claiming, aborts model calls at
 // once, lets tool calls finish and store their result, writes run.released {reason:"drain"} inside the lease fence and
@@ -133,6 +134,9 @@ afterAll(async () => {
   }
 });
 
+/** r6 A19 DR-02: an aborted model call returns "at once", far below the 5000 ms drain limit (a19 MEASURE.md). */
+const DR02_MAX_MS = 1000;
+
 describe("graceful drain", () => {
   it("DR-01 a tool call in flight finishes and stores its result; run.released {reason:drain}; lease released; another worker continues", async () => {
     reset();
@@ -165,8 +169,14 @@ describe("graceful drain", () => {
     const { done: running } = await start(runId);
     await held.started;
     const startedAt = Date.now();
-    await expect(drainRuntime(5000)).resolves.toMatchObject({ timedOut: false });
-    expect(Date.now() - startedAt).toBeLessThan(1000);
+    const result = await drainRuntime(5000);
+    const tookMs = Date.now() - startedAt;
+    const seen = JSON.stringify({ result, tookMs });
+    expect(result, seen).toMatchObject({ timedOut: false, runIds: [] });
+    // "At once": the aborted model call returns long before the 5000 ms drain limit (bound: a19 MEASURE.md).
+    recordTiming("DR-02", { ms: result.ms, tookMs });
+    expect(result.ms, seen).toBeLessThan(DR02_MAX_MS);
+    expect(tookMs, seen).toBeLessThan(DR02_MAX_MS);
     await running;
     expect(await steps(runId)).toEqual([{ type: "call_model", status: "running", error_code: null }]);
     expect(await runRow(runId)).toEqual({ status: "running", claimed_by: null });
@@ -190,8 +200,11 @@ describe("graceful drain", () => {
     const { done: running } = await start(runId);
     await held.started;
     const result = await drainRuntime(200);
-    expect(result).toMatchObject({ timedOut: true, runIds: [runId] });
-    expect(result.ms).toBeGreaterThanOrEqual(200);
+    expect(result, JSON.stringify(result)).toMatchObject({ timedOut: true, runIds: [runId] });
+    // Configured value - 1: drain.ts measures with Date.now, on which the 200 ms timer can fire 1 ms early (gate run
+    // on ebec1ca: 199).
+    recordTiming("DR-03", { ms: result.ms });
+    expect(result.ms, JSON.stringify(result)).toBeGreaterThanOrEqual(200 - 1);
     await running;
     const [row] = await toolRows(runId);
     expect(row).toMatchObject({ status: "running", attempt: 1 });

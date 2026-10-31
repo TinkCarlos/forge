@@ -79,7 +79,9 @@ describe("hanging tool stub (ignores abort)", () => {
     const pending = tools.get(names.effect)!.execute({}, { signal: controller.signal, idempotencyKey: "k1" });
     controller.abort();
     await expect(pending).resolves.toMatchObject({ ok: true });
-    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(290);
+    // r6 A19: the stub's 300 ms hang despite the abort; configured value - 1 (a timer can fire 1 ms early on Date.now).
+    const tookMs = Date.now() - startedAt;
+    expect(tookMs, `took ${tookMs} ms`).toBeGreaterThanOrEqual(300 - 1);
     expect(await sideEffectCount(KEY_IN)).toBe(1);
     await tools.get(names.read)!.execute({}, { signal: AbortSignal.abort() });
     expect(await sideEffectCount(KEY_IN)).toBe(1);
