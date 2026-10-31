@@ -4,7 +4,7 @@ import { AUTH_GC_INTERVAL_MS, collectExpiredAuth } from "./auth-gc.js";
 import { drainRuns, isDraining, resetDrain, type DrainOptions, type DrainResult } from "./drain.js";
 import { claimNext, claimRun, currentWorkerId } from "./lease.js";
 import { leaseTiming } from "./lease-timing.js";
-import { runClaimed } from "./loop.js";
+import { finishCancelRequestedRun, runClaimed } from "./loop.js";
 import { tickSchedules } from "./schedules.js";
 import { describeTickError, guardTick, type GuardedTick } from "./tick-guard.js";
 import { deliverDueWebhooks } from "./webhook.js";
@@ -49,6 +49,25 @@ export async function sweepExpiredApprovals(workerId: string): Promise<void> {
   }
 }
 
+/** r6 cancel sweep: at most this many cancel-requested Runs are finished per worker cycle. */
+export const CANCEL_SWEEP_BATCH = 20;
+
+/**
+ * r6 cancel sweep, once per worker cycle after the expiry sweep: a Run whose cancel is committed but that nobody
+ * executes (queued or waiting_approval with cancel_requested, lease free; e.g. the cancel's own finalize failed) is
+ * finished as cancelled with the terminal rules (finishCancelRequestedRun: pending approvals expired in the same
+ * transaction, approval.resolved before run.cancelled, nothing when the lease is lost). Runs are finished inline (not
+ * launched), so the MAX_CONCURRENT_RUNS budget is not used; skipped while draining.
+ */
+export async function sweepCancelRequestedRuns(workerId: string): Promise<void> {
+  if (isDraining()) return;
+  const runIds = await repos.listCancelRequestedRuns(CANCEL_SWEEP_BATCH);
+  for (const runId of runIds) {
+    if (isDraining()) break;
+    await finishCancelRequestedRun(runId, workerId);
+  }
+}
+
 export function startRuntime(): void {
   if (workerTimer) return;
   leaseTiming(config.LEASE_TTL_SECONDS);
@@ -59,6 +78,7 @@ export function startRuntime(): void {
   const workerTick: GuardedTick = guardTick("worker", async () => {
     await claimRuns(workerId);
     await sweepExpiredApprovals(workerId);
+    await sweepCancelRequestedRuns(workerId);
   });
   const scheduleTick: GuardedTick = guardTick("schedules", () => tickSchedules());
   // Session store (007): expired session / OIDC state rows, every 10 min, single runner via GET_LOCK.

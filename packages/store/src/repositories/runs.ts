@@ -125,7 +125,7 @@ export const runsRepo = {
          WHERE id = ?
            AND (
              status = 'queued'
-             OR (status = 'waiting_approval' AND ? = 1)
+             OR (status = 'waiting_approval' AND ? = 1 AND cancel_requested = 0)
              OR (status = 'running' AND (claimed_by IS NULL OR lease_expires_at IS NULL OR lease_expires_at < UTC_TIMESTAMP(3)))
            )`,
         [workerId, runId, waitingFlag],
@@ -208,6 +208,56 @@ export const runsRepo = {
   },
   async requestCancel(id: string): Promise<void> {
     await execute("UPDATE runs SET cancel_requested = 1 WHERE id = ?", [id]);
+  },
+  /**
+   * r6 decide-cancel-race: sets cancel_requested under the Run's row lock (SELECT ... FOR UPDATE), the lock
+   * decideApproval takes, so a cancel and a decision of the same Run are serialized: a decision committed first is
+   * kept (the cancel then stops the executing Run), a cancel committed first makes the decision lose (APR-2104).
+   * "finished": the Run is already terminal (RUN-7005, nothing changed). "requested": committed; `status` is the Run's
+   * status under the lock.
+   */
+  async requestCancelSerialized(id: string): Promise<{ result: "requested" | "finished" | "missing"; status?: string }> {
+    return transaction(async (conn) => {
+      const [runs] = await conn.query("SELECT status FROM runs WHERE id = ? FOR UPDATE", [id]);
+      const run = (runs as Array<{ status: string }>)[0];
+      if (!run) return { result: "missing" as const };
+      if (TERMINAL_RUN_STATUSES.has(run.status)) return { result: "finished" as const, status: run.status };
+      await conn.execute("UPDATE runs SET cancel_requested = 1 WHERE id = ?", [id]);
+      return { result: "requested" as const, status: run.status };
+    });
+  },
+  /**
+   * r6 cancel sweep: Runs whose cancel is committed but that nobody executes (queued or waiting_approval, lease free),
+   * e.g. the cancel's own finalize failed. claimRun no longer claims such a waiting Run, so they are finished here.
+   */
+  async listCancelRequestedRuns(limit: number): Promise<string[]> {
+    const rows = await query<{ id: string }>(
+      `SELECT id FROM runs
+       WHERE status IN ('queued','waiting_approval') AND cancel_requested = 1
+         AND (claimed_by IS NULL OR lease_expires_at IS NULL OR lease_expires_at < UTC_TIMESTAMP(3))
+       ORDER BY id LIMIT ?`,
+      [Math.max(1, Math.floor(limit))],
+    );
+    return rows.map((row) => row.id);
+  },
+  /**
+   * r6 cancel sweep: takes the lease of a cancel-requested queued / waiting_approval Run (status unchanged) so its
+   * terminal write is fenced: of two finishers only the lease holder writes, a lease lost meanwhile drops the write.
+   */
+  async claimCancelRequestedRun(id: string, workerId: string, leaseSeconds: number): Promise<RunRow | null> {
+    const seconds = Math.max(1, Math.floor(leaseSeconds));
+    return transaction(async (conn) => {
+      const [result] = await conn.execute(
+        `UPDATE runs
+         SET claimed_by = ?, lease_expires_at = DATE_ADD(UTC_TIMESTAMP(3), INTERVAL ${seconds} SECOND), heartbeat_at = UTC_TIMESTAMP(3)
+         WHERE id = ? AND status IN ('queued','waiting_approval') AND cancel_requested = 1
+           AND (claimed_by IS NULL OR lease_expires_at IS NULL OR lease_expires_at < UTC_TIMESTAMP(3))`,
+        [workerId, id],
+      );
+      if ((result as ResultSetHeader).affectedRows !== 1) return null;
+      const [fresh] = await conn.query("SELECT * FROM runs WHERE id = ?", [id]);
+      return (fresh as RunRow[])[0] ?? null;
+    });
   },
   async addMessage(input: { threadId: string; runId: string; seq: number; role: string; content: unknown }): Promise<string> {
     const id = ulidWithPrefix("msg");
@@ -436,13 +486,26 @@ export const runsRepo = {
     const result = await execute("UPDATE approvals SET status = 'expired', decided_at = CURRENT_TIMESTAMP(3) WHERE id = ? AND status = 'pending'", [id]);
     return result.affectedRows === 1;
   },
-  /** r5 §2.3: a pending approval past expires_at (DB clock, UTC) can no longer be decided: 0 rows. */
+  /**
+   * r5 §2.3: a pending approval past expires_at (DB clock, UTC) can no longer be decided: false.
+   * r6 decide-cancel-race: the decision is written under the Run's row lock (SELECT ... FOR UPDATE), the same lock
+   * requestCancelSerialized takes, so a decision and a cancel of the same Run are serialized: once the cancel is
+   * committed (cancel_requested, or the Run already finished) the decision is lost (false). Lock order Run -> approval,
+   * as in updateRun's terminal transaction.
+   */
   async decideApproval(id: string, decision: "approved" | "rejected", decidedBy: string, comment: string): Promise<boolean> {
-    const result = await execute(
-      "UPDATE approvals SET status = ?, decided_by = ?, decided_at = CURRENT_TIMESTAMP(3), comment = ? WHERE id = ? AND status = 'pending' AND expires_at > UTC_TIMESTAMP(3)",
-      [decision, decidedBy, comment, id],
-    );
-    return result.affectedRows === 1;
+    const approval = await one<{ run_id: string }>("SELECT run_id FROM approvals WHERE id = ?", [id]);
+    if (!approval) return false;
+    return transaction(async (conn) => {
+      const [runs] = await conn.query("SELECT status, cancel_requested FROM runs WHERE id = ? FOR UPDATE", [approval.run_id]);
+      const run = (runs as Array<{ status: string; cancel_requested: number | boolean | null }>)[0];
+      if (!run || TERMINAL_RUN_STATUSES.has(run.status) || Number(run.cancel_requested ?? 0) === 1) return false;
+      const [result] = await conn.execute(
+        "UPDATE approvals SET status = ?, decided_by = ?, decided_at = CURRENT_TIMESTAMP(3), comment = ? WHERE id = ? AND status = 'pending' AND expires_at > UTC_TIMESTAMP(3)",
+        [decision, decidedBy, comment, id],
+      );
+      return (result as ResultSetHeader).affectedRows === 1;
+    });
   },
   async listPendingApprovedCalls(runId: string): Promise<Array<ToolCallRow & { approval_status: string }>> {
     return query(
