@@ -140,19 +140,19 @@ describe("SIG-11: exit is the last shutdown phase", () => {
   }
 });
 
-describe("SIG-12: the backstop holds the process", () => {
+describe("SIG-12: a pending pool.end() with no handle still ends with an exit line", () => {
   // The drain waits on a promise that holds no handle (test preload: the pool's end() never settles, its sockets are
   // closed). With the backstop timer unref'd the event loop was empty and the process exited 0 with no exit line.
-  it("SIG-12: pool.end() never settles and holds no handle -> drain_timeout at ~9000 ms, exit 1, exit is the last phase line, gone within 9.5 s", { timeout: 30_000 }, async () => {
+  // r6 pool-end-cap (plan change 10-31 09:28, replaces the r4 expectation drain_timeout at ~9000 ms): pool.end() is cut
+  // at the 1000 ms close slice by a timer that is not unref'd either -> pool_end_timeout, flush, exit 1 last.
+  it("SIG-12: pool.end() never settles and holds no handle -> pool_end_timeout, exit 1, exit is the last phase line, no drain_timeout, gone within 9.5 s", { timeout: 30_000 }, async () => {
     const proc = await api({ preload: ["pending-pool-end"] });
     const result = await sigterm(proc, 15_000);
     expect(result.code, `after ${result.ms} ms\n${proc.output().slice(-1500)}`).toBe(1);
     expect(result.ms).toBeLessThan(9500);
     const phases = jsonPhases(proc.stdout());
-    const drainTimeout = phases.find((entry) => entry.phase === "drain_timeout");
-    expect(drainTimeout, proc.stdout().slice(-1500)).toBeDefined();
-    expect(drainTimeout!.ms).toBeGreaterThanOrEqual(8900);
-    expect(drainTimeout!.ms).toBeLessThan(9300);
+    expect(phases.map((entry) => entry.phase), proc.stdout().slice(-1500)).not.toContain("drain_timeout");
+    expect(phases.find((entry) => entry.phase === "pool_end_timeout"), proc.stdout().slice(-1500)).toBeDefined();
     expect(phases.at(-1)).toMatchObject({ phase: "exit", code: 1 });
     expect(phases.at(-1)!.phaseSeq).toBe(Math.max(...phases.map((entry) => entry.phaseSeq)));
     expect(phases.map((entry) => entry.phase)).not.toContain("pool_end");

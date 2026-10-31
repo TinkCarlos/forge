@@ -358,8 +358,7 @@ describe("shutdown deadline budget (ruling 15:39)", () => {
   // r6 pool-end-cap: a database that does not answer any more can leave pool.end() pending for good (mysql2 waits for
   // the in-flight queries). pool.end gets the 1000 ms close slice of the 9000 ms deadline (less when the flush would
   // not fit any more); when it runs out: phase pool_end_timeout, then the normal flush, then exit (last), code 1.
-  // RED (r6 pool-end-cap): fails until the fix; the fix commit turns it.fails into it.
-  it.fails("pool.end() never resolves: pool_end_timeout {poolEndMs: 1000} after 1000 ms, then the flush, exit 1 last, no drain_timeout", async () => {
+  it("pool.end() never resolves: pool_end_timeout {poolEndMs: 1000} after 1000 ms, then the flush, exit 1 last, no drain_timeout", async () => {
     vi.useFakeTimers();
     const info = vi.fn();
     const flushed: number[] = [];
@@ -382,8 +381,7 @@ describe("shutdown deadline budget (ruling 15:39)", () => {
     expect(lines.map((line) => line.phase)).not.toContain("drain_timeout");
   });
 
-  // RED (r6 pool-end-cap): fails until the fix; the fix commit turns it.fails into it.
-  it.fails("worst case with pool.end() hanging too: drain 5000 + release 1000 + pool.end 1000 + flush 2000, exit 1 by the 9000 ms deadline, no drain_timeout", async () => {
+  it("worst case with pool.end() hanging too: drain 5000 + release 1000 + pool.end 1000 + flush 2000, exit 1 by the 9000 ms deadline, no drain_timeout", async () => {
     vi.useFakeTimers();
     const info = vi.fn();
     const drainRuntime = vi.fn((budget: Budget) => new Promise((resolve) => setTimeout(() => resolve({
@@ -404,8 +402,7 @@ describe("shutdown deadline budget (ruling 15:39)", () => {
     expect(JSON.parse(writeStderrSync.mock.calls[0]![0] as string)).toMatchObject({ phase: "flush_timeout", timeoutMs: 2000, code: 1 });
   });
 
-  // RED (r6 pool-end-cap): fails until the fix; the fix commit turns it.fails into it.
-  it.fails("pool.end() gets only what is left before the deadline minus the flush: a slow close leaves it 0 ms", async () => {
+  it("pool.end() gets only what is left before the deadline minus the flush: a slow close leaves it 0 ms", async () => {
     vi.useFakeTimers();
     const info = vi.fn();
     const flush = vi.fn((done: () => void): void => done());

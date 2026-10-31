@@ -1,6 +1,6 @@
 // TEST ONLY. Loaded with `node --import` by tests/helpers/sse-client.ts (startApiProcess, preload "pending-pool-end").
 // mysql2's promise pool end() still closes the pool (its sockets go away) but returns a promise that never settles and
-// holds no handle, so the shutdown drain waits on nothing the event loop can see: only the backstop timer can end it.
+// holds no handle, so the shutdown waits on nothing the event loop can see: only a timer (the pool.end limit, r6) ends it.
 // Nothing in apps/ references this file and there is no env switch for it: only a test can load it.
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
