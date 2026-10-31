@@ -75,6 +75,18 @@ export async function finalize(
   }
 }
 
+/**
+ * r6: a cancel accepted while this round's tool calls ran takes effect once they have ended (no forced interruption):
+ * the Run ends cancelled before the next model call and before waiting for another approval. Before this check the
+ * loop went straight on to the model and a cancel during a tool call was ignored (the Run ended succeeded).
+ */
+async function cancelledAfterTools(run: RunRow): Promise<boolean> {
+  const latest = await repos.getRun(run.id);
+  if (!latest || !latest.cancel_requested || TERMINAL.includes(latest.status)) return false;
+  await finalize(latest, "cancelled");
+  return true;
+}
+
 async function runLoop(run: RunRow, workerId: string, lease: AbortSignal, drain: AbortSignal): Promise<void> {
   const lostLease = () => lease.aborted;
   const agent = await repos.getAgent(run.agent_id);
@@ -110,6 +122,7 @@ async function runLoop(run: RunRow, workerId: string, lease: AbortSignal, drain:
     }
 
     const openState = await settleToolCalls(fresh, spec, tools, lease);
+    if (await cancelledAfterTools(fresh)) return;
     if (openState === "expired") {
       await finalize(fresh, "failed", null, APPROVAL_EXPIRED_CODE, APPROVAL_EXPIRED_MESSAGE);
       return;
@@ -293,6 +306,7 @@ async function runLoop(run: RunRow, workerId: string, lease: AbortSignal, drain:
     }
 
     const state = await settleToolCalls(fresh, spec, tools, lease);
+    if (await cancelledAfterTools(fresh)) return;
     if (state === "expired") {
       await finalize(fresh, "failed", null, APPROVAL_EXPIRED_CODE, APPROVAL_EXPIRED_MESSAGE);
       return;

@@ -104,8 +104,7 @@ afterAll(async () => {
 });
 
 describe("cancel while an approved tool call executes", () => {
-  // RED (r6 cancel-during-tool): fails until the fix; the fix commit turns it.fails into it.
-  it.fails("accepted (200), the tool call completes once, the Run ends cancelled (not succeeded)", { timeout: 30_000 }, async () => {
+  it("accepted (200), the tool call completes once, the Run ends cancelled (not succeeded)", { timeout: 30_000 }, async () => {
     const seeded = await seedWaiting();
     expect(await repos.decideApproval(seeded.approvalId, "approved", ADMIN_ID, "")).toBe(true);
     const execution = executeRun(seeded.runId, `w-cdt-${suffix}`);
