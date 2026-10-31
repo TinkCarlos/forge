@@ -7,7 +7,22 @@ import { expectHandoffMapping } from "./helpers/run-handoff.js";
 // drained -> released; tool_inflight / release_timeout / release_error -> lease_expiry.
 const drain = await import("../packages/runtime/src/drain.js");
 
-afterEach(() => drain.resetDrain());
+afterEach(() => {
+  vi.useRealTimers();
+  drain.resetDrain();
+});
+
+// r6 A19: drainRuns only uses Date.now and setTimeout, so its step limits are asserted exactly under vi fake timers
+// (no wall-clock bound that load can break): the promise is still pending 1 ms before `atMs` and settled at `atMs`.
+async function settlesAt<T>(pending: Promise<T>, atMs: number): Promise<T> {
+  let settled = false;
+  void pending.then(() => (settled = true), () => (settled = true));
+  await vi.advanceTimersByTimeAsync(atMs - 1);
+  expect(settled, `drainRuns already settled before ${atMs} ms`).toBe(false);
+  await vi.advanceTimersByTimeAsync(1);
+  expect(settled, `drainRuns not settled at ${atMs} ms`).toBe(true);
+  return pending;
+}
 
 const never = () => new Promise<void>(() => undefined);
 let n = 0;
@@ -32,16 +47,14 @@ describe("drain handoff (ruling 15:39)", () => {
     const reg = drain.registerRun(runId, hardAbort);
     reg.toolStarted(); // never ends
     const release = vi.fn(async () => undefined);
-    const startedAt = Date.now();
-    const result = await drain.drainRuns(200, { releaseMs: 300 });
-    const took = Date.now() - startedAt;
-    expect(hardAbort).toHaveBeenCalledTimes(1);
-    expect(result).toMatchObject({ timedOut: true, runIds: [runId], releaseTimedOut: true });
+    vi.useFakeTimers();
+    // The drain step ends at its 200 ms limit (hard abort), the release step at its 300 ms limit: settled at 500.
+    const result = await settlesAt(drain.drainRuns(200, { releaseMs: 300 }), 200 + 300);
+    expect(hardAbort, JSON.stringify(result)).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ timedOut: true, runIds: [runId], releaseTimedOut: true, ms: 200, releaseMs: 300 });
     expect(result.handoffs).toEqual([{ runId, takeover: "lease_expiry", reason: "tool_inflight" }]);
-    expect(took).toBeGreaterThanOrEqual(490);
-    expect(took).toBeLessThan(900);
     reg.handOff(release); // too late: the drain is over
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await vi.advanceTimersByTimeAsync(20);
     expect(release).not.toHaveBeenCalled();
     expectHandoffMapping(result.handoffs);
   });
@@ -77,10 +90,10 @@ describe("drain handoff (ruling 15:39)", () => {
     const runId = id();
     const reg = drain.registerRun(runId, () => undefined);
     reg.signal.addEventListener("abort", () => reg.handOff(never));
-    const startedAt = Date.now();
-    const result = await drain.drainRuns(1000, { releaseMs: 200 });
-    expect(Date.now() - startedAt).toBeLessThan(600);
-    expect(result).toMatchObject({ timedOut: false, releaseTimedOut: true });
+    vi.useFakeTimers();
+    // The Run hands over at once (drain step 0 ms); the hanging release is cut at its 200 ms limit.
+    const result = await settlesAt(drain.drainRuns(1000, { releaseMs: 200 }), 200);
+    expect(result).toMatchObject({ timedOut: false, releaseTimedOut: true, ms: 0, releaseMs: 200 });
     expect(result.handoffs).toEqual([{ runId, takeover: "lease_expiry", reason: "release_timeout" }]);
     expectHandoffMapping(result.handoffs);
   });
@@ -115,12 +128,11 @@ describe("drain handoff (ruling 15:39)", () => {
   it("the deadline cuts both steps: drain and release never wait past deadlineAt", async () => {
     const runId = id();
     drain.registerRun(runId, () => undefined).toolStarted();
-    const startedAt = Date.now();
-    const result = await drain.drainRuns(5000, { releaseMs: 1000, deadlineAt: startedAt + 300 });
-    const took = Date.now() - startedAt;
-    expect(took).toBeGreaterThanOrEqual(290);
-    expect(took).toBeLessThan(600);
-    expect(result.ms).toBeLessThan(600);
+    vi.useFakeTimers();
+    // The drain step is cut from 5000 to the deadline (300 ms), the release step from 1000 to what is left (0 ms: a
+    // setTimeout(0), which Node runs as 1 ms): settled at 301, never at the 1000 ms release limit.
+    const result = await settlesAt(drain.drainRuns(5000, { releaseMs: 1000, deadlineAt: Date.now() + 300 }), 300 + 1);
+    expect(result).toMatchObject({ timedOut: true, runIds: [runId], ms: 300, releaseMs: 0, releaseTimedOut: true });
     expect(result.handoffs).toEqual([{ runId, takeover: "lease_expiry", reason: "tool_inflight" }]);
   });
 
