@@ -1,102 +1,129 @@
 # Forge 实现状态（0.1.0 MVP）
 
-日期：2026-10-21　状态：可运行 MVP
+核对日期：2026-10-31。本文按当前集成代码记录实现、限制和本轮验证；[总体设计](../02-architecture/system-design.md)中的 V2 目标不等于已经交付的能力。
 
-> 目标架构见 [system-design.md](../02-architecture/system-design.md)。本文记录**代码实际实现**，避免 AI/开发者把目标能力误认为已完成。
+## 1. 当前工程与运行方式
 
-## 1. 验证证据
+| 项目 | 实际实现 |
+| --- | --- |
+| Node.js | 当前安装基线固定为 Node 22：`.nvmrc` 为 22，`engines` 为 `>=22 <23`，`.npmrc` 开启 `engine-strict`。本轮使用 22.23.3；V2 文档中的 Node 24 尚不是当前安装基线 |
+| 工程 | TypeScript strict、pnpm workspace、ESLint；并非 Biome |
+| API | Fastify 5；`/auth`、`/admin/api`、`/open/v1`、`/integration/v1`、`/healthz`、`/readyz` |
+| 数据与迁移 | MySQL、mysql2、手写 SQL Repository；`packages/store/src/schema.sql` 与 `scripts/migrate.ts`，当前迁移 001–008；未使用 Drizzle |
+| Agent 执行 | 自有模型/工具循环、MySQL 队列、租约与心跳；没有接入 Pi、Temporal 或 Redis |
+| 进程 | API 可内嵌 worker；也可用 `apps/worker` 独立运行。调度与 Webhook 由 runtime 轮询处理 |
+| 会话 | MySQL `auth_sessions` / `auth_oidc_states`，不是旧版内存 Map，也不是 Redis |
+| 控制台 | `/` 为原生 HTML/CSS/JS 控制台；`/next/` 为 React 19 + Vite + shadcn/Radix + Tailwind + TanStack Router/Query/Table |
+| 构建 | `pnpm build` 仅运行服务端类型检查；实际前端产物由 `pnpm build:console` 生成到 `apps/console/dist`，API 静态托管 |
+| 模块 | 已有 core、store、identity、governance、models、capabilities、runtime；contracts、registry、sdk、eval、testkit 等目标包尚未独立实现 |
 
-| 检查 | 命令 | 结果 |
-| --- | --- | --- |
-| 类型检查 | `pnpm typecheck` | 通过 |
-| 单元 + 集成测试 | `pnpm test` | 26/26 通过（真实 MySQL），含租约续跑、并行工具、SSE、Schema 修复、fallback、幂等键、Webhook 重试、同步等待与会话续接 |
-| 端到端冒烟 | `pnpm smoke` | MCP、审批、OpenAPI、定时任务、开放 API、幂等键、同步 invoke、同一 thread 续聊、数据范围、能力包、审计、SSE 续传、过期租约续跑全部通过 |
-| 编辑流程 | `pnpm smoke:edit` | Agent 新版本、MCP/Skill/Provider/Model/App/Schedule 修改通过 |
-| SSO/Connector | `pnpm smoke:sso` | Mock OIDC 授权码回调、角色映射、Principal 验签与主体映射通过 |
-| 控制台 | 浏览器打开 `http://localhost:3100` | 登录、总览、Agents 列表正常渲染；已做结构快照验证 |
+主链路：API 鉴权与授权 → 创建 Thread/Run → MySQL 认领 → 读取 Agent 版本、解析 Skill/工具/模型 → 模型与工具循环 → 审批或终态 → MySQL 事件/SSE/Webhook。
 
-复现前提：MySQL 8 可连接；`pnpm db:migrate && pnpm db:seed`；`pnpm dev`；`pnpm mock:services`（MCP/OpenAPI 用例）。
+## 2. 已实现的能力
 
-## 2. 已实现
+### 2.1 Agent、模型与工具（FR-AG / FR-MD / FR-MCP / FR-SK / FR-TL）
 
-### API / 控制台
-- Fastify 服务：`/auth`、`/admin/api`、`/open/v1`、`/integration/v1`、`/healthz`、`/readyz`、`/assets`、`/`。
-- 本地管理员登录（scrypt + 签名 Cookie + CSRF）；OIDC 登录（授权码 + PKCE + discovery/JWKS）；Connector Principal 验签。
-- 控制台：总览、Agents、模型、MCP、Skills、工具源、能力包、运行中心、审批、定时任务、应用与密钥、用户与权限、SSO/Connector。
-- 支持新增、编辑、发布、启停、运行、审批、密钥创建等操作。
+- Agent 草稿、发布、启停与 API 开放开关；Run 保存 `agent_version_id`。发布新 Agent 版本不会替换已有 Run 的 Agent 版本。
+- 模型支持 `mock` 与 `openai-compatible`，包括工具调用解析、用量与成本计算、可重试错误、fallback、上下文裁剪、最大步数/成本限制、JSON Schema 输出校验与修复重试。
+- Skill 保存与发布 Markdown 内容，并注入系统提示词；这不是脚本执行或完整技能沙箱。
+- 内置工具、HTTP Streamable MCP（initialize、tools/list、tools/call）、OpenAPI 3.x 工具导入与执行；按 Agent toolsets 暴露工具。
+- 出站访问统一校验协议、主机/IP、DNS 解析结果、重定向与地址范围；默认拒绝私网等受限目标，按 `OUTBOUND_ALLOWLIST` 的 `host:port` 显式放行。旧 `TOOL_ALLOW_PRIVATE_NETWORK` 不再绕过检查。
+- Provider 凭据与 Webhook Secret 加密保存；API Key 保存不可逆摘要。前端响应、事件、日志等路径有敏感信息屏蔽。
 
-### Agent / 模型
-- Agent 草稿与发布版本；运行固定版本；spec 支持 model/skills/toolsets/limits/approval/output schema。
-- Provider：`mock` 离线模型 + `openai-compatible`；模型目录、能力、上下文、价格字段；API Key AES-256-GCM 加密。
-- 运行循环：系统提示 + Skill 注入 + 工具调用 + 工具结果回填 + 最大步数 + 成本上限 + JSON Schema 输出校验与修复重试。
-- 运行时加固：MySQL 租约认领与过期续跑、`run_steps`、`message.delta` 已停用（P1：只落库/下发打码后的 `message.completed`）、低/中风险工具并行、上下文压缩、主模型可重试错误后的 fallback。编排仍是 MySQL 队列，不是 Temporal。
-- 运行数据：threads、runs、messages、tool_calls、approvals、run_events、run_steps，全部 MySQL。
-- 后台：API 内嵌 worker（`EMBEDDED_WORKER=true`）或独立 `apps/worker`；MySQL 队列轮询，单进程并发由 `MAX_CONCURRENT_RUNS` 限制。
+**版本限制**：固定 Agent 版本尚不等于完整依赖快照。Skill 仍按 key 读取已发布内容，模型与工具配置在执行时解析；暂停后恢复可能读取更新后的配置。尚未实现 V2 的完整 Run 策略/依赖版本冻结。
 
-### MCP / 工具 / Skill
-- HTTP Streamable MCP：initialize、tools/list、tools/call；工具风险从 annotations 推断。
-- 工具名归一化为 OpenAI 兼容函数名；MCP/OpenAPI 工具通过 `toolsets` 白名单暴露。
-- OpenAPI 3.x 导入：paths/operations → tools，基础参数与 requestBody Schema；HTTP 执行、SSRF 默认拒绝私网（统一出站校验，按 `OUTBOUND_ALLOWLIST` 的 `host:port` 放行，见 admin-api.md §2.1）。5xx/429/超时记为 `HTP-4002` 并按 `TOOL_MAX_ATTEMPTS` 重试，4xx 直接交还模型。
-- Skill：SKILL.md 内容、发布版本、注入上下文。
+### 2.2 Run、审批与故障恢复（FR-RT / FR-GV）
 
-### 安全与治理
-- 功能权限：静态角色矩阵（platform_admin/org_admin/builder/operator/auditor/user），API 服务端校验。
-- 数据范围：`all/org/self/app`；Run 列表/详情/SSE/取消/审批做过滤；org 使用子树；API App 仅自身 Run。
-- 审批：高风险工具/显式审批工具暂停 Run，批准/驳回后恢复；超时标记 expired。
-- 审计：登录、创建、发布、取消、审批、安装等写入 `audit_logs`。
-- 加密：Provider 密钥与 Webhook Secret 使用主密钥加密；API Key 只存 HMAC 哈希与前缀。
+- `threads/runs/messages/tool_calls/approvals/run_events/run_steps` 持久化在 MySQL；支持同一 Thread 继续发起 Run。
+- 队列认领使用事务与 `FOR UPDATE SKIP LOCKED`；租约到期后可被其他 worker 接管。worker id 包含 `hostname:pid:epoch`，避免进程 PID 复用被识别成原持有者。
+- 运行中的写入通过租约作用域加持有者条件；失去租约后停止落库，并向模型/HTTP/MCP/OpenAPI 调用传递中止信号。心跳异常只容忍到安全截止时间，不会无限继续执行。
+- 模型步骤中断后允许重试；工具调用保存只读/副作用标记。接管时只读调用可重跑，有副作用的中断调用改为人工确认，避免直接重复发送。
+- OpenAPI 工具请求携带由 Run 与工具调用记录派生的稳定幂等键；是否真正避免下游重复副作用仍取决于下游处理。MCP 与 web_fetch 不携带同样的幂等头。
+- 高风险或显式指定工具进入审批；批准/驳回后继续执行。审批过期不可再决定，worker 扫描过期审批；超过宽限仍未完成的 Run 以 `APR-2102` 失败。
+- 决定审批与取消围绕同一 Run 串行化；取消请求接受后，正在进行的工具调用先完成，随后 Run 取消。worker 补扫已请求取消但未完成收尾的 Run。
+- SSE 从数据库事件按序号续传；对外 `message.delta` 已停用，只发送打码后的完整消息事件。不能将当前能力描述为浏览器逐 token 展示。
 
-### 开放平台 / 调度 / 包
-- API App、Key、Scope、每分钟限流、每日配额；Run 创建/查询/SSE/结果/取消。
-- 创建 Run 支持 `Idempotency-Key`：相同请求重放首次结果，不同请求体返回 `OPN-4503`。
-- `POST /open/v1/agents/{key}/invoke?wait=` 在 1–120 秒内等待终态；超时返回 202。`threadId` 可把新 Run 接到同一会话，模型能看到该会话里已有的消息。
-- Webhook：HMAC-SHA256 签名，投递写入 `webhook_deliveries`。2xx 完成；5xx/429/408/网络错误按 1 分钟、5 分钟、30 分钟、2 小时、6 小时重试；其他 4xx 停止。管理端可查看并重放。当前一个应用一个 Webhook URL，还没有独立 endpoint 表。
-- 定时任务：Cron/时区、启停、立即运行、下次运行时间；以创建者身份运行。
-- 能力包：声明式 JSON 安装 Agent/Skill/MCP/Provider；记录安装状态与卸载标记。
+### 2.3 身份、权限与审计（FR-GV / FR-DLV）
 
-## 3. 与目标架构的差异
+- 本地应急登录、签名会话 Cookie、CSRF、OIDC 授权码 + PKCE、discovery/JWKS 与显式角色映射；映射失败拒绝登录。
+- 会话与 OIDC state 存入 MySQL；存储 token/state 摘要，每次请求重新读取用户与组织状态，停用/角色变更不会继续沿用旧 Principal 快照。会话按到期时间判断有效性，并有过期清理任务。
+- Cookie 始终 HttpOnly/SameSite=Lax；仅明确 `NODE_ENV=development|test` 时关闭 Secure，未设置环境按生产安全默认处理。
+- 固定角色矩阵、组织/本人/应用等数据范围、Run/审批/SSE/写操作的服务端校验；审计记录资源所属组织，查询按调用者范围过滤。
+- API Key 的有效 Scope 为 Key 创建时 Scope 与应用当前 Scope 的交集；不支持 `*` 通配授权。
+- Connector 已实现 Principal 验签、环境/issuer/audience 检查与主体映射。完整 SDK 制品接入、签名配置刷新/LKG、心跳、出站 `callSystem` 未实现，不能视为已完成企业真实联调。
+- 尚无可配置的完整功能权限矩阵与 deny 优先数据策略引擎；`data_policies` 表存在不代表已接入执行。也未统一实现 V2 要求的所有 Repository `AccessContext/QueryFilter` 契约。
 
-| 目标 | 当前实现 | 影响 / 下一步 |
-| --- | --- | --- |
-| Temporal 持久化工作流 | MySQL 队列 + 租约续跑 + `run_steps` | 已落库步骤可恢复；未落库模型调用至少再执行一次。编排仍不是 Temporal；P1 只替换调度器 |
-| Redis SSE/限流/会话 | 内存会话 + DB 事件轮询 + 内存限流 | 多实例部署会话/SSE 不共享；P1 接 Redis |
-| Drizzle ORM | mysql2 + 手写 SQL Repository | 表结构以 MySQL 设计为目标；P1 可迁移 Drizzle |
-| React + Ant Design 控制台 | 原生 HTML/CSS/JS 控制台 | 功能可用，无构建链；P1 可替换 |
-| MCP stdio / OAuth | 仅 HTTP MCP | P1 增加进程管理与 OAuth |
-| Agent Connector 完整生命周期 | Principal 验签 + 主体映射 | 缺少签名配置刷新/LKG/心跳/出站 `callSystem`；P1 |
-| 功能权限矩阵 | 静态角色矩阵 + 用户数据范围 | 控制台展示矩阵，尚不能自定义角色权限；P1 |
-| 数据权限策略表 | 角色 + `users.data_scope` | 未使用 `data_policies` 表；P1 支持自定义范围 |
-| 文件/OCR/Artifact | 未实现 | P1 |
-| 知识库/评测/通知 | 未实现 | P1 |
-| 用户换部门、改显示名 | `PATCH /admin/api/users/{id}` 只管启停与角色/数据范围；`orgUnitId`、`displayName` 传了即 400 | 待办：单独的换部门接口（Repository 的 `org_unit_id` 更新与 `user.org_transfer_out` 审计已就绪）与显示名修改 |
-| `.forgepkg` 签名包 | JSON 声明式安装 | P1 增加 zip/manifest/checksum/签名 |
-| Helm/离线包/HA | Compose/本地运行 | P1 |
+### 2.4 开放平台、定时任务与能力包（FR-OP / FR-TR / FR-PL）
 
-## 4. 运行配置
+- API App/Key/Scope，已发布 Agent 目录，创建/读取/取消 Run、结果与 SSE；`Idempotency-Key` 支持同请求重放、异请求冲突。
+- `invoke?wait=` 在 1–120 秒内等待，未到终态返回 202；通过 `threadId` 续聊，但独立 Thread CRUD、运行中插话、File/Artifact API 未实现。
+- 每分钟限流为 API 进程内固定窗口；每日 Run 配额查询数据库。没有 Redis 分布式限流，也没有完整月成本/并发配额。
+- Webhook HMAC-SHA256 签名、投递落库、重试与管理端重放；当前一个应用一个 Webhook URL。
+- Cron/时区调度、启停、立即执行、下次运行时间；绑定服务账号时以该账号的身份和当前权限执行，账号/Agent 不可用时暂停，默认并发 `skip`。仍是 MySQL 轮询，并非 Temporal Schedule。
+- 声明式 JSON 能力包可安装 Agent/Skill/MCP/Provider；校验输入，记录资源，安装失败补偿本次新建资源，重复安装合并记录，卸载保留审计与状态。不是完整 `.forgepkg` checksum/签名/依赖解析/升级回滚系统。
 
-- `DATABASE_URL`：MySQL 连接串。
-- `FORGE_MASTER_KEY`：32 字节 base64，用于 AES-256-GCM；丢失将无法解密 Provider/Webhook 密钥。
-- `FORGE_ADMIN_EMAIL` / `FORGE_ADMIN_PASSWORD`：首次 seed 的应急管理员。
-- `ALLOW_LOCAL_LOGIN`：本地登录开关；生产应配合 SSO 并仅保留应急管理员。
-- `OIDC_*`、`SSO_TOKEN_VALIDATION_MODE`、`CONNECTOR_PRINCIPAL_*`、`AGENT_CONNECTOR_*`：统一登录/Connector。
-- `OUTBOUND_ALLOWLIST`：默认空；本地演示 MCP/OpenAPI mock 时设为 `127.0.0.1:8090`。`TOOL_ALLOW_PRIVATE_NETWORK` 已废弃，不再绕过出站校验。
-- `EMBEDDED_WORKER`：单进程开发默认 `true`；生产拆分 worker 时在 API 设为 `false`，单独运行 `apps/worker`。
-  - API 进程关停（当前实现，P3-07 / r5，`apps/api/src/server.ts` + `apps/api/src/shutdown.ts`）：收到 SIGTERM / SIGINT 后先开始排空 runtime（立即停止领新 Run 和 worker / scheduler 定时器），再停止接新请求并等在途请求结束（`app.close()`）→ 等排空结束 → 关闭 DB 连接池 → 退出码 0。排空：模型调用立即中止（`running` 的 call_model 步骤留给下一个 worker 记失败重试），工具调用等其完成并落库，然后在租约条件内写 `run.released`（`reason: drain`）并释放租约，别的 worker 在一个 `WORKER_POLL_MS` 内接手；超过排空上限中止其余调用（工具调用记录留在 `running`，按下文接手规则处理），记 `phase=run_drain_timeout` 日志（含 `runIds`、`drainMs`），继续正常关闭（关连接池、记 `exit`），退出码 1。截止时间（裁定 15:39）：从收到信号起 9000ms，每一步等待取「自身封顶」与「距截止剩余」的较小值——Run 排空 `min(WORKER_DRAIN_TIMEOUT_MS, 5000)`、释放租约 1000ms（超时记 `phase=release_timeout`，含 `runIds`、`releaseMs`）、日志 flush 2000ms，合计 8000ms，留 1000ms 关闭连接：关闭连接池（`pool.end()`）最多等 `min(1000, 截止 - 2000 - 已用)`ms（数据库不再响应时 `pool.end()` 会一直挂住），到时记 `phase=pool_end_timeout`（含 `poolEndMs`，代替 `pool_end`），照常 flush 后记 `exit`，退出码 1。只有 Run 的工具调用全部结束才主动释放租约；有调用被中止后仍未结束的不释放，等租约自然过期再由别的 worker 接手。每个 Run 记一行 `{phase:"run_handoff", runId, takeover:"released"|"lease_expiry", reason}`（`reason`：`drained`→`released`；`tool_inflight` / `release_timeout` / `release_error`→`lease_expiry`），在 `run_drain_timeout` 之后、`exit` 之前。任一步失败记日志（脱敏），后续步骤照常执行，退出码 1；9000ms 时仍未关完（例如 `app.close()` 挂住）由进程级兜底记 `phase=drain_timeout` 并以退出码 1 强制退出，`exit` 始终是最后一行。关停期间再收到信号不会重复关停。独立的 `apps/worker` 进程同样排空（排空上限为 `WORKER_DRAIN_TIMEOUT_MS`，释放条件和 `run_handoff` 行同上）、关闭连接池后退出（排空超时记 `run_drain_timeout`、退出码 1；硬上限为排空 + 5 秒，到时记 `drain_timeout` 并退出码 1）。部署时 `terminationGracePeriodSeconds` 建议 ≥ 60，改大排空上限时同步加大。
-- `WORKER_DRAIN_TIMEOUT_MS`：停机排空上限，整数 0..300000，默认 `35000`（API 进程封顶 5000ms，独立 worker 按配置值）。
-- 独立 worker 关停（`apps/worker/src/main.ts`）：排空、释放租约后关闭 DB 连接池，`pool.end()` 最多等 1000ms，且不超过「排空上限 + 5s」的兜底硬停；到时记一行 `phase=pool_end_timeout`（含 `signal`、`poolEndMs`），退出码 1，不会走到兜底的 `drain_timeout`。
-- `APPROVAL_EXPIRED_GRACE_SECONDS`：审批过期后的宽限秒数，整数 60..86400，默认 `900`；审批到 `expires_at` 后不能再决定（决定接口返回 `409 APR-2104`），按驳回处理、绝不执行；到期超过宽限仍未收尾的审批由 worker 每轮的过期扫描交给 Run 处理：系统驳回该审批，Run 以 `APR-2102`「审批已过期，Run 已终止」失败。`WORKER_POLL_MS` 必须小于该值 × 1000，否则启动时报配置错误。
-- `MAX_CONCURRENT_RUNS`：单进程同时执行的 Run 数，默认 `2`。
-- `LEASE_TTL_SECONDS`：运行租约秒数，默认 `30`；worker 在租约到期前续租，过期后其他 worker 可重领。
-  - 续租失败时中止执行（当前实现，P3-09）：心跳返回租约已不属于本 worker → 立即中止；心跳报错或无响应（如断库）时容忍，直到距上次成功续租满 `LEASE_TTL_SECONDS` − 心跳间隔（心跳间隔为 max(1 秒, TTL/3)，默认 30 秒 TTL 即 20 秒，早于租约到期、别的 worker 能重领之前）再中止；该差值必须大于 0，否则启动 Runtime 时直接报错（`LEASE_TTL_SECONDS` 至少为 2）；一次瞬时报错、下一次续租成功 → 不中止。执行期间对该 Run 的每一次落库写入（Run 状态/用量、消息、步骤、事件、工具调用、审批）都带租约持有者条件 `runs.claimed_by = 本 worker`（与 K-34 的条件更新同一做法）：租约已被别的 worker 领走时写入影响 0 行，视为租约丢失，这次写入丢弃、执行停止。中止时 AbortSignal 传到模型调用和工具调用（web_fetch、MCP、OpenAPI 的出站请求随之断开），被中止的那次执行不再写 step 结果、消息、工具结果和终态；`running` 的 call_model 步骤由下一个领到 Run 的 worker 记为失败并发 `model.retried`（`reason: incomplete_step`），`running` 的工具调用按快照中的只读标记处理：只读调用重跑一次（`tool.interrupted`，`action: rerun`），有副作用的调用不自动重发，改为 `reason=interrupted` 的审批（`tool.interrupted`，`action: confirm`，再发 `approval.required`），确认后才以下一次尝试执行，驳回或过期则作为工具错误交还模型。释放租约在中止后为尽力而为。OpenAPI 工具的每次请求带 `Idempotency-Key`（`sha256(runId:工具调用记录 id)`，同一调用的各次尝试相同），建议下游据此去重；MCP 与 web_fetch 不带。worker id 为 `hostname:pid:epoch`（epoch 为进程启动时生成的 8 位 hex），重启后复用同一 pid 的进程不会被当成原持有者。
-- `MODEL_MAX_ATTEMPTS`：单个模型候选的可重试次数，默认 `2`，耗尽后才切 `fallbackProvider` / `fallbackModel`。
-- `DEFAULT_MAX_CONTEXT_TOKENS`：未在 AgentSpec 指定 `limits.maxContextTokens` 时的压缩阈值，默认 `8000`。
-- `DEFAULT_MAX_PARALLEL_TOOLS`：未指定 `limits.maxParallelTools` 时的并行工具上限，默认 `4`。
-- `TOOL_MAX_ATTEMPTS`：单个工具调用遇到可重试错误时的尝试次数，默认 `2`。
+### 2.5 控制台（FR-UI）
 
-## 5. 未覆盖的验收项
+- 旧控制台覆盖总览、Agent、模型、MCP、Skill、工具、能力包、Run/审批、定时任务、应用与密钥、用户/服务账号、SSO 与审计等操作。
+- 新控制台已实现登录、Agent 列表与审批列表等，其他业务入口仍跳转旧控制台。不是全部页面已经完成 React 迁移。
+- 新旧界面有权限入口、错误码、网络失败提示、取消请求状态、审批接管状态、长文本/响应式处理；`/next/` 审批页重新可见时限频刷新。
+- SSO 失败只展示固定码表文案，URL 中的登录错误参数清除后仍保留页面提示；未知值不作为 HTML 展示。
+- 前端有 Vitest 回归与 CSP 构建检查；尚无项目级 Playwright 全流程验收套件。
 
-- 真实公司 IdP 与 Agent Portal 联调（需要第三方参数）。
-- 多实例会话共享、Redis 事件、K8s/Helm 发布。
-- Temporal 历史回放与长任务回调。MySQL 租约已覆盖「进程崩溃后从已落库步骤继续」。
-- 文件/知识库/评测/字段级脱敏/资源共享。
-- 通过真实 OpenAI-compatible 端点的高并发/限流测试（当前 Mock 与本地 HTTP 工具已覆盖协议路径）。
+## 3. 停机与部署边界
+
+- API 收到 SIGTERM/SIGINT 后停止领任务并开始排空，关闭监听/SSE，等待在途任务，再关闭数据库连接池和刷新日志。
+- API 的 Run 排空上限为 `min(WORKER_DRAIN_TIMEOUT_MS, 5000)`；释放租约封顶 1000ms，连接池关闭封顶 1000ms且受总预算约束，正常日志 flush 封顶 2000ms。
+- 正常关闭按收到信号后的 9000ms 截止时间分配预算；兜底路径以 9400ms 为目标调用退出，预留定时器迟到余量，测试约束在 9500ms 内调用退出。`exit_call` 单调时钟记录位于日志 flush 后、实际退出调用前；`exit` 是最后一个 phase。
+- 工具全部结束才主动释放租约；仍有调用未结束时等待租约自然过期。每个 Run 记录 `run_handoff`，区分 `released` 与 `lease_expiry`。
+- 独立 worker 按 `WORKER_DRAIN_TIMEOUT_MS` 排空，连接池关闭最多 1000ms，进程兜底为排空上限加 5 秒。超时/失败退出码为 1；成功为 0。
+- 生产迁移和部署仍需遵循[发布流程](../06-operations/release-process.md)。本轮本地验证不代表已经部署，亦不证明真实 SSO/Connector 联调通过。
+
+## 4. 配置与验证方式
+
+关键配置：`DATABASE_URL`、`FORGE_MASTER_KEY`、`SESSION_SECRET`、`API_KEY_PEPPER`、`FORGE_ADMIN_PASSWORD`、`OIDC_*`、`AGENT_CONNECTOR_*`、`OUTBOUND_ALLOWLIST`、`EMBEDDED_WORKER`、`MAX_CONCURRENT_RUNS`、`LEASE_TTL_SECONDS`、`WORKER_DRAIN_TIMEOUT_MS`、`APPROVAL_EXPIRED_GRACE_SECONDS`。
+
+测试必须显式设置 `TEST_DATABASE_URL` 且库名以 `_test` 结尾；不会继承 `.env` 中的业务库作为测试目标。迁移/seed 对非 `_test`/`_ux` 库要求精确确认参数；reset 另要求明确的开发/测试环境与重置开关。
+
+当前有效命令：
+
+```bash
+pnpm db:migrate
+pnpm db:seed
+pnpm verify
+pnpm build
+pnpm smoke:isolated
+pnpm smoke:sso
+```
+
+- `verify` 包含服务端/前端 typecheck、lint、前端生产构建、后端单元/真实 MySQL/接口契约测试及前端测试。
+- 仓库没有独立的 `test:integration`、`test:contract` 脚本；相关用例由 `pnpm test` 执行，不应把不存在的命令写成已通过。
+- `smoke:isolated` 要求先启动本地 mock services，使用独立 `_test` 库及空闲 API 端口；测试涉及写入，禁止指向业务库。
+- `verify:envs` 可进一步验证 development/test/未设置 NODE_ENV 三种环境；是否执行应在验证记录中明确。
+
+### 4.1 2026-10-31 集成验证
+
+环境：Node 22.23.3、本机 MySQL 8.4.13、隔离测试数据库。旧文档的“26/26 通过”属于早期 MVP 历史记录，不作为本轮证据。
+
+| 检查 | 本轮结果 |
+| --- | --- |
+| 空库迁移 001–008 + seed | 通过 |
+| `pnpm verify` | 通过：后端 164 文件 / 2063 用例，前端初次 42 文件 / 509 用例；补入弹窗 close 时序回归后，前端重跑 42 文件 / 510 用例通过，无 skip/todo |
+| `pnpm build` | 通过；最终脚本修改后重新 typecheck 通过 |
+| `pnpm smoke:isolated` | 通过：工具、审批、调度、开放 API、幂等、Thread 续接、数据范围、包安装、审计、SSE 续传、过期租约接管 |
+| `pnpm smoke:sso` | 通过：本地 Mock OIDC 与 Connector Principal 验签/主体映射 |
+| 真实浏览器 | ego lite：登录与 SSO 错误参数清理、Agent/审批页面、试运行后取消并保持详情同步；审批可见事件使用浏览器内派发 visibilitychange 验证，原生切换标签页行为未独立验收 |
+
+Lint 有 4 条既有 React Fast Refresh warning（0 error）；后端测试输出既有 Ajv union-type 提示。未执行 `verify:envs` 的 development/unset 全套重复检查。
+
+本轮浏览器验收补充发现并修复：复用同一个 dialog 后，旧表单延迟送达的 close 事件误关闭 Run SSE；新增回归先失败后通过，取消后弹窗可持续更新为 cancelled。冒烟原先还断言已禁用的 message.delta，现按当前契约检查完整消息、无 delta、严格递增事件序号与精确续传。
+
+本轮整理了 80 个本地分支引用：有效独有改动合入，rebase/cherry-pick 等价改动去重，已被新实现替代的旧实现不覆盖现行代码；公开前备份与其他历史恢复引用继续保留。QA 分支的文档作为历史用例材料合入，其旧执行日期/结果不等于本轮全量人工验收。
+
+## 5. 尚未完成与验收限制
+
+- Temporal、Redis、Drizzle、Pi 适配与完整 contracts/OpenAPI 代码生成/SDK 尚未实现。
+- 完整 Run 依赖与策略冻结、动态权限策略、资源共享、标准化签名能力包/依赖生命周期尚未完成。
+- MCP stdio/OAuth、Connector 完整生命周期、文件/OCR/Artifact、知识库、评测、通知尚未交付。
+- 生产高可用、分布式限流、真实模型高并发压测、真实公司 SSO/Connector、发布回滚演练未在本轮验收。
+- Mock OIDC/Connector 测试只能证明覆盖到的本地协议路径；不替代生产严格模式、真实身份提供方与公司权限配置验收。
