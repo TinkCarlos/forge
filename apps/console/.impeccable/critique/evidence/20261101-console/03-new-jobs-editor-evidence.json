@@ -1,0 +1,92 @@
+{
+  "snapshot": "[p3 \"Forge Console\" | space \"Forge console critique 20261101\"(33): 3 managed, 0 untracked — p1 \"Forge Console\", p2 \"Forge Console\", p3* \"Forge Console\"]\nroot\n  unordered_list\n    list_item\n      anchor [ref=96, url=http://127.0.0.1:3100/next/agents]\n        svg_root\n        text \"Forge\"\n        text \"Agent 控制台\"\n  container\n    text \"概览\"\n    unordered_list\n      list_item\n        anchor [ref=97, loc=href:/#dashboard, url=http://127.0.0.1:3100/#dashboard]\n          svg_root\n          text \"总览\"\n          svg_root\n    text \"构建\"\n    unordered_list\n      list_item\n        anchor [ref=98, url=http://127.0.0.1:3100/next/agents]\n          svg_root\n          text \"Agents\"\n      list_item\n        anchor [ref=99, loc=href:/#models, url=http://127.0.0.1:3100/#models]\n          svg_root\n          text \"模型\"\n          svg_root\n      list_item\n        anchor [ref=100, loc=href:/#mcp, url=http://127.0.0.1:3100/#mcp]\n          svg_root\n          text \"MCP 服务\"\n          svg_root\n      list_item\n        anchor [ref=101, loc=href:/#skills, url=http://127.0.0.1:3100/#skills]\n          svg_root\n          text \"Skills\"\n          svg_root\n      list_item\n        anchor [ref=102, loc=href:/#tools, url=http://127.0.0.1:3100/#tools]\n          svg_root\n          text \"工具源\"\n          svg_root\n      list_item\n        anchor [ref=103, loc=href:/#packages, url=http://127.0.0.1:3100/#packages]\n          svg_root\n          text \"能力包\"\n          svg_root\n    text \"运行\"\n    unordered_list\n      list_item\n        anchor [ref=104, loc=href:/next/jobs, url=http://127.0.0.1:3100/next/jobs]\n          svg_root\n          text \"Job 管理\"\n      list_item\n        anchor [ref=105, loc=href:/#runs, url=http://127.0.0.1:3100/#runs]\n          svg_root\n          text \"运行中心\"\n          svg_root\n      list_item\n        anchor [ref=106, loc=href:/next/approvals, url=http://127.0.0.1:3100/next/approvals]\n          svg_root\n          text \"审批中心\"\n      list_item\n        anchor [ref=107, loc=href:/#schedules, url=http://127.0.0.1:3100/#schedules]\n          svg_root\n          text \"定时任务\"\n          svg_root\n    text \"开放平台\"\n    unordered_list\n      list_item\n        anchor [ref=108, loc=href:/#apps, url=http://127.0.0.1:3100/#apps]\n          svg_root\n          text \"应用与密钥\"\n          svg_root\n    text \"治理\"\n    unordered_list\n      list_item\n        anchor [ref=109, loc=href:/#users, url=http://127.0.0.1:3100/#users]\n          svg_root\n          text \"账号与权限\"\n          svg_root\n      list_item\n        anchor [ref=110, loc=href:/#audit, url=http://127.0.0.1:3100/#audit]\n          svg_root\n          text \"操作日志\"\n          svg_root\n      list_item\n        anchor [ref=111, loc=href:/#secrets, url=http://127.0.0.1:3100/#secrets]\n          svg_root\n          text \"凭据\"\n          svg_root\n  unordered_list\n    list_item\n      button [ref=112]\n        text \"P\"\n        text \"Platform Admin\"\n        text \"platform_admin\"\n        svg_root\n  button \"Toggle Sidebar\" [ref=113, loc=css:button[aria-label=\"Toggle Sidebar\"]]\n  container\n    button [ref=114]\n      svg_root\n    button [ref=115]\n      svg_root\n      text \"搜索页面…\"\n      text \"⌘\"\n      text \"K\"\n    button [ref=116]\n      svg_root\n  container\n    heading\n      text \"Job 管理\"\n    button [ref=117]\n      svg_root\n      text \"创建任务\"\n    text \"状态\"\n    comboboxgrouping [ref=118]\n      text \"全部\"\n      svg_root\n    button \"刷新任务\" [ref=119, loc=css:button[aria-label=\"刷新任务\"]]\n      svg_root\n    table\n      table_row\n        table_cell\n          text \"名称\"\n        table_cell\n          text \"业务类型\"\n        table_cell\n          text \"状态\"\n        table_cell\n          text \"版本\"\n        table_cell\n          text \"操作\"\n      table_row\n        table_cell\n          text \"暂无任务\"\n    button [ref=120]\n      text \"下一页\"\n  dialog \"创建任务\" [ref=121, loc=role:dialog[name=\"创建任务\"]]\n    heading\n      text \"创建任务\"\n    form\n      container\n        container\n          text \"Key\"\n          textbox [ref=122]\n        container\n          text \"名称\"\n          textbox [ref=123]\n      container\n        text \"业务类型\"\n        textbox [ref=124]\n      container\n        text \"描述\"\n        textbox [ref=125]\n      container\n        text \"执行目标\"\n        comboboxgrouping [ref=126]\n          svg_root\n      container\n        text \"任务配置\"\n        textbox [ref=127]\n      container\n        button [ref=128]\n          text \"取消\"\n        button [ref=129]\n          text \"保存\"\n    button [ref=130]\n      svg_root\n",
+  "dialog": {
+    "viewport": {
+      "width": 1280,
+      "height": 800
+    },
+    "rect": {
+      "top": 40,
+      "bottom": 760,
+      "height": 720
+    },
+    "scroll": {
+      "height": 720,
+      "client": 718
+    },
+    "active": {
+      "tag": "INPUT",
+      "id": "job-key"
+    },
+    "fields": [
+      {
+        "tag": "INPUT",
+        "id": "job-key",
+        "required": true,
+        "placeholder": null,
+        "label": "Key"
+      },
+      {
+        "tag": "INPUT",
+        "id": "job-name",
+        "required": true,
+        "placeholder": null,
+        "label": "名称"
+      },
+      {
+        "tag": "INPUT",
+        "id": "job-business",
+        "required": true,
+        "placeholder": null,
+        "label": "业务类型"
+      },
+      {
+        "tag": "TEXTAREA",
+        "id": "job-description",
+        "required": false,
+        "placeholder": null,
+        "label": "描述"
+      },
+      {
+        "tag": "BUTTON",
+        "id": "job-target",
+        "required": false,
+        "placeholder": null,
+        "label": "执行目标"
+      },
+      {
+        "tag": "TEXTAREA",
+        "id": "job-draft",
+        "required": true,
+        "placeholder": null,
+        "label": "任务配置"
+      }
+    ],
+    "buttons": [
+      {
+        "text": "",
+        "disabled": false,
+        "ariaLabel": null
+      },
+      {
+        "text": "取消",
+        "disabled": false,
+        "ariaLabel": null
+      },
+      {
+        "text": "保存",
+        "disabled": true,
+        "ariaLabel": null
+      },
+      {
+        "text": "Close",
+        "disabled": false,
+        "ariaLabel": null
+      }
+    ]
+  },
+  "after": {
+    "activeText": "Skip to MainForgeAgent 控制台概览总览（在新标签页打开旧版控制台）构建Agents模型（在新标签页打开旧版控制台）MCP 服务（在新标签页打开旧版控制台）Skills（在新标签页打开旧版控制台）工具源（在新标签页打开旧版控制台）能力包（在新标签页打开旧版控制台）运行Job 管理运行中心（在新标签页打开旧版控制台）审批中心定时任务（在新标签页打开旧版控制台）开放平台应用与密钥（在新标签页打开旧版控制台）治理账号与权限（在新标签页打开旧版控制台）操作日志（在新标签页打开旧版控制台）凭据（在新标签页打开旧版控制台）SSO / Connector（在新标签页打开旧版控制台）PPlatform Adminplatform_adminToggle Sidebar搜索页面…⌘K切换主题Job 管理创建任务状态全部名称业务类型状态版本操作暂无任务下一页搜索页面或命令输入页面名称或命令，使用方向键选择并按回车执行。",
+    "activeTag": "BODY"
+  }
+}

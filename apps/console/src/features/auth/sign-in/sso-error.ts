@@ -23,6 +23,7 @@ export const SSO_ERROR_CODE_MESSAGES = Object.freeze({
   'SSO-1211': '创建 Forge 账号失败，请稍后重试或联系管理员。',
   // IdP 回调带 error=（如 access_denied）；IdP 的 error / error_description 后端已丢弃，这里也不展示
   'SSO-1212': '身份提供方拒绝了这次登录。如果你需要访问 Forge，请联系管理员开通。',
+  'SSO-1213': '请联系管理员核对身份并绑定 SSO 账号。',
   // 后端兜底码（意外错误）
   'SYS-9001': '单点登录失败，请稍后重试或联系管理员。',
 } as const)

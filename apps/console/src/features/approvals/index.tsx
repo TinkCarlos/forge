@@ -10,6 +10,7 @@ import { useCan } from '@/hooks/use-can'
 import { useRefreshOnVisible } from '@/hooks/use-refresh-on-visible'
 import { shortTime } from '@/lib/format'
 import { clampPage, pageCount, showPager } from '@/lib/pagination'
+import { LEGACY_LINK_ATTRS, LEGACY_LINK_HINT, legacyRunHref } from '@/lib/legacy-link'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -92,6 +93,7 @@ export function Approvals() {
   const [comment, setComment] = useState('')
   // K-29：没有 approval.decide（如 auditor）时只读，不显示批准/驳回
   const canDecide = useCan('approval.decide')
+  const canViewRun = useCan('run.view')
 
   const decide = useMutation({
     mutationFn: (d: NonNullable<Decision>) =>
@@ -176,7 +178,7 @@ export function Approvals() {
                             <Check /> 批准
                           </Button>
                         )}
-                        <DropdownMenu>
+                        {(canDecide || canViewRun) && <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant='ghost' size='icon' className='size-8 data-[state=open]:bg-muted' aria-label={`审批 ${a.id.slice(0, 8)} 更多操作`}>
                               <MoreHorizontal />
@@ -188,14 +190,14 @@ export function Approvals() {
                                 <DropdownMenuItem variant='destructive' onClick={() => open(a, 'rejected')}>
                                   <X /> 驳回
                                 </DropdownMenuItem>
-                                <DropdownMenuSeparator />
+                                {canViewRun && <DropdownMenuSeparator />}
                               </>
                             )}
-                            <DropdownMenuItem asChild>
-                              <a href='/#runs'><ExternalLink /> 在旧版中查看 Run</a>
-                            </DropdownMenuItem>
+                            {canViewRun && <DropdownMenuItem asChild>
+                              <a href={legacyRunHref(a.run_id)} {...LEGACY_LINK_ATTRS} title={LEGACY_LINK_HINT}><ExternalLink /> 查看本次 Run</a>
+                            </DropdownMenuItem>}
                           </DropdownMenuContent>
-                        </DropdownMenu>
+                        </DropdownMenu>}
                       </div>
                     </TableCell>
                   </MotionRow>
@@ -236,6 +238,9 @@ export function Approvals() {
         {pending && (
           <div className='grid gap-4'>
             <div className='rounded-md border bg-muted/40 p-3 text-sm'>
+              <p className='mb-2'>审批原因：{approvalTakeover(pending.approval) ? '工具执行中断，结果不确定，需要人工确认是否再次执行。' : `工具风险等级为「${pending.approval.risk_level}」，按策略暂停等待确认。`}</p>
+              <p className='mb-2 text-muted-foreground'>到期时间：{pending.approval.expires_at ? shortTime(pending.approval.expires_at).title : '未设置'}</p>
+              {canViewRun && <a className='mb-3 inline-flex items-center gap-1 underline underline-offset-4' href={legacyRunHref(pending.approval.run_id)} {...LEGACY_LINK_ATTRS} title={LEGACY_LINK_HINT}><ExternalLink className='size-4' />查看原始请求、消息与工具记录</a>}
               <div className='mb-1 text-xs text-muted-foreground'>调用参数（已脱敏）</div>
               {pending.approval.args_preview ? (
                 <code className='font-mono text-xs break-all'>{pending.approval.args_preview}</code>

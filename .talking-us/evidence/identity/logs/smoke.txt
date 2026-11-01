@@ -1,0 +1,18 @@
+$ tsx scripts/smoke.ts
+✓ local login Platform Admin
+✓ MCP discovery 2
+✓ OpenAPI imported
+✓ MCP tool run succeeded
+✓ approval run succeeded
+✓ OpenAPI tool run succeeded
+✓ schedule manual run succeeded
+✓ open platform run succeeded
+✓ idempotency key replay and conflict
+✓ synchronous invoke and thread follow-up
+✓ data scope enforced
+✓ package install succeeded
+✓ audit log written
+✓ SSE completed messages resume after Last-Event-ID without deltas
+✓ expired lease resumed without repeating the tool
+
+SMOKE PASS: Forge agent framework is usable end-to-end

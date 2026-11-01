@@ -26,8 +26,8 @@ const runsOf = async (id: string) => (await repos.listRuns({ limit: 300 })).filt
 
 beforeAll(async () => {
   agentId = await repos.createAgent({ key: `it-cron-${suffix}`, name: "IT cron", ownerOrgUnitId: ROOT, createdBy: ADMIN_ID });
-  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID });
-  await repos.publishAgentVersion(agentId, versionId);
+  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID }, { expectedRevision: "system" });
+  await repos.publishAgentVersion(agentId, versionId, { expectedRevision: "system" });
   accountId = await repos.createServiceAccount({ key: `it-cron-svc-${suffix}`, name: "IT cron svc", orgUnitId: ROOT, role: "operator", dataScope: "org", createdBy: ADMIN_ID });
 });
 

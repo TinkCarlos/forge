@@ -4,18 +4,15 @@ import Fastify, { type FastifyInstance } from "fastify";
 // Pure (no DB, no .env): @forge/core would parse the process config on import, so only its error factory is stubbed.
 // Route input schemas are Fastify route schemas (JSON schema, compiled by Fastify's ajv) - no zod. Each test builds a
 // bare Fastify app with the same ajv options as apps/api/src/app.ts and the real ROUTE_SCHEMAS.
-const { ForgeError } = vi.hoisted(() => ({
-  ForgeError: class ForgeError extends Error {
-    constructor(public readonly code: string, message: string, public readonly httpStatus = 400, public readonly details?: unknown) {
-      super(message);
-    }
-  },
-}));
-vi.mock("@forge/core", async () => ({
+import { ForgeError } from "../packages/core/src/errors/forge-error.js";
+vi.mock("@forge/core", async () => {
+  const { ForgeError } = await import("../packages/core/src/errors/forge-error.js");
+  return {
   ...(await import("../packages/core/src/cron.js")),
   ForgeError,
-  errors: { invalid: (m: string, details?: unknown) => new ForgeError("CFG-8501", m, 400, details) },
-}));
+  errors: { invalid: (m: string, details?: unknown) => new ForgeError("CFG-8501", { message: m, httpStatus: 400, details: details, retryable: false }) },
+  };
+});
 import { AJV_CUSTOM_OPTIONS, ROUTE_SCHEMAS, assertScheduleTiming, assertValidInput, limitParam } from "../apps/api/src/plugins/input-schema.js";
 
 type Name = keyof typeof ROUTE_SCHEMAS;
@@ -127,7 +124,7 @@ describe("400 CFG-8501 with details.field and the previous messages", () => {
       expect(await get("runsList", qs), qs).toMatchObject({ status: 400, code: "CFG-8501", field: "limit", message: "limit 必须是 1-200 之间的整数" });
     }
     expect(await get("runsList", "?limit=1&limit=2")).toMatchObject({ status: 400, code: "CFG-8501", field: "limit", message: "limit 必须是 1-200 之间的整数" });
-    expect(await get("auditList", "?limit=501")).toMatchObject({ status: 400, message: "limit 必须是 1-500 之间的整数" });
+    expect(await get("auditList", "?limit=201")).toMatchObject({ status: 400, message: "limit 必须是 1-200 之间的整数" });
     expect(await get("runsList", "")).toMatchObject({ status: 200, limit: 7 });
     expect(await get("runsList", "?limit=200")).toMatchObject({ status: 200, limit: 200 });
     expect(await get("runsList", "?limit=1")).toMatchObject({ status: 200, limit: 1 });

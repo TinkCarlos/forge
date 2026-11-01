@@ -3,6 +3,8 @@ import { useNavigate } from '@tanstack/react-router'
 import { ArrowRight, ArrowUpRight, ChevronRight, Laptop, Moon, Sun } from 'lucide-react'
 import { useSearch } from '@/context/search-provider'
 import { useTheme } from '@/context/theme-provider'
+import { usePermissions } from '@/hooks/use-can'
+import { filterNavGroups } from '@/lib/permissions'
 import {
   CommandDialog,
   CommandEmpty,
@@ -19,7 +21,8 @@ import { LEGACY_LINK_HINT, openLegacy } from '@/lib/legacy-link'
 export function CommandMenu() {
   const navigate = useNavigate()
   const { setTheme } = useTheme()
-  const { open, setOpen } = useSearch()
+  const { open, setOpen, restoreFocus } = useSearch()
+  const perms = usePermissions()
 
   const runCommand = React.useCallback(
     (command: () => unknown) => {
@@ -30,12 +33,12 @@ export function CommandMenu() {
   )
 
   return (
-    <CommandDialog modal open={open} onOpenChange={setOpen}>
+    <CommandDialog modal open={open} onOpenChange={setOpen} onCloseAutoFocus={restoreFocus} title='搜索页面或命令' description='输入页面名称或命令，使用方向键选择并按回车执行。'>
       <CommandInput placeholder='搜索页面或命令…' />
       <CommandList>
         <ScrollArea type='hover' className='h-72 pe-1'>
           <CommandEmpty>没有找到匹配项。</CommandEmpty>
-          {sidebarData.navGroups.map((group) => (
+          {filterNavGroups(sidebarData.navGroups, perms).map((group) => (
             <CommandGroup key={group.title} heading={group.title}>
               {group.items.map((navItem, i) => {
                 if (navItem.url)

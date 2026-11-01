@@ -68,7 +68,7 @@ function harness(initial: Run) {
   const responses: unknown[] = []
   const modal = new El()
   let bodyHtml = ''
-  const state: Record<string, unknown> = { eventSource: null, runView: null }
+  const state: Record<string, unknown> = { session:{permissions:['*']}, eventSource: null, runView: null }
   const deps: Record<string, unknown> = {
     state,
     $: (sel: string) => (sel === '#modal' ? modal : els[sel.replace(/^#/, '')] ?? null),
@@ -86,7 +86,7 @@ function harness(initial: Run) {
   }
   const names = Object.keys(deps)
   const consts = ['RUN_TERMINAL_EVENTS', 'RUN_ACTIVE_STATUSES', 'STREAM_MAX_RETRIES', 'RUN_APPROVAL_EXPIRED_CODE', 'RUN_APPROVAL_EXPIRED_TEXT'].map(constLine).join('\n')
-  const fns = ['isEntityId', 'idSeg', 'esc', 'runMessagesHtml', 'runToolsHtml', 'runToolbarHtml', 'renderRunView', 'renderStreamStatus', 'listenRun', 'connectRunStream', 'syncRunFromRest', 'endRunStream', 'closeStream']
+  const fns = ['canPermission', 'isEntityId', 'idSeg', 'esc', 'runMessagesHtml', 'runToolsHtml', 'runToolbarHtml', 'renderRunView', 'renderStreamStatus', 'listenRun', 'connectRunStream', 'syncRunFromRest', 'endRunStream', 'closeStream']
   const optional = ['runFailureText', 'toolInterruptedText', 'runEventText'].filter(hasFn)
   const body = `${consts}\n${[...fns, ...optional].map(fnSource).join('\n')}\nreturn { ${method('openRun')} };`
   const app = new Function(...names, body)(...names.map((n) => deps[n])) as { openRun(id: string): Promise<void> }

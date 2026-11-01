@@ -29,8 +29,9 @@ function harness(hash = '') {
     $: (sel: string) => (els[sel] ??= el()),
     renderNav: () => {},
     renderCurrent: async () => { events.push(`render:${state.tab}`) },
+    canPermission: () => true,
     errorCard: () => 'error',
-    app: { openAgentDetail: async (id: string) => { events.push(`detail:${id}`) } },
+    app: { openAgentDetail: async (id: string) => { events.push(`detail:${id}`) }, openRun: async (id: string) => { events.push(`run:${id}`) }, openAgentCreate: () => { events.push('create') } },
   }
   const fns = ['isEntityId', 'parseRoute', 'switchTab', 'onHashChange'].map(fnSource).filter(Boolean).join('\n')
   const names = Object.keys(deps)
@@ -41,6 +42,22 @@ function harness(hash = '') {
 }
 
 describe('K-33 旧版 #agents/<id> 深链', () => {
+  it('clicking the same name after closing details explicitly navigates again', () => {
+    const calls: string[] = []
+    let click: (event: { target: unknown; preventDefault(): void }) => void = () => {}
+    class Anchor {
+      dataset = { action: 'agent-detail', agentId: A1 }
+      closest() { return this }
+    }
+    const anchor = new Anchor()
+    const content = { contains: (node: unknown) => node === anchor, addEventListener: (_type: string, listener: typeof click) => { click = listener } }
+    new Function('Element', '$', 'app', `let agentActionsBound = false; ${fnSource('bindAgentActions')}\nbindAgentActions();`)(Anchor, () => content, { switchTab: (route: string) => calls.push(route) })
+    let prevented = 0
+    click({ target: anchor, preventDefault: () => { prevented++ } })
+    click({ target: anchor, preventDefault: () => { prevented++ } })
+    expect(calls).toEqual([`agents/${A1}`, `agents/${A1}`])
+    expect(prevented).toBe(2)
+  })
   it('switchTab("agents/<id>") 渲染 Agents 页后打开该 Agent 详情，hash 保留 id', async () => {
     const h = harness()
     await h.switchTab(`agents/${A1}`)
@@ -53,6 +70,19 @@ describe('K-33 旧版 #agents/<id> 深链', () => {
     const h = harness()
     await h.switchTab(`agents/${A2}`)
     expect(h.events).toEqual(['render:agents', `detail:${A2}`])
+  })
+
+  it('审批深链接直接读取指定 Run，不依赖它是否出现在最近运行列表', async () => {
+    const h = harness()
+    await h.switchTab(`runs/${A2}`)
+    expect(h.events).toEqual(['render:runs', `run:${A2}`])
+    expect(h.location.hash).toBe(`runs/${A2}`)
+  })
+
+  it('新建入口直接打开草稿表单', async () => {
+    const h = harness()
+    await h.switchTab('agents/new')
+    expect(h.events).toEqual(['render:agents', 'create'])
   })
 
   it.each([

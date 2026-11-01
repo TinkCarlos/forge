@@ -12,7 +12,7 @@ vi.mock("@forge/core", async (importOriginal) => ({
   safeFetch,
   assertOutboundAllowed: async (raw: string | URL) => ({ url: new URL(String(raw)), addresses: [], allowlisted: true }),
 }));
-const source = { id: "tsrc_1", key: "down", base_url: "https://down.invalid/api", headers_json: JSON.stringify({ "idempotency-KEY": "configured", "X-Trace": "t" }) };
+const source = { id: "tsrc_1", key: "down", base_url: "https://down.invalid/api", headers_json: JSON.stringify({ "idempotency-KEY": "configured", "X-Trace": "synthetic-trace-value" }) };
 const toolRow = (method: string) => ({ id: `tool_${method}`, name: method.toLowerCase(), method, path: "/items/{id}", risk_level: "low", read_only: method === "GET" ? 1 : 0, input_schema_json: "{}" });
 vi.mock("@forge/store", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@forge/store")>()),
@@ -40,7 +40,7 @@ describe("TK-06 downstream Idempotency-Key", () => {
     for (const request of sent) {
       expect(request.method).toBe(method);
       expect(idemHeaders(request.headers)).toEqual([["Idempotency-Key", KEY]]);
-      expect(request.headers["X-Trace"]).toBe("t");
+      expect(Object.entries(request.headers).find(([name]) => name.toLowerCase() === "x-trace")?.[1]).toBe("synthetic-trace-value");
     }
   });
 

@@ -1,3 +1,4 @@
+import { configurationHeaders } from "./helpers/configuration-headers.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
@@ -36,7 +37,7 @@ const connectorToken = () =>
     .setProtectedHeader({ alg: "RS256" }).setIssuer(issuer).setAudience(audience).setIssuedAt().setExpirationTime("5m").sign(privateKey);
 
 const entries: Array<{ name: string; call: () => Promise<LightMyRequestResponse> }> = [
-  { name: "admin POST /admin/api/agents/:id/run", call: () => app.inject({ method: "POST", url: `/admin/api/agents/${agentId}/run`, headers, payload: { text: "hi" } }) },
+  { name: "admin POST /admin/api/agents/:id/run", call: async () => app.inject({ method: "POST", url: `/admin/api/agents/${agentId}/run`, headers: await configurationHeaders(`/admin/api/agents/${agentId}/run`, headers), payload: { text: "hi" } }) },
   { name: "open POST /open/v1/agents/:key/runs", call: () => app.inject({ method: "POST", url: `/open/v1/agents/${agentKey}/runs`, headers: { authorization: `Bearer ${openKey}` }, payload: { text: "hi" } }) },
   { name: "open POST /open/v1/agents/:key/invoke", call: () => app.inject({ method: "POST", url: `/open/v1/agents/${agentKey}/invoke?wait=0`, headers: { authorization: `Bearer ${openKey}` }, payload: { text: "hi" } }) },
   { name: "integration POST /integration/v1/runs", call: async () => connectorApp.inject({ method: "POST", url: "/integration/v1/runs", headers: { authorization: `Bearer ${await connectorToken()}` }, payload: { agentKey, text: "hi" } }) },
@@ -60,9 +61,9 @@ beforeAll(async () => {
   headers = sessionHeaders(admin, sessionCookieValue(admin));
   agentKey = `it-agt-off-${suffix}`;
   agentId = await repos.createAgent({ key: agentKey, name: "IT agent off", ownerOrgUnitId: ROOT, createdBy: ADMIN_ID });
-  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID });
-  await repos.publishAgentVersion(agentId, versionId);
-  await repos.updateAgent(agentId, { api_enabled: 1 });
+  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID }, { expectedRevision: "system" });
+  await repos.publishAgentVersion(agentId, versionId, { expectedRevision: "system" });
+  await repos.updateAgent(agentId, { api_enabled: 1 }, { expectedRevision: "system" });
   appId = await repos.createApiApp({ key: `it-agt-off-${suffix}`, name: "IT agt off", ownerOrgUnitId: ROOT, scopes: ["runs:create", "runs:read"] });
   openKey = `fsk_${randomBytes(32).toString("base64url")}`;
   await repos.createApiKey({ appId, name: "it", prefix: openKey.slice(0, 16), keyHash: hashApiKey(openKey, config.API_KEY_PEPPER), scopes: ["runs:create", "runs:read"] });
@@ -117,20 +118,20 @@ describe("disabled Agent cannot be run (I-AGT-11, 11b, 11c)", () => {
 describe("Agent status accepts only active / disabled", () => {
   for (const status of ["archived", "deleted", "ACTIVE", "", "paused"]) {
     it(`PATCH status=${JSON.stringify(status)} -> 400 CFG-8501, unchanged`, async () => {
-      const res = await app.inject({ method: "PATCH", url: `/admin/api/agents/${agentId}`, headers, payload: { status } });
+      const res = await app.inject({ method: "PATCH", url: `/admin/api/agents/${agentId}`, headers: await configurationHeaders(`/admin/api/agents/${agentId}`, headers), payload: { status } });
       expect(res.statusCode).toBe(400);
       expect(errorOf(res).code).toBe("CFG-8501");
       expect((await repos.getAgent(agentId))!.status).toBe("active");
     });
   }
   it("PATCH status with a non-string -> 400 CFG-8501", async () => {
-    const res = await app.inject({ method: "PATCH", url: `/admin/api/agents/${agentId}`, headers, payload: { status: 1 } });
+    const res = await app.inject({ method: "PATCH", url: `/admin/api/agents/${agentId}`, headers: await configurationHeaders(`/admin/api/agents/${agentId}`, headers), payload: { status: 1 } });
     expect(res.statusCode).toBe(400);
     expect(errorOf(res).code).toBe("CFG-8501");
   });
   it("PATCH status=disabled then active -> 200", async () => {
     for (const status of ["disabled", "active"]) {
-      const res = await app.inject({ method: "PATCH", url: `/admin/api/agents/${agentId}`, headers, payload: { status } });
+      const res = await app.inject({ method: "PATCH", url: `/admin/api/agents/${agentId}`, headers: await configurationHeaders(`/admin/api/agents/${agentId}`, headers), payload: { status } });
       expect(res.statusCode).toBe(200);
       expect((await repos.getAgent(agentId))!.status).toBe(status);
     }

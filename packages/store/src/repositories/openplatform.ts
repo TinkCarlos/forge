@@ -1,12 +1,16 @@
+import { initializeCredentialBindings, resourceCredentialChanges } from "../credential-bindings.js";
+import { updateConfiguration, type ConfigurationWrite, type ConfigurationAudit } from "../configuration-revision.js";
 import { ulidWithPrefix } from "@forge/core";
-import { execute, json, one, query } from "../db.js";
+import { execute, json, one, query, transaction } from "../db.js";
+import { auditRepo } from "./audit.js";
+import type { ApiAppRow, ApiKeyMetadataRow } from "../types.js";
 
 export const openPlatformRepo = {
   // API apps / keys
-  async listApiApps(): Promise<Record<string, unknown>[]> {
+  async listApiApps(): Promise<ApiAppRow[]> {
     return query("SELECT * FROM api_apps ORDER BY created_at DESC");
   },
-  async getApiApp(id: string): Promise<Record<string, unknown> | null> {
+  async getApiApp(id: string): Promise<ApiAppRow | null> {
     return one("SELECT * FROM api_apps WHERE id = ?", [id]);
   },
   async createApiApp(input: {
@@ -17,52 +21,41 @@ export const openPlatformRepo = {
     scopes: string[];
     webhookUrl?: string | null;
     webhookSecretEncrypted?: string | null;
+    webhookSecret?: string | null;
+    webhookSecretId?: string | null;
     rateLimitPerMinute?: number;
     dailyQuota?: number;
     createdBy?: string | null;
-  }): Promise<string> {
+  }, audit?: ConfigurationAudit): Promise<string> {
     const id = ulidWithPrefix("app");
-    await execute(
-      `INSERT INTO api_apps (id, \`key\`, name, description, owner_org_unit_id, scopes_json, webhook_url, webhook_secret_encrypted, rate_limit_per_minute, daily_quota, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        id,
-        input.key,
-        input.name,
-        input.description ?? "",
-        input.ownerOrgUnitId ?? null,
-        json(input.scopes),
-        input.webhookUrl ?? null,
-        input.webhookSecretEncrypted ?? null,
-        input.rateLimitPerMinute ?? 60,
-        input.dailyQuota ?? 1000,
-        input.createdBy ?? null,
-      ],
-    );
+    await transaction(async conn => {
+      await conn.execute(`INSERT INTO api_apps (id, \`key\`, name, description, owner_org_unit_id, scopes_json, webhook_url, rate_limit_per_minute, daily_quota, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [id, input.key, input.name, input.description ?? "", input.ownerOrgUnitId ?? null, json(input.scopes), input.webhookUrl ?? null, input.rateLimitPerMinute ?? 60, input.dailyQuota ?? 1000, input.createdBy ?? null]);
+      await initializeCredentialBindings(conn, { type: "api_app", id, name: input.name, orgUnitId: input.ownerOrgUnitId ?? null, createdBy: input.createdBy ?? null }, { value: input.webhookSecret, secretId: input.webhookSecretId, legacyEncrypted: input.webhookSecretEncrypted }, audit);
+      if (audit) await auditRepo.audit({ ...audit, resourceId: id }, conn);
+    });
     return id;
   },
-  async updateApiApp(id: string, fields: Record<string, unknown>): Promise<void> {
-    const allowed = ["name", "description", "status", "scopes_json", "webhook_url", "webhook_secret_encrypted", "rate_limit_per_minute", "daily_quota"];
-    const sets: string[] = [];
-    const params: unknown[] = [];
-    for (const [key, value] of Object.entries(fields)) {
-      if (!allowed.includes(key)) continue;
-      sets.push(`\`${key}\` = ?`);
-      params.push(key.endsWith("_json") ? json(value) : value);
-    }
-    if (!sets.length) return;
-    params.push(id);
-    await execute(`UPDATE api_apps SET ${sets.join(", ")} WHERE id = ?`, params);
+  async updateApiApp(id: string, fields: Record<string, unknown>, options: ConfigurationWrite): Promise<number> {
+    const allowed = ["name", "description", "status", "scopes_json", "webhook_url", "rate_limit_per_minute", "daily_quota"];
+    const values = Object.fromEntries(Object.entries(fields).filter(([key]) => allowed.includes(key)).map(([key, value]) => [key, key.endsWith("_json") ? json(value) : value]));
+    return updateConfiguration("api_apps", id, async conn => ({ ...values, ...await resourceCredentialChanges("api_app", id, fields, conn, options.audit) }), options);
   },
-  async createApiKey(input: { appId: string; name: string; prefix: string; keyHash: string; scopes: string[]; expiresAt?: Date | null }): Promise<string> {
+  async createApiKey(input: { appId: string; name: string; prefix: string; keyHash: string; scopes: string[]; expiresAt?: Date | null }, audit?: { actorId: string; orgUnitId: string | null }): Promise<string> {
     const id = ulidWithPrefix("key");
-    await execute(
-      "INSERT INTO api_keys (id, app_id, name, prefix, key_hash, scopes_json, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      [id, input.appId, input.name, input.prefix, input.keyHash, json(input.scopes), input.expiresAt ?? null],
-    );
+    await transaction(async (conn) => {
+      await conn.execute(
+        "INSERT INTO api_keys (id, app_id, name, prefix, key_hash, scopes_json, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [id, input.appId, input.name, input.prefix, input.keyHash, json(input.scopes), input.expiresAt ?? null],
+      );
+      if (audit) await auditRepo.audit({ actorType: "user", ...audit, action: "apikey.create", resourceType: "api_key", resourceId: id, details: { appId: input.appId, expiresAt: input.expiresAt ?? null } }, conn);
+    });
     return id;
   },
-  async listApiKeys(appId: string): Promise<Record<string, unknown>[]> {
+  async getApiKeyOwner(id: string): Promise<{ app_id: string; owner_org_unit_id: string | null } | null> {
+    return one("SELECT k.app_id, a.owner_org_unit_id FROM api_keys k JOIN api_apps a ON a.id = k.app_id WHERE k.id = ?", [id]);
+  },
+  async listApiKeys(appId: string): Promise<ApiKeyMetadataRow[]> {
     return query("SELECT id, app_id, name, prefix, scopes_json, status, expires_at, last_used_at, created_at FROM api_keys WHERE app_id = ? ORDER BY created_at DESC", [appId]);
   },
   async findApiKeyByPrefix(prefix: string): Promise<Record<string, unknown> | null> {

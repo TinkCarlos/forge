@@ -1,0 +1,3413 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Forge internal API Key lifecycle",
+    "version": "0.1.0"
+  },
+  "servers": [
+    {
+      "url": "/admin/api"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "forge_session"
+      }
+    }
+  },
+  "paths": {
+    "/apps": {
+      "get": {
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "元数据及当前调用者可用操作",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "items",
+                    "canCreate"
+                  ],
+                  "properties": {
+                    "canCreate": {
+                      "type": "boolean"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "id",
+                          "revision",
+                          "key",
+                          "name",
+                          "status",
+                          "scopes",
+                          "webhookUrl",
+                          "webhookSecretId",
+                          "rateLimitPerMinute",
+                          "dailyQuota",
+                          "createdAt",
+                          "canManage"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "revision": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 4294967295
+                          },
+                          "key": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "scopes": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "webhookUrl": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "webhookSecretId": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "rateLimitPerMinute": {
+                            "type": "integer"
+                          },
+                          "dailyQuota": {
+                            "type": "integer"
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "canManage": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "AUTH-1001 未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId",
+                        "details",
+                        "retryable",
+                        "remedy"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH-1001",
+                            "AUTH-1002",
+                            "POL-2001",
+                            "APR-2102",
+                            "APR-2104",
+                            "MDL-3001",
+                            "MDL-3002",
+                            "MDL-3003",
+                            "MDL-3004",
+                            "HTP-4001",
+                            "HTP-4002",
+                            "HTP-4003",
+                            "MCP-4101",
+                            "MCP-4102",
+                            "OPN-4501",
+                            "OPN-4502",
+                            "OPN-4503",
+                            "OPN-4504",
+                            "OPN-4505",
+                            "CON-4701",
+                            "CON-4702",
+                            "CON-4703",
+                            "CON-4704",
+                            "CON-4705",
+                            "CON-4706",
+                            "CON-4707",
+                            "SCD-4801",
+                            "SCD-4802",
+                            "SCD-4803",
+                            "SCD-4804",
+                            "BUD-5001",
+                            "OUT-6001",
+                            "RUN-7001",
+                            "RUN-7002",
+                            "RUN-7004",
+                            "RUN-7005",
+                            "CFG-8506",
+                            "JOB-7101",
+                            "JOB-7102",
+                            "JOB-7103",
+                            "JOB-7104",
+                            "JOB-7105",
+                            "JOB-7106",
+                            "JOB-7107",
+                            "JOB-7108",
+                            "JOB-7109",
+                            "JOB-7110",
+                            "MSG-7201",
+                            "MSG-7202",
+                            "MSG-7203",
+                            "MSG-7204",
+                            "MSG-7205",
+                            "MSG-7206",
+                            "QAL-7301",
+                            "CFG-8501",
+                            "CFG-8503",
+                            "CFG-8504",
+                            "CFG-8505",
+                            "SSO-1201",
+                            "SSO-1202",
+                            "SSO-1203",
+                            "SSO-1204",
+                            "SSO-1205",
+                            "SSO-1206",
+                            "SSO-1207",
+                            "SSO-1208",
+                            "SSO-1209",
+                            "SSO-1210",
+                            "SSO-1211",
+                            "SSO-1212",
+                            "SSO-1213",
+                            "SYS-9001",
+                            "SYS-9002",
+                            "SYS-9003"
+                          ]
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "details": {},
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "remedy": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "POL-2001 权限/数据范围/CSRF 拒绝",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId",
+                        "details",
+                        "retryable",
+                        "remedy"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH-1001",
+                            "AUTH-1002",
+                            "POL-2001",
+                            "APR-2102",
+                            "APR-2104",
+                            "MDL-3001",
+                            "MDL-3002",
+                            "MDL-3003",
+                            "MDL-3004",
+                            "HTP-4001",
+                            "HTP-4002",
+                            "HTP-4003",
+                            "MCP-4101",
+                            "MCP-4102",
+                            "OPN-4501",
+                            "OPN-4502",
+                            "OPN-4503",
+                            "OPN-4504",
+                            "OPN-4505",
+                            "CON-4701",
+                            "CON-4702",
+                            "CON-4703",
+                            "CON-4704",
+                            "CON-4705",
+                            "CON-4706",
+                            "CON-4707",
+                            "SCD-4801",
+                            "SCD-4802",
+                            "SCD-4803",
+                            "SCD-4804",
+                            "BUD-5001",
+                            "OUT-6001",
+                            "RUN-7001",
+                            "RUN-7002",
+                            "RUN-7004",
+                            "RUN-7005",
+                            "CFG-8506",
+                            "JOB-7101",
+                            "JOB-7102",
+                            "JOB-7103",
+                            "JOB-7104",
+                            "JOB-7105",
+                            "JOB-7106",
+                            "JOB-7107",
+                            "JOB-7108",
+                            "JOB-7109",
+                            "JOB-7110",
+                            "MSG-7201",
+                            "MSG-7202",
+                            "MSG-7203",
+                            "MSG-7204",
+                            "MSG-7205",
+                            "MSG-7206",
+                            "QAL-7301",
+                            "CFG-8501",
+                            "CFG-8503",
+                            "CFG-8504",
+                            "CFG-8505",
+                            "SSO-1201",
+                            "SSO-1202",
+                            "SSO-1203",
+                            "SSO-1204",
+                            "SSO-1205",
+                            "SSO-1206",
+                            "SSO-1207",
+                            "SSO-1208",
+                            "SSO-1209",
+                            "SSO-1210",
+                            "SSO-1211",
+                            "SSO-1212",
+                            "SSO-1213",
+                            "SYS-9001",
+                            "SYS-9002",
+                            "SYS-9003"
+                          ]
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "details": {},
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "remedy": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId",
+                        "details",
+                        "retryable",
+                        "remedy"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH-1001",
+                            "AUTH-1002",
+                            "POL-2001",
+                            "APR-2102",
+                            "APR-2104",
+                            "MDL-3001",
+                            "MDL-3002",
+                            "MDL-3003",
+                            "MDL-3004",
+                            "HTP-4001",
+                            "HTP-4002",
+                            "HTP-4003",
+                            "MCP-4101",
+                            "MCP-4102",
+                            "OPN-4501",
+                            "OPN-4502",
+                            "OPN-4503",
+                            "OPN-4504",
+                            "OPN-4505",
+                            "CON-4701",
+                            "CON-4702",
+                            "CON-4703",
+                            "CON-4704",
+                            "CON-4705",
+                            "CON-4706",
+                            "CON-4707",
+                            "SCD-4801",
+                            "SCD-4802",
+                            "SCD-4803",
+                            "SCD-4804",
+                            "BUD-5001",
+                            "OUT-6001",
+                            "RUN-7001",
+                            "RUN-7002",
+                            "RUN-7004",
+                            "RUN-7005",
+                            "CFG-8506",
+                            "JOB-7101",
+                            "JOB-7102",
+                            "JOB-7103",
+                            "JOB-7104",
+                            "JOB-7105",
+                            "JOB-7106",
+                            "JOB-7107",
+                            "JOB-7108",
+                            "JOB-7109",
+                            "JOB-7110",
+                            "MSG-7201",
+                            "MSG-7202",
+                            "MSG-7203",
+                            "MSG-7204",
+                            "MSG-7205",
+                            "MSG-7206",
+                            "QAL-7301",
+                            "CFG-8501",
+                            "CFG-8503",
+                            "CFG-8504",
+                            "CFG-8505",
+                            "SSO-1201",
+                            "SSO-1202",
+                            "SSO-1203",
+                            "SSO-1204",
+                            "SSO-1205",
+                            "SSO-1206",
+                            "SSO-1207",
+                            "SSO-1208",
+                            "SSO-1209",
+                            "SSO-1210",
+                            "SSO-1211",
+                            "SSO-1212",
+                            "SSO-1213",
+                            "SYS-9001",
+                            "SYS-9002",
+                            "SYS-9003"
+                          ]
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "details": {},
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "remedy": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-permission": "apikey.view"
+      }
+    },
+    "/apps/{id}/keys": {
+      "get": {
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "元数据及当前调用者可用操作",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "items",
+                    "canManage"
+                  ],
+                  "properties": {
+                    "canManage": {
+                      "type": "boolean"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "id",
+                          "app_id",
+                          "name",
+                          "prefix",
+                          "scopes_json",
+                          "status",
+                          "expires_at",
+                          "last_used_at",
+                          "created_at"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "app_id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "prefix": {
+                            "type": "string"
+                          },
+                          "scopes_json": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "expires_at": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "format": "date-time"
+                          },
+                          "last_used_at": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "format": "date-time"
+                          },
+                          "created_at": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "AUTH-1001 未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId",
+                        "details",
+                        "retryable",
+                        "remedy"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH-1001",
+                            "AUTH-1002",
+                            "POL-2001",
+                            "APR-2102",
+                            "APR-2104",
+                            "MDL-3001",
+                            "MDL-3002",
+                            "MDL-3003",
+                            "MDL-3004",
+                            "HTP-4001",
+                            "HTP-4002",
+                            "HTP-4003",
+                            "MCP-4101",
+                            "MCP-4102",
+                            "OPN-4501",
+                            "OPN-4502",
+                            "OPN-4503",
+                            "OPN-4504",
+                            "OPN-4505",
+                            "CON-4701",
+                            "CON-4702",
+                            "CON-4703",
+                            "CON-4704",
+                            "CON-4705",
+                            "CON-4706",
+                            "CON-4707",
+                            "SCD-4801",
+                            "SCD-4802",
+                            "SCD-4803",
+                            "SCD-4804",
+                            "BUD-5001",
+                            "OUT-6001",
+                            "RUN-7001",
+                            "RUN-7002",
+                            "RUN-7004",
+                            "RUN-7005",
+                            "CFG-8506",
+                            "JOB-7101",
+                            "JOB-7102",
+                            "JOB-7103",
+                            "JOB-7104",
+                            "JOB-7105",
+                            "JOB-7106",
+                            "JOB-7107",
+                            "JOB-7108",
+                            "JOB-7109",
+                            "JOB-7110",
+                            "MSG-7201",
+                            "MSG-7202",
+                            "MSG-7203",
+                            "MSG-7204",
+                            "MSG-7205",
+                            "MSG-7206",
+                            "QAL-7301",
+                            "CFG-8501",
+                            "CFG-8503",
+                            "CFG-8504",
+                            "CFG-8505",
+                            "SSO-1201",
+                            "SSO-1202",
+                            "SSO-1203",
+                            "SSO-1204",
+                            "SSO-1205",
+                            "SSO-1206",
+                            "SSO-1207",
+                            "SSO-1208",
+                            "SSO-1209",
+                            "SSO-1210",
+                            "SSO-1211",
+                            "SSO-1212",
+                            "SSO-1213",
+                            "SYS-9001",
+                            "SYS-9002",
+                            "SYS-9003"
+                          ]
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "details": {},
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "remedy": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "POL-2001 权限/数据范围/CSRF 拒绝",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId",
+                        "details",
+                        "retryable",
+                        "remedy"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH-1001",
+                            "AUTH-1002",
+                            "POL-2001",
+                            "APR-2102",
+                            "APR-2104",
+                            "MDL-3001",
+                            "MDL-3002",
+                            "MDL-3003",
+                            "MDL-3004",
+                            "HTP-4001",
+                            "HTP-4002",
+                            "HTP-4003",
+                            "MCP-4101",
+                            "MCP-4102",
+                            "OPN-4501",
+                            "OPN-4502",
+                            "OPN-4503",
+                            "OPN-4504",
+                            "OPN-4505",
+                            "CON-4701",
+                            "CON-4702",
+                            "CON-4703",
+                            "CON-4704",
+                            "CON-4705",
+                            "CON-4706",
+                            "CON-4707",
+                            "SCD-4801",
+                            "SCD-4802",
+                            "SCD-4803",
+                            "SCD-4804",
+                            "BUD-5001",
+                            "OUT-6001",
+                            "RUN-7001",
+                            "RUN-7002",
+                            "RUN-7004",
+                            "RUN-7005",
+                            "CFG-8506",
+                            "JOB-7101",
+                            "JOB-7102",
+                            "JOB-7103",
+                            "JOB-7104",
+                            "JOB-7105",
+                            "JOB-7106",
+                            "JOB-7107",
+                            "JOB-7108",
+                            "JOB-7109",
+                            "JOB-7110",
+                            "MSG-7201",
+                            "MSG-7202",
+                            "MSG-7203",
+                            "MSG-7204",
+                            "MSG-7205",
+                            "MSG-7206",
+                            "QAL-7301",
+                            "CFG-8501",
+                            "CFG-8503",
+                            "CFG-8504",
+                            "CFG-8505",
+                            "SSO-1201",
+                            "SSO-1202",
+                            "SSO-1203",
+                            "SSO-1204",
+                            "SSO-1205",
+                            "SSO-1206",
+                            "SSO-1207",
+                            "SSO-1208",
+                            "SSO-1209",
+                            "SSO-1210",
+                            "SSO-1211",
+                            "SSO-1212",
+                            "SSO-1213",
+                            "SYS-9001",
+                            "SYS-9002",
+                            "SYS-9003"
+                          ]
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "details": {},
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "remedy": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId",
+                        "details",
+                        "retryable",
+                        "remedy"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH-1001",
+                            "AUTH-1002",
+                            "POL-2001",
+                            "APR-2102",
+                            "APR-2104",
+                            "MDL-3001",
+                            "MDL-3002",
+                            "MDL-3003",
+                            "MDL-3004",
+                            "HTP-4001",
+                            "HTP-4002",
+                            "HTP-4003",
+                            "MCP-4101",
+                            "MCP-4102",
+                            "OPN-4501",
+                            "OPN-4502",
+                            "OPN-4503",
+                            "OPN-4504",
+                            "OPN-4505",
+                            "CON-4701",
+                            "CON-4702",
+                            "CON-4703",
+                            "CON-4704",
+                            "CON-4705",
+                            "CON-4706",
+                            "CON-4707",
+                            "SCD-4801",
+                            "SCD-4802",
+                            "SCD-4803",
+                            "SCD-4804",
+                            "BUD-5001",
+                            "OUT-6001",
+                            "RUN-7001",
+                            "RUN-7002",
+                            "RUN-7004",
+                            "RUN-7005",
+                            "CFG-8506",
+                            "JOB-7101",
+                            "JOB-7102",
+                            "JOB-7103",
+                            "JOB-7104",
+                            "JOB-7105",
+                            "JOB-7106",
+                            "JOB-7107",
+                            "JOB-7108",
+                            "JOB-7109",
+                            "JOB-7110",
+                            "MSG-7201",
+                            "MSG-7202",
+                            "MSG-7203",
+                            "MSG-7204",
+                            "MSG-7205",
+                            "MSG-7206",
+                            "QAL-7301",
+                            "CFG-8501",
+                            "CFG-8503",
+                            "CFG-8504",
+                            "CFG-8505",
+                            "SSO-1201",
+                            "SSO-1202",
+                            "SSO-1203",
+                            "SSO-1204",
+                            "SSO-1205",
+                            "SSO-1206",
+                            "SSO-1207",
+                            "SSO-1208",
+                            "SSO-1209",
+                            "SSO-1210",
+                            "SSO-1211",
+                            "SSO-1212",
+                            "SSO-1213",
+                            "SYS-9001",
+                            "SYS-9002",
+                            "SYS-9003"
+                          ]
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "details": {},
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "remedy": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-permission": "apikey.view"
+      },
+      "post": {
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 128
+                  },
+                  "expiresAt": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 40,
+                    "description": "未来的 RFC3339 时间，必须包含时区；省略或 null 表示永久"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功；明文密钥仅在首次成功响应返回",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "prefix": {
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "date-time"
+                    },
+                    "key": {
+                      "type": "string"
+                    },
+                    "warning": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "key",
+                    "prefix",
+                    "expiresAt",
+                    "warning"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "CFG-8501 输入错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId",
+                        "details",
+                        "retryable",
+                        "remedy"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH-1001",
+                            "AUTH-1002",
+                            "POL-2001",
+                            "APR-2102",
+                            "APR-2104",
+                            "MDL-3001",
+                            "MDL-3002",
+                            "MDL-3003",
+                            "MDL-3004",
+                            "HTP-4001",
+                            "HTP-4002",
+                            "HTP-4003",
+                            "MCP-4101",
+                            "MCP-4102",
+                            "OPN-4501",
+                            "OPN-4502",
+                            "OPN-4503",
+                            "OPN-4504",
+                            "OPN-4505",
+                            "CON-4701",
+                            "CON-4702",
+                            "CON-4703",
+                            "CON-4704",
+                            "CON-4705",
+                            "CON-4706",
+                            "CON-4707",
+                            "SCD-4801",
+                            "SCD-4802",
+                            "SCD-4803",
+                            "SCD-4804",
+                            "BUD-5001",
+                            "OUT-6001",
+                            "RUN-7001",
+                            "RUN-7002",
+                            "RUN-7004",
+                            "RUN-7005",
+                            "CFG-8506",
+                            "JOB-7101",
+                            "JOB-7102",
+                            "JOB-7103",
+                            "JOB-7104",
+                            "JOB-7105",
+                            "JOB-7106",
+                            "JOB-7107",
+                            "JOB-7108",
+                            "JOB-7109",
+                            "JOB-7110",
+                            "MSG-7201",
+                            "MSG-7202",
+                            "MSG-7203",
+                            "MSG-7204",
+                            "MSG-7205",
+                            "MSG-7206",
+                            "QAL-7301",
+                            "CFG-8501",
+                            "CFG-8503",
+                            "CFG-8504",
+                            "CFG-8505",
+                            "SSO-1201",
+                            "SSO-1202",
+                            "SSO-1203",
+                            "SSO-1204",
+                            "SSO-1205",
+                            "SSO-1206",
+                            "SSO-1207",
+                            "SSO-1208",
+                            "SSO-1209",
+                            "SSO-1210",
+                            "SSO-1211",
+                            "SSO-1212",
+                            "SSO-1213",
+                            "SYS-9001",
+                            "SYS-9002",
+                            "SYS-9003"
+                          ]
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "details": {},
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "remedy": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "AUTH-1001 未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId",
+                        "details",
+                        "retryable",
+                        "remedy"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH-1001",
+                            "AUTH-1002",
+                            "POL-2001",
+                            "APR-2102",
+                            "APR-2104",
+                            "MDL-3001",
+                            "MDL-3002",
+                            "MDL-3003",
+                            "MDL-3004",
+                            "HTP-4001",
+                            "HTP-4002",
+                            "HTP-4003",
+                            "MCP-4101",
+                            "MCP-4102",
+                            "OPN-4501",
+                            "OPN-4502",
+                            "OPN-4503",
+                            "OPN-4504",
+                            "OPN-4505",
+                            "CON-4701",
+                            "CON-4702",
+                            "CON-4703",
+                            "CON-4704",
+                            "CON-4705",
+                            "CON-4706",
+                            "CON-4707",
+                            "SCD-4801",
+                            "SCD-4802",
+                            "SCD-4803",
+                            "SCD-4804",
+                            "BUD-5001",
+                            "OUT-6001",
+                            "RUN-7001",
+                            "RUN-7002",
+                            "RUN-7004",
+                            "RUN-7005",
+                            "CFG-8506",
+                            "JOB-7101",
+                            "JOB-7102",
+                            "JOB-7103",
+                            "JOB-7104",
+                            "JOB-7105",
+                            "JOB-7106",
+                            "JOB-7107",
+                            "JOB-7108",
+                            "JOB-7109",
+                            "JOB-7110",
+                            "MSG-7201",
+                            "MSG-7202",
+                            "MSG-7203",
+                            "MSG-7204",
+                            "MSG-7205",
+                            "MSG-7206",
+                            "QAL-7301",
+                            "CFG-8501",
+                            "CFG-8503",
+                            "CFG-8504",
+                            "CFG-8505",
+                            "SSO-1201",
+                            "SSO-1202",
+                            "SSO-1203",
+                            "SSO-1204",
+                            "SSO-1205",
+                            "SSO-1206",
+                            "SSO-1207",
+                            "SSO-1208",
+                            "SSO-1209",
+                            "SSO-1210",
+                            "SSO-1211",
+                            "SSO-1212",
+                            "SSO-1213",
+                            "SYS-9001",
+                            "SYS-9002",
+                            "SYS-9003"
+                          ]
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "details": {},
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "remedy": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "POL-2001 权限/数据范围/CSRF 拒绝",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId",
+                        "details",
+                        "retryable",
+                        "remedy"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH-1001",
+                            "AUTH-1002",
+                            "POL-2001",
+                            "APR-2102",
+                            "APR-2104",
+                            "MDL-3001",
+                            "MDL-3002",
+                            "MDL-3003",
+                            "MDL-3004",
+                            "HTP-4001",
+                            "HTP-4002",
+                            "HTP-4003",
+                            "MCP-4101",
+                            "MCP-4102",
+                            "OPN-4501",
+                            "OPN-4502",
+                            "OPN-4503",
+                            "OPN-4504",
+                            "OPN-4505",
+                            "CON-4701",
+                            "CON-4702",
+                            "CON-4703",
+                            "CON-4704",
+                            "CON-4705",
+                            "CON-4706",
+                            "CON-4707",
+                            "SCD-4801",
+                            "SCD-4802",
+                            "SCD-4803",
+                            "SCD-4804",
+                            "BUD-5001",
+                            "OUT-6001",
+                            "RUN-7001",
+                            "RUN-7002",
+                            "RUN-7004",
+                            "RUN-7005",
+                            "CFG-8506",
+                            "JOB-7101",
+                            "JOB-7102",
+                            "JOB-7103",
+                            "JOB-7104",
+                            "JOB-7105",
+                            "JOB-7106",
+                            "JOB-7107",
+                            "JOB-7108",
+                            "JOB-7109",
+                            "JOB-7110",
+                            "MSG-7201",
+                            "MSG-7202",
+                            "MSG-7203",
+                            "MSG-7204",
+                            "MSG-7205",
+                            "MSG-7206",
+                            "QAL-7301",
+                            "CFG-8501",
+                            "CFG-8503",
+                            "CFG-8504",
+                            "CFG-8505",
+                            "SSO-1201",
+                            "SSO-1202",
+                            "SSO-1203",
+                            "SSO-1204",
+                            "SSO-1205",
+                            "SSO-1206",
+                            "SSO-1207",
+                            "SSO-1208",
+                            "SSO-1209",
+                            "SSO-1210",
+                            "SSO-1211",
+                            "SSO-1212",
+                            "SSO-1213",
+                            "SYS-9001",
+                            "SYS-9002",
+                            "SYS-9003"
+                          ]
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "details": {},
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "remedy": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId",
+                        "details",
+                        "retryable",
+                        "remedy"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH-1001",
+                            "AUTH-1002",
+                            "POL-2001",
+                            "APR-2102",
+                            "APR-2104",
+                            "MDL-3001",
+                            "MDL-3002",
+                            "MDL-3003",
+                            "MDL-3004",
+                            "HTP-4001",
+                            "HTP-4002",
+                            "HTP-4003",
+                            "MCP-4101",
+                            "MCP-4102",
+                            "OPN-4501",
+                            "OPN-4502",
+                            "OPN-4503",
+                            "OPN-4504",
+                            "OPN-4505",
+                            "CON-4701",
+                            "CON-4702",
+                            "CON-4703",
+                            "CON-4704",
+                            "CON-4705",
+                            "CON-4706",
+                            "CON-4707",
+                            "SCD-4801",
+                            "SCD-4802",
+                            "SCD-4803",
+                            "SCD-4804",
+                            "BUD-5001",
+                            "OUT-6001",
+                            "RUN-7001",
+                            "RUN-7002",
+                            "RUN-7004",
+                            "RUN-7005",
+                            "CFG-8506",
+                            "JOB-7101",
+                            "JOB-7102",
+                            "JOB-7103",
+                            "JOB-7104",
+                            "JOB-7105",
+                            "JOB-7106",
+                            "JOB-7107",
+                            "JOB-7108",
+                            "JOB-7109",
+                            "JOB-7110",
+                            "MSG-7201",
+                            "MSG-7202",
+                            "MSG-7203",
+                            "MSG-7204",
+                            "MSG-7205",
+                            "MSG-7206",
+                            "QAL-7301",
+                            "CFG-8501",
+                            "CFG-8503",
+                            "CFG-8504",
+                            "CFG-8505",
+                            "SSO-1201",
+                            "SSO-1202",
+                            "SSO-1203",
+                            "SSO-1204",
+                            "SSO-1205",
+                            "SSO-1206",
+                            "SSO-1207",
+                            "SSO-1208",
+                            "SSO-1209",
+                            "SSO-1210",
+                            "SSO-1211",
+                            "SSO-1212",
+                            "SSO-1213",
+                            "SYS-9001",
+                            "SYS-9002",
+                            "SYS-9003"
+                          ]
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "details": {},
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "remedy": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "密钥不可轮换或 OPN-4503 幂等参数冲突",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId",
+                        "details",
+                        "retryable",
+                        "remedy"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH-1001",
+                            "AUTH-1002",
+                            "POL-2001",
+                            "APR-2102",
+                            "APR-2104",
+                            "MDL-3001",
+                            "MDL-3002",
+                            "MDL-3003",
+                            "MDL-3004",
+                            "HTP-4001",
+                            "HTP-4002",
+                            "HTP-4003",
+                            "MCP-4101",
+                            "MCP-4102",
+                            "OPN-4501",
+                            "OPN-4502",
+                            "OPN-4503",
+                            "OPN-4504",
+                            "OPN-4505",
+                            "CON-4701",
+                            "CON-4702",
+                            "CON-4703",
+                            "CON-4704",
+                            "CON-4705",
+                            "CON-4706",
+                            "CON-4707",
+                            "SCD-4801",
+                            "SCD-4802",
+                            "SCD-4803",
+                            "SCD-4804",
+                            "BUD-5001",
+                            "OUT-6001",
+                            "RUN-7001",
+                            "RUN-7002",
+                            "RUN-7004",
+                            "RUN-7005",
+                            "CFG-8506",
+                            "JOB-7101",
+                            "JOB-7102",
+                            "JOB-7103",
+                            "JOB-7104",
+                            "JOB-7105",
+                            "JOB-7106",
+                            "JOB-7107",
+                            "JOB-7108",
+                            "JOB-7109",
+                            "JOB-7110",
+                            "MSG-7201",
+                            "MSG-7202",
+                            "MSG-7203",
+                            "MSG-7204",
+                            "MSG-7205",
+                            "MSG-7206",
+                            "QAL-7301",
+                            "CFG-8501",
+                            "CFG-8503",
+                            "CFG-8504",
+                            "CFG-8505",
+                            "SSO-1201",
+                            "SSO-1202",
+                            "SSO-1203",
+                            "SSO-1204",
+                            "SSO-1205",
+                            "SSO-1206",
+                            "SSO-1207",
+                            "SSO-1208",
+                            "SSO-1209",
+                            "SSO-1210",
+                            "SSO-1211",
+                            "SSO-1212",
+                            "SSO-1213",
+                            "SYS-9001",
+                            "SYS-9002",
+                            "SYS-9003"
+                          ]
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "details": {},
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "remedy": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "失败；事务回滚，安全重试",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId",
+                        "details",
+                        "retryable",
+                        "remedy"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH-1001",
+                            "AUTH-1002",
+                            "POL-2001",
+                            "APR-2102",
+                            "APR-2104",
+                            "MDL-3001",
+                            "MDL-3002",
+                            "MDL-3003",
+                            "MDL-3004",
+                            "HTP-4001",
+                            "HTP-4002",
+                            "HTP-4003",
+                            "MCP-4101",
+                            "MCP-4102",
+                            "OPN-4501",
+                            "OPN-4502",
+                            "OPN-4503",
+                            "OPN-4504",
+                            "OPN-4505",
+                            "CON-4701",
+                            "CON-4702",
+                            "CON-4703",
+                            "CON-4704",
+                            "CON-4705",
+                            "CON-4706",
+                            "CON-4707",
+                            "SCD-4801",
+                            "SCD-4802",
+                            "SCD-4803",
+                            "SCD-4804",
+                            "BUD-5001",
+                            "OUT-6001",
+                            "RUN-7001",
+                            "RUN-7002",
+                            "RUN-7004",
+                            "RUN-7005",
+                            "CFG-8506",
+                            "JOB-7101",
+                            "JOB-7102",
+                            "JOB-7103",
+                            "JOB-7104",
+                            "JOB-7105",
+                            "JOB-7106",
+                            "JOB-7107",
+                            "JOB-7108",
+                            "JOB-7109",
+                            "JOB-7110",
+                            "MSG-7201",
+                            "MSG-7202",
+                            "MSG-7203",
+                            "MSG-7204",
+                            "MSG-7205",
+                            "MSG-7206",
+                            "QAL-7301",
+                            "CFG-8501",
+                            "CFG-8503",
+                            "CFG-8504",
+                            "CFG-8505",
+                            "SSO-1201",
+                            "SSO-1202",
+                            "SSO-1203",
+                            "SSO-1204",
+                            "SSO-1205",
+                            "SSO-1206",
+                            "SSO-1207",
+                            "SSO-1208",
+                            "SSO-1209",
+                            "SSO-1210",
+                            "SSO-1211",
+                            "SSO-1212",
+                            "SSO-1213",
+                            "SYS-9001",
+                            "SYS-9002",
+                            "SYS-9003"
+                          ]
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "details": {},
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "remedy": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-permission": "apikey.manage"
+      }
+    },
+    "/api-keys/{id}/revoke": {
+      "post": {
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功；明文密钥仅在首次成功响应返回",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "appId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "appId"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "CFG-8501 输入错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId",
+                        "details",
+                        "retryable",
+                        "remedy"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH-1001",
+                            "AUTH-1002",
+                            "POL-2001",
+                            "APR-2102",
+                            "APR-2104",
+                            "MDL-3001",
+                            "MDL-3002",
+                            "MDL-3003",
+                            "MDL-3004",
+                            "HTP-4001",
+                            "HTP-4002",
+                            "HTP-4003",
+                            "MCP-4101",
+                            "MCP-4102",
+                            "OPN-4501",
+                            "OPN-4502",
+                            "OPN-4503",
+                            "OPN-4504",
+                            "OPN-4505",
+                            "CON-4701",
+                            "CON-4702",
+                            "CON-4703",
+                            "CON-4704",
+                            "CON-4705",
+                            "CON-4706",
+                            "CON-4707",
+                            "SCD-4801",
+                            "SCD-4802",
+                            "SCD-4803",
+                            "SCD-4804",
+                            "BUD-5001",
+                            "OUT-6001",
+                            "RUN-7001",
+                            "RUN-7002",
+                            "RUN-7004",
+                            "RUN-7005",
+                            "CFG-8506",
+                            "JOB-7101",
+                            "JOB-7102",
+                            "JOB-7103",
+                            "JOB-7104",
+                            "JOB-7105",
+                            "JOB-7106",
+                            "JOB-7107",
+                            "JOB-7108",
+                            "JOB-7109",
+                            "JOB-7110",
+                            "MSG-7201",
+                            "MSG-7202",
+                            "MSG-7203",
+                            "MSG-7204",
+                            "MSG-7205",
+                            "MSG-7206",
+                            "QAL-7301",
+                            "CFG-8501",
+                            "CFG-8503",
+                            "CFG-8504",
+                            "CFG-8505",
+                            "SSO-1201",
+                            "SSO-1202",
+                            "SSO-1203",
+                            "SSO-1204",
+                            "SSO-1205",
+                            "SSO-1206",
+                            "SSO-1207",
+                            "SSO-1208",
+                            "SSO-1209",
+                            "SSO-1210",
+                            "SSO-1211",
+                            "SSO-1212",
+                            "SSO-1213",
+                            "SYS-9001",
+                            "SYS-9002",
+                            "SYS-9003"
+                          ]
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "details": {},
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "remedy": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "AUTH-1001 未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId",
+                        "details",
+                        "retryable",
+                        "remedy"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH-1001",
+                            "AUTH-1002",
+                            "POL-2001",
+                            "APR-2102",
+                            "APR-2104",
+                            "MDL-3001",
+                            "MDL-3002",
+                            "MDL-3003",
+                            "MDL-3004",
+                            "HTP-4001",
+                            "HTP-4002",
+                            "HTP-4003",
+                            "MCP-4101",
+                            "MCP-4102",
+                            "OPN-4501",
+                            "OPN-4502",
+                            "OPN-4503",
+                            "OPN-4504",
+                            "OPN-4505",
+                            "CON-4701",
+                            "CON-4702",
+                            "CON-4703",
+                            "CON-4704",
+                            "CON-4705",
+                            "CON-4706",
+                            "CON-4707",
+                            "SCD-4801",
+                            "SCD-4802",
+                            "SCD-4803",
+                            "SCD-4804",
+                            "BUD-5001",
+                            "OUT-6001",
+                            "RUN-7001",
+                            "RUN-7002",
+                            "RUN-7004",
+                            "RUN-7005",
+                            "CFG-8506",
+                            "JOB-7101",
+                            "JOB-7102",
+                            "JOB-7103",
+                            "JOB-7104",
+                            "JOB-7105",
+                            "JOB-7106",
+                            "JOB-7107",
+                            "JOB-7108",
+                            "JOB-7109",
+                            "JOB-7110",
+                            "MSG-7201",
+                            "MSG-7202",
+                            "MSG-7203",
+                            "MSG-7204",
+                            "MSG-7205",
+                            "MSG-7206",
+                            "QAL-7301",
+                            "CFG-8501",
+                            "CFG-8503",
+                            "CFG-8504",
+                            "CFG-8505",
+                            "SSO-1201",
+                            "SSO-1202",
+                            "SSO-1203",
+                            "SSO-1204",
+                            "SSO-1205",
+                            "SSO-1206",
+                            "SSO-1207",
+                            "SSO-1208",
+                            "SSO-1209",
+                            "SSO-1210",
+                            "SSO-1211",
+                            "SSO-1212",
+                            "SSO-1213",
+                            "SYS-9001",
+                            "SYS-9002",
+                            "SYS-9003"
+                          ]
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "details": {},
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "remedy": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "POL-2001 权限/数据范围/CSRF 拒绝",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId",
+                        "details",
+                        "retryable",
+                        "remedy"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH-1001",
+                            "AUTH-1002",
+                            "POL-2001",
+                            "APR-2102",
+                            "APR-2104",
+                            "MDL-3001",
+                            "MDL-3002",
+                            "MDL-3003",
+                            "MDL-3004",
+                            "HTP-4001",
+                            "HTP-4002",
+                            "HTP-4003",
+                            "MCP-4101",
+                            "MCP-4102",
+                            "OPN-4501",
+                            "OPN-4502",
+                            "OPN-4503",
+                            "OPN-4504",
+                            "OPN-4505",
+                            "CON-4701",
+                            "CON-4702",
+                            "CON-4703",
+                            "CON-4704",
+                            "CON-4705",
+                            "CON-4706",
+                            "CON-4707",
+                            "SCD-4801",
+                            "SCD-4802",
+                            "SCD-4803",
+                            "SCD-4804",
+                            "BUD-5001",
+                            "OUT-6001",
+                            "RUN-7001",
+                            "RUN-7002",
+                            "RUN-7004",
+                            "RUN-7005",
+                            "CFG-8506",
+                            "JOB-7101",
+                            "JOB-7102",
+                            "JOB-7103",
+                            "JOB-7104",
+                            "JOB-7105",
+                            "JOB-7106",
+                            "JOB-7107",
+                            "JOB-7108",
+                            "JOB-7109",
+                            "JOB-7110",
+                            "MSG-7201",
+                            "MSG-7202",
+                            "MSG-7203",
+                            "MSG-7204",
+                            "MSG-7205",
+                            "MSG-7206",
+                            "QAL-7301",
+                            "CFG-8501",
+                            "CFG-8503",
+                            "CFG-8504",
+                            "CFG-8505",
+                            "SSO-1201",
+                            "SSO-1202",
+                            "SSO-1203",
+                            "SSO-1204",
+                            "SSO-1205",
+                            "SSO-1206",
+                            "SSO-1207",
+                            "SSO-1208",
+                            "SSO-1209",
+                            "SSO-1210",
+                            "SSO-1211",
+                            "SSO-1212",
+                            "SSO-1213",
+                            "SYS-9001",
+                            "SYS-9002",
+                            "SYS-9003"
+                          ]
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "details": {},
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "remedy": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId",
+                        "details",
+                        "retryable",
+                        "remedy"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH-1001",
+                            "AUTH-1002",
+                            "POL-2001",
+                            "APR-2102",
+                            "APR-2104",
+                            "MDL-3001",
+                            "MDL-3002",
+                            "MDL-3003",
+                            "MDL-3004",
+                            "HTP-4001",
+                            "HTP-4002",
+                            "HTP-4003",
+                            "MCP-4101",
+                            "MCP-4102",
+                            "OPN-4501",
+                            "OPN-4502",
+                            "OPN-4503",
+                            "OPN-4504",
+                            "OPN-4505",
+                            "CON-4701",
+                            "CON-4702",
+                            "CON-4703",
+                            "CON-4704",
+                            "CON-4705",
+                            "CON-4706",
+                            "CON-4707",
+                            "SCD-4801",
+                            "SCD-4802",
+                            "SCD-4803",
+                            "SCD-4804",
+                            "BUD-5001",
+                            "OUT-6001",
+                            "RUN-7001",
+                            "RUN-7002",
+                            "RUN-7004",
+                            "RUN-7005",
+                            "CFG-8506",
+                            "JOB-7101",
+                            "JOB-7102",
+                            "JOB-7103",
+                            "JOB-7104",
+                            "JOB-7105",
+                            "JOB-7106",
+                            "JOB-7107",
+                            "JOB-7108",
+                            "JOB-7109",
+                            "JOB-7110",
+                            "MSG-7201",
+                            "MSG-7202",
+                            "MSG-7203",
+                            "MSG-7204",
+                            "MSG-7205",
+                            "MSG-7206",
+                            "QAL-7301",
+                            "CFG-8501",
+                            "CFG-8503",
+                            "CFG-8504",
+                            "CFG-8505",
+                            "SSO-1201",
+                            "SSO-1202",
+                            "SSO-1203",
+                            "SSO-1204",
+                            "SSO-1205",
+                            "SSO-1206",
+                            "SSO-1207",
+                            "SSO-1208",
+                            "SSO-1209",
+                            "SSO-1210",
+                            "SSO-1211",
+                            "SSO-1212",
+                            "SSO-1213",
+                            "SYS-9001",
+                            "SYS-9002",
+                            "SYS-9003"
+                          ]
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "details": {},
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "remedy": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "密钥不可轮换或 OPN-4503 幂等参数冲突",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId",
+                        "details",
+                        "retryable",
+                        "remedy"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH-1001",
+                            "AUTH-1002",
+                            "POL-2001",
+                            "APR-2102",
+                            "APR-2104",
+                            "MDL-3001",
+                            "MDL-3002",
+                            "MDL-3003",
+                            "MDL-3004",
+                            "HTP-4001",
+                            "HTP-4002",
+                            "HTP-4003",
+                            "MCP-4101",
+                            "MCP-4102",
+                            "OPN-4501",
+                            "OPN-4502",
+                            "OPN-4503",
+                            "OPN-4504",
+                            "OPN-4505",
+                            "CON-4701",
+                            "CON-4702",
+                            "CON-4703",
+                            "CON-4704",
+                            "CON-4705",
+                            "CON-4706",
+                            "CON-4707",
+                            "SCD-4801",
+                            "SCD-4802",
+                            "SCD-4803",
+                            "SCD-4804",
+                            "BUD-5001",
+                            "OUT-6001",
+                            "RUN-7001",
+                            "RUN-7002",
+                            "RUN-7004",
+                            "RUN-7005",
+                            "CFG-8506",
+                            "JOB-7101",
+                            "JOB-7102",
+                            "JOB-7103",
+                            "JOB-7104",
+                            "JOB-7105",
+                            "JOB-7106",
+                            "JOB-7107",
+                            "JOB-7108",
+                            "JOB-7109",
+                            "JOB-7110",
+                            "MSG-7201",
+                            "MSG-7202",
+                            "MSG-7203",
+                            "MSG-7204",
+                            "MSG-7205",
+                            "MSG-7206",
+                            "QAL-7301",
+                            "CFG-8501",
+                            "CFG-8503",
+                            "CFG-8504",
+                            "CFG-8505",
+                            "SSO-1201",
+                            "SSO-1202",
+                            "SSO-1203",
+                            "SSO-1204",
+                            "SSO-1205",
+                            "SSO-1206",
+                            "SSO-1207",
+                            "SSO-1208",
+                            "SSO-1209",
+                            "SSO-1210",
+                            "SSO-1211",
+                            "SSO-1212",
+                            "SSO-1213",
+                            "SYS-9001",
+                            "SYS-9002",
+                            "SYS-9003"
+                          ]
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "details": {},
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "remedy": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "失败；事务回滚，安全重试",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId",
+                        "details",
+                        "retryable",
+                        "remedy"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH-1001",
+                            "AUTH-1002",
+                            "POL-2001",
+                            "APR-2102",
+                            "APR-2104",
+                            "MDL-3001",
+                            "MDL-3002",
+                            "MDL-3003",
+                            "MDL-3004",
+                            "HTP-4001",
+                            "HTP-4002",
+                            "HTP-4003",
+                            "MCP-4101",
+                            "MCP-4102",
+                            "OPN-4501",
+                            "OPN-4502",
+                            "OPN-4503",
+                            "OPN-4504",
+                            "OPN-4505",
+                            "CON-4701",
+                            "CON-4702",
+                            "CON-4703",
+                            "CON-4704",
+                            "CON-4705",
+                            "CON-4706",
+                            "CON-4707",
+                            "SCD-4801",
+                            "SCD-4802",
+                            "SCD-4803",
+                            "SCD-4804",
+                            "BUD-5001",
+                            "OUT-6001",
+                            "RUN-7001",
+                            "RUN-7002",
+                            "RUN-7004",
+                            "RUN-7005",
+                            "CFG-8506",
+                            "JOB-7101",
+                            "JOB-7102",
+                            "JOB-7103",
+                            "JOB-7104",
+                            "JOB-7105",
+                            "JOB-7106",
+                            "JOB-7107",
+                            "JOB-7108",
+                            "JOB-7109",
+                            "JOB-7110",
+                            "MSG-7201",
+                            "MSG-7202",
+                            "MSG-7203",
+                            "MSG-7204",
+                            "MSG-7205",
+                            "MSG-7206",
+                            "QAL-7301",
+                            "CFG-8501",
+                            "CFG-8503",
+                            "CFG-8504",
+                            "CFG-8505",
+                            "SSO-1201",
+                            "SSO-1202",
+                            "SSO-1203",
+                            "SSO-1204",
+                            "SSO-1205",
+                            "SSO-1206",
+                            "SSO-1207",
+                            "SSO-1208",
+                            "SSO-1209",
+                            "SSO-1210",
+                            "SSO-1211",
+                            "SSO-1212",
+                            "SSO-1213",
+                            "SYS-9001",
+                            "SYS-9002",
+                            "SYS-9003"
+                          ]
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "details": {},
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "remedy": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-permission": "apikey.manage"
+      }
+    },
+    "/api-keys/{id}/rotate": {
+      "post": {
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "overlapSeconds": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 86400
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功；明文密钥仅在首次成功响应返回",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "prefix": {
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "date-time"
+                    },
+                    "key": {
+                      "type": "string"
+                    },
+                    "secretAvailable": {
+                      "type": "boolean"
+                    },
+                    "oldKeyId": {
+                      "type": "string"
+                    },
+                    "oldKeyStatus": {
+                      "enum": [
+                        "active",
+                        "revoked"
+                      ]
+                    },
+                    "oldKeyExpiresAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "prefix",
+                    "expiresAt",
+                    "secretAvailable",
+                    "oldKeyId",
+                    "oldKeyStatus",
+                    "oldKeyExpiresAt"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "CFG-8501 输入错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId",
+                        "details",
+                        "retryable",
+                        "remedy"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH-1001",
+                            "AUTH-1002",
+                            "POL-2001",
+                            "APR-2102",
+                            "APR-2104",
+                            "MDL-3001",
+                            "MDL-3002",
+                            "MDL-3003",
+                            "MDL-3004",
+                            "HTP-4001",
+                            "HTP-4002",
+                            "HTP-4003",
+                            "MCP-4101",
+                            "MCP-4102",
+                            "OPN-4501",
+                            "OPN-4502",
+                            "OPN-4503",
+                            "OPN-4504",
+                            "OPN-4505",
+                            "CON-4701",
+                            "CON-4702",
+                            "CON-4703",
+                            "CON-4704",
+                            "CON-4705",
+                            "CON-4706",
+                            "CON-4707",
+                            "SCD-4801",
+                            "SCD-4802",
+                            "SCD-4803",
+                            "SCD-4804",
+                            "BUD-5001",
+                            "OUT-6001",
+                            "RUN-7001",
+                            "RUN-7002",
+                            "RUN-7004",
+                            "RUN-7005",
+                            "CFG-8506",
+                            "JOB-7101",
+                            "JOB-7102",
+                            "JOB-7103",
+                            "JOB-7104",
+                            "JOB-7105",
+                            "JOB-7106",
+                            "JOB-7107",
+                            "JOB-7108",
+                            "JOB-7109",
+                            "JOB-7110",
+                            "MSG-7201",
+                            "MSG-7202",
+                            "MSG-7203",
+                            "MSG-7204",
+                            "MSG-7205",
+                            "MSG-7206",
+                            "QAL-7301",
+                            "CFG-8501",
+                            "CFG-8503",
+                            "CFG-8504",
+                            "CFG-8505",
+                            "SSO-1201",
+                            "SSO-1202",
+                            "SSO-1203",
+                            "SSO-1204",
+                            "SSO-1205",
+                            "SSO-1206",
+                            "SSO-1207",
+                            "SSO-1208",
+                            "SSO-1209",
+                            "SSO-1210",
+                            "SSO-1211",
+                            "SSO-1212",
+                            "SSO-1213",
+                            "SYS-9001",
+                            "SYS-9002",
+                            "SYS-9003"
+                          ]
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "details": {},
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "remedy": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "AUTH-1001 未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId",
+                        "details",
+                        "retryable",
+                        "remedy"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH-1001",
+                            "AUTH-1002",
+                            "POL-2001",
+                            "APR-2102",
+                            "APR-2104",
+                            "MDL-3001",
+                            "MDL-3002",
+                            "MDL-3003",
+                            "MDL-3004",
+                            "HTP-4001",
+                            "HTP-4002",
+                            "HTP-4003",
+                            "MCP-4101",
+                            "MCP-4102",
+                            "OPN-4501",
+                            "OPN-4502",
+                            "OPN-4503",
+                            "OPN-4504",
+                            "OPN-4505",
+                            "CON-4701",
+                            "CON-4702",
+                            "CON-4703",
+                            "CON-4704",
+                            "CON-4705",
+                            "CON-4706",
+                            "CON-4707",
+                            "SCD-4801",
+                            "SCD-4802",
+                            "SCD-4803",
+                            "SCD-4804",
+                            "BUD-5001",
+                            "OUT-6001",
+                            "RUN-7001",
+                            "RUN-7002",
+                            "RUN-7004",
+                            "RUN-7005",
+                            "CFG-8506",
+                            "JOB-7101",
+                            "JOB-7102",
+                            "JOB-7103",
+                            "JOB-7104",
+                            "JOB-7105",
+                            "JOB-7106",
+                            "JOB-7107",
+                            "JOB-7108",
+                            "JOB-7109",
+                            "JOB-7110",
+                            "MSG-7201",
+                            "MSG-7202",
+                            "MSG-7203",
+                            "MSG-7204",
+                            "MSG-7205",
+                            "MSG-7206",
+                            "QAL-7301",
+                            "CFG-8501",
+                            "CFG-8503",
+                            "CFG-8504",
+                            "CFG-8505",
+                            "SSO-1201",
+                            "SSO-1202",
+                            "SSO-1203",
+                            "SSO-1204",
+                            "SSO-1205",
+                            "SSO-1206",
+                            "SSO-1207",
+                            "SSO-1208",
+                            "SSO-1209",
+                            "SSO-1210",
+                            "SSO-1211",
+                            "SSO-1212",
+                            "SSO-1213",
+                            "SYS-9001",
+                            "SYS-9002",
+                            "SYS-9003"
+                          ]
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "details": {},
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "remedy": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "POL-2001 权限/数据范围/CSRF 拒绝",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId",
+                        "details",
+                        "retryable",
+                        "remedy"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH-1001",
+                            "AUTH-1002",
+                            "POL-2001",
+                            "APR-2102",
+                            "APR-2104",
+                            "MDL-3001",
+                            "MDL-3002",
+                            "MDL-3003",
+                            "MDL-3004",
+                            "HTP-4001",
+                            "HTP-4002",
+                            "HTP-4003",
+                            "MCP-4101",
+                            "MCP-4102",
+                            "OPN-4501",
+                            "OPN-4502",
+                            "OPN-4503",
+                            "OPN-4504",
+                            "OPN-4505",
+                            "CON-4701",
+                            "CON-4702",
+                            "CON-4703",
+                            "CON-4704",
+                            "CON-4705",
+                            "CON-4706",
+                            "CON-4707",
+                            "SCD-4801",
+                            "SCD-4802",
+                            "SCD-4803",
+                            "SCD-4804",
+                            "BUD-5001",
+                            "OUT-6001",
+                            "RUN-7001",
+                            "RUN-7002",
+                            "RUN-7004",
+                            "RUN-7005",
+                            "CFG-8506",
+                            "JOB-7101",
+                            "JOB-7102",
+                            "JOB-7103",
+                            "JOB-7104",
+                            "JOB-7105",
+                            "JOB-7106",
+                            "JOB-7107",
+                            "JOB-7108",
+                            "JOB-7109",
+                            "JOB-7110",
+                            "MSG-7201",
+                            "MSG-7202",
+                            "MSG-7203",
+                            "MSG-7204",
+                            "MSG-7205",
+                            "MSG-7206",
+                            "QAL-7301",
+                            "CFG-8501",
+                            "CFG-8503",
+                            "CFG-8504",
+                            "CFG-8505",
+                            "SSO-1201",
+                            "SSO-1202",
+                            "SSO-1203",
+                            "SSO-1204",
+                            "SSO-1205",
+                            "SSO-1206",
+                            "SSO-1207",
+                            "SSO-1208",
+                            "SSO-1209",
+                            "SSO-1210",
+                            "SSO-1211",
+                            "SSO-1212",
+                            "SSO-1213",
+                            "SYS-9001",
+                            "SYS-9002",
+                            "SYS-9003"
+                          ]
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "details": {},
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "remedy": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId",
+                        "details",
+                        "retryable",
+                        "remedy"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH-1001",
+                            "AUTH-1002",
+                            "POL-2001",
+                            "APR-2102",
+                            "APR-2104",
+                            "MDL-3001",
+                            "MDL-3002",
+                            "MDL-3003",
+                            "MDL-3004",
+                            "HTP-4001",
+                            "HTP-4002",
+                            "HTP-4003",
+                            "MCP-4101",
+                            "MCP-4102",
+                            "OPN-4501",
+                            "OPN-4502",
+                            "OPN-4503",
+                            "OPN-4504",
+                            "OPN-4505",
+                            "CON-4701",
+                            "CON-4702",
+                            "CON-4703",
+                            "CON-4704",
+                            "CON-4705",
+                            "CON-4706",
+                            "CON-4707",
+                            "SCD-4801",
+                            "SCD-4802",
+                            "SCD-4803",
+                            "SCD-4804",
+                            "BUD-5001",
+                            "OUT-6001",
+                            "RUN-7001",
+                            "RUN-7002",
+                            "RUN-7004",
+                            "RUN-7005",
+                            "CFG-8506",
+                            "JOB-7101",
+                            "JOB-7102",
+                            "JOB-7103",
+                            "JOB-7104",
+                            "JOB-7105",
+                            "JOB-7106",
+                            "JOB-7107",
+                            "JOB-7108",
+                            "JOB-7109",
+                            "JOB-7110",
+                            "MSG-7201",
+                            "MSG-7202",
+                            "MSG-7203",
+                            "MSG-7204",
+                            "MSG-7205",
+                            "MSG-7206",
+                            "QAL-7301",
+                            "CFG-8501",
+                            "CFG-8503",
+                            "CFG-8504",
+                            "CFG-8505",
+                            "SSO-1201",
+                            "SSO-1202",
+                            "SSO-1203",
+                            "SSO-1204",
+                            "SSO-1205",
+                            "SSO-1206",
+                            "SSO-1207",
+                            "SSO-1208",
+                            "SSO-1209",
+                            "SSO-1210",
+                            "SSO-1211",
+                            "SSO-1212",
+                            "SSO-1213",
+                            "SYS-9001",
+                            "SYS-9002",
+                            "SYS-9003"
+                          ]
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "details": {},
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "remedy": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "密钥不可轮换或 OPN-4503 幂等参数冲突",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId",
+                        "details",
+                        "retryable",
+                        "remedy"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH-1001",
+                            "AUTH-1002",
+                            "POL-2001",
+                            "APR-2102",
+                            "APR-2104",
+                            "MDL-3001",
+                            "MDL-3002",
+                            "MDL-3003",
+                            "MDL-3004",
+                            "HTP-4001",
+                            "HTP-4002",
+                            "HTP-4003",
+                            "MCP-4101",
+                            "MCP-4102",
+                            "OPN-4501",
+                            "OPN-4502",
+                            "OPN-4503",
+                            "OPN-4504",
+                            "OPN-4505",
+                            "CON-4701",
+                            "CON-4702",
+                            "CON-4703",
+                            "CON-4704",
+                            "CON-4705",
+                            "CON-4706",
+                            "CON-4707",
+                            "SCD-4801",
+                            "SCD-4802",
+                            "SCD-4803",
+                            "SCD-4804",
+                            "BUD-5001",
+                            "OUT-6001",
+                            "RUN-7001",
+                            "RUN-7002",
+                            "RUN-7004",
+                            "RUN-7005",
+                            "CFG-8506",
+                            "JOB-7101",
+                            "JOB-7102",
+                            "JOB-7103",
+                            "JOB-7104",
+                            "JOB-7105",
+                            "JOB-7106",
+                            "JOB-7107",
+                            "JOB-7108",
+                            "JOB-7109",
+                            "JOB-7110",
+                            "MSG-7201",
+                            "MSG-7202",
+                            "MSG-7203",
+                            "MSG-7204",
+                            "MSG-7205",
+                            "MSG-7206",
+                            "QAL-7301",
+                            "CFG-8501",
+                            "CFG-8503",
+                            "CFG-8504",
+                            "CFG-8505",
+                            "SSO-1201",
+                            "SSO-1202",
+                            "SSO-1203",
+                            "SSO-1204",
+                            "SSO-1205",
+                            "SSO-1206",
+                            "SSO-1207",
+                            "SSO-1208",
+                            "SSO-1209",
+                            "SSO-1210",
+                            "SSO-1211",
+                            "SSO-1212",
+                            "SSO-1213",
+                            "SYS-9001",
+                            "SYS-9002",
+                            "SYS-9003"
+                          ]
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "details": {},
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "remedy": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "失败；事务回滚，安全重试",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId",
+                        "details",
+                        "retryable",
+                        "remedy"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH-1001",
+                            "AUTH-1002",
+                            "POL-2001",
+                            "APR-2102",
+                            "APR-2104",
+                            "MDL-3001",
+                            "MDL-3002",
+                            "MDL-3003",
+                            "MDL-3004",
+                            "HTP-4001",
+                            "HTP-4002",
+                            "HTP-4003",
+                            "MCP-4101",
+                            "MCP-4102",
+                            "OPN-4501",
+                            "OPN-4502",
+                            "OPN-4503",
+                            "OPN-4504",
+                            "OPN-4505",
+                            "CON-4701",
+                            "CON-4702",
+                            "CON-4703",
+                            "CON-4704",
+                            "CON-4705",
+                            "CON-4706",
+                            "CON-4707",
+                            "SCD-4801",
+                            "SCD-4802",
+                            "SCD-4803",
+                            "SCD-4804",
+                            "BUD-5001",
+                            "OUT-6001",
+                            "RUN-7001",
+                            "RUN-7002",
+                            "RUN-7004",
+                            "RUN-7005",
+                            "CFG-8506",
+                            "JOB-7101",
+                            "JOB-7102",
+                            "JOB-7103",
+                            "JOB-7104",
+                            "JOB-7105",
+                            "JOB-7106",
+                            "JOB-7107",
+                            "JOB-7108",
+                            "JOB-7109",
+                            "JOB-7110",
+                            "MSG-7201",
+                            "MSG-7202",
+                            "MSG-7203",
+                            "MSG-7204",
+                            "MSG-7205",
+                            "MSG-7206",
+                            "QAL-7301",
+                            "CFG-8501",
+                            "CFG-8503",
+                            "CFG-8504",
+                            "CFG-8505",
+                            "SSO-1201",
+                            "SSO-1202",
+                            "SSO-1203",
+                            "SSO-1204",
+                            "SSO-1205",
+                            "SSO-1206",
+                            "SSO-1207",
+                            "SSO-1208",
+                            "SSO-1209",
+                            "SSO-1210",
+                            "SSO-1211",
+                            "SSO-1212",
+                            "SSO-1213",
+                            "SYS-9001",
+                            "SYS-9002",
+                            "SYS-9003"
+                          ]
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "details": {},
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "remedy": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-permission": "apikey.manage"
+      }
+    }
+  }
+}

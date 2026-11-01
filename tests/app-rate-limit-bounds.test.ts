@@ -1,3 +1,4 @@
+import { configurationHeaders } from "./helpers/configuration-headers.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance } from "fastify";
@@ -41,7 +42,7 @@ describe("I-APP-03 rateLimitPerMinute bounds", () => {
   });
 
   it.each(BAD.map((v) => [JSON.stringify(v), v]))("PATCH rateLimitPerMinute=%s -> 400, stored value unchanged", async (_label, value) => {
-    const res = await app.inject({ method: "PATCH", url: `/admin/api/apps/${appId}`, headers, payload: { rateLimitPerMinute: value } });
+    const res = await app.inject({ method: "PATCH", url: `/admin/api/apps/${appId}`, headers: await configurationHeaders(`/admin/api/apps/${appId}`, headers), payload: { rateLimitPerMinute: value } });
     expect(res.statusCode, res.body).toBe(400);
     expect(await stored()).toBe(60);
   });
@@ -51,7 +52,7 @@ describe("I-APP-03 rateLimitPerMinute bounds", () => {
     expect(created.statusCode, created.body).toBe(200);
     const dflt = await app.inject({ method: "POST", url: "/admin/api/apps", headers, payload: { key: k("dflt") } });
     expect((await one<{ r: number }>("SELECT rate_limit_per_minute AS r FROM api_apps WHERE id = ?", [dflt.json().id]))!.r).toBe(60);
-    expect((await app.inject({ method: "PATCH", url: `/admin/api/apps/${appId}`, headers, payload: { rateLimitPerMinute: 100000 } })).statusCode).toBe(200);
+    expect((await app.inject({ method: "PATCH", url: `/admin/api/apps/${appId}`, headers: await configurationHeaders(`/admin/api/apps/${appId}`, headers), payload: { rateLimitPerMinute: 100000 } })).statusCode).toBe(200);
     expect(await stored()).toBe(100000);
   });
 });

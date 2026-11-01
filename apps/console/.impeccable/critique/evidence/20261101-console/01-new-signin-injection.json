@@ -1,0 +1,71 @@
+{
+  "injection": {
+    "tagAppended": true,
+    "src": "http://localhost:8400/detect.js"
+  },
+  "status": {
+    "title": "[Human] Forge Console — B evidence",
+    "scriptLoaded": true,
+    "scriptFailed": false,
+    "overlays": [
+      {
+        "tag": "SCRIPT",
+        "id": "impeccable-detector-b",
+        "className": ""
+      }
+    ]
+  },
+  "events": [
+    {
+      "method": "Runtime.consoleAPICalled",
+      "params": {
+        "type": "log",
+        "args": [
+          {
+            "type": "string",
+            "value": "%c[impeccable] No anti-patterns found."
+          },
+          {
+            "type": "string",
+            "value": "color: #22c55e; font-weight: bold"
+          }
+        ],
+        "executionContextId": 2,
+        "timestamp": 1793510255290.488,
+        "stackTrace": {
+          "callFrames": [
+            {
+              "functionName": "printSummary",
+              "scriptId": "93",
+              "url": "http://localhost:8400/detect.js",
+              "lineNumber": 4212,
+              "columnNumber": 14
+            },
+            {
+              "functionName": "renderBrowserFindings",
+              "scriptId": "93",
+              "url": "http://localhost:8400/detect.js",
+              "lineNumber": 4439,
+              "columnNumber": 25
+            },
+            {
+              "functionName": "scan",
+              "scriptId": "93",
+              "url": "http://localhost:8400/detect.js",
+              "lineNumber": 4461,
+              "columnNumber": 24
+            },
+            {
+              "functionName": "runAutoScan",
+              "scriptId": "93",
+              "url": "http://localhost:8400/detect.js",
+              "lineNumber": 4534,
+              "columnNumber": 10
+            }
+          ]
+        }
+      },
+      "sessionId": "D4C1CEF92114BC3ACDE5AA3722AB4F95"
+    }
+  ]
+}

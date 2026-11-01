@@ -50,8 +50,8 @@ beforeAll(async () => {
   await app.ready();
   agentKey = `it-ip-${suffix}`;
   agentId = await repos.createAgent({ key: agentKey, name: "IT ip", ownerOrgUnitId: ROOT, createdBy: ADMIN_ID });
-  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID });
-  await repos.publishAgentVersion(agentId, versionId);
+  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID }, { expectedRevision: "system" });
+  await repos.publishAgentVersion(agentId, versionId, { expectedRevision: "system" });
   for (const [role, dataScope] of [["auditor", "org"], ["user", "self"], ["operator", "org"]] as const) {
     users[role] = await repos.createUser({ email: `it-ip-${role}-${suffix}@forge.local`, username: `it-ip-${role}-${suffix}`, displayName: `IT ip ${role}`, role, dataScope, orgUnitId: ROOT, idpSubject: `it-ip-${role}-${suffix}` });
   }

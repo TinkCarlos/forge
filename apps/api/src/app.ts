@@ -75,6 +75,10 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   app.removeContentTypeParser("text/plain");
 
   app.decorate("forgeConfig", options.config ? { ...config, ...options.config } : config);
+  app.addHook("onSend", (request, reply, payload, done) => {
+    reply.header("X-Request-Id", String(request.id));
+    done(null, payload);
+  });
 
   // P3-10: audit rows written while serving this request carry ip / userAgent (<= 512) / requestId in details_json.
   app.addHook("preHandler", (request, _reply, done) => {

@@ -23,6 +23,6 @@ export function installAdminMultipartGuard(app: FastifyInstance): void {
     const type = String(request.headers["content-type"] ?? "").trim().toLowerCase();
     if (!type.startsWith("multipart/")) return;
     if (request.routeOptions?.config?.multipartUpload === true) return;
-    throw new ForgeError("OPN-4505", "不支持的 Content-Type", 415);
+    throw new ForgeError("OPN-4505", { message: "不支持的 Content-Type", httpStatus: 415, retryable: false });
   });
 }

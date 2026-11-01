@@ -1,3 +1,4 @@
+import { configurationHeaders } from "./helpers/configuration-headers.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance } from "fastify";
@@ -61,17 +62,19 @@ beforeAll(async () => {
   headers = { cookie: `forge_session=${sessionCookieValue(session)}`, "x-csrf-token": session.csrfToken };
 
   agentId = await repos.createAgent({ key: `it-mask-agent-${suffix}`, name: "IT mask agent", ownerOrgUnitId: ROOT, createdBy: ADMIN_ID });
-  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID });
+  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID }, { expectedRevision: "system" });
   appId = await repos.createApiApp({ key: `it-mask-${suffix}`, name: "IT mask", scopes: ["runs:read"] });
   openKey = `fsk_${randomBytes(32).toString("base64url")}`;
   await repos.createApiKey({ appId, name: "it-mask", prefix: openKey.slice(0, 16), keyHash: hashApiKey(openKey, config.API_KEY_PEPPER), scopes: ["runs:read"] });
   connectorUserId = await repos.createUser({ email: `it-mask-${suffix}@forge.local`, username: `it-mask-${suffix}`, displayName: "IT mask", role: "auditor", dataScope: "all", orgUnitId: ROOT, idpSubject: `it-mask-sub-${suffix}` });
 
   const threadId = await repos.createThread({ agentId, orgUnitId: ROOT, subjectType: "user", subjectId: ADMIN_ID });
-  runId = await repos.createRun({ threadId, agentId, agentVersionId: versionId, appId, orgUnitId: ROOT, subjectType: "user", subjectId: ADMIN_ID, input: RUN_INPUT, status: "succeeded" });
+  runId = await repos.createRun({ threadId, agentId, agentVersionId: versionId, appId, orgUnitId: ROOT, subjectType: "user", subjectId: ADMIN_ID, input: RUN_INPUT, status: "running" });
   const toolCallId = await repos.addToolCall({ runId, toolKey: "http.call", args: TOOL_ARGS, risk: "high", status: "succeeded", callId: "provider_call_q5" });
   await repos.addMessage({ threadId, runId, seq: 1, role: "user", content: RUN_INPUT });
   await repos.addMessage({ threadId, runId, seq: 2, role: "assistant", content: { text: "calling", tool_calls: [{ id: toolCallId, type: "function", function: { name: "http.call", arguments: JSON.stringify(TOOL_ARGS) } }] } });
+
+  await repos.updateRun(runId,{status:"succeeded"});
 
   mcpId = await repos.createMcpServer({ key: `it-mask-mcp-${suffix}`, name: "IT mask MCP", url: "http://127.0.0.1:1/mcp", headers: {}, createdBy: ADMIN_ID });
   scheduleId = await repos.createSchedule({ key: `it-mask-sch-${suffix}`, name: "IT mask", agentId, orgUnitId: ROOT, subjectType: "user", subjectId: ADMIN_ID, cron: "0 9 * * *", timezone: "Asia/Shanghai", input: { text: "x" }, status: "disabled", createdBy: ADMIN_ID });
@@ -164,18 +167,20 @@ describe("audit details are masked before they are written", () => {
       [action, resourceId ?? roleCode],
     ))[0]?.details_json;
 
-  it("mcp.update: headers_json masked in audit, raw in mcp_servers", async () => {
-    const res = await app.inject({ method: "PATCH", url: `/admin/api/mcp/${mcpId}`, headers, payload: { headers: { Authorization: `Bearer ${SECRET}`, "X-Api-Key": SECRET, Accept: "application/json" } } });
+  it("mcp.update: audits header names only and stores values in the vault", async () => {
+    const res = await app.inject({ method: "PATCH", url: `/admin/api/mcp/${mcpId}`, headers: await configurationHeaders(`/admin/api/mcp/${mcpId}`, headers), payload: { headers: { Authorization: `Bearer ${SECRET}`, "X-Api-Key": SECRET, Accept: "application/json" } } });
     expect(res.statusCode).toBe(200);
-    const details = (await latestAudit("mcp.update", mcpId)) as { headers_json: Record<string, unknown> };
+    const details = (await latestAudit("mcp.update", mcpId)) as { headerNames: string[] };
     assertNoPlaintext(details);
-    expect(details.headers_json).toEqual({ Authorization: "***", "X-Api-Key": "***", Accept: "application/json" });
-    const stored = await one<{ headers_json: unknown }>("SELECT headers_json FROM mcp_servers WHERE id = ?", [mcpId]);
-    expect(JSON.stringify(stored!.headers_json)).toContain(SECRET);
+    expect(details.headerNames).toEqual(["authorization", "x-api-key", "accept"]);
+    const stored = await one<{ headers_json: unknown; header_secret_refs_json:Record<string,string> }>("SELECT headers_json, header_secret_refs_json FROM mcp_servers WHERE id = ?", [mcpId]);
+    expect(stored!.headers_json).toEqual({});
+    expect(JSON.stringify(stored)).not.toContain(SECRET);
+    expect(await repos.resolveCredentialValues("mcp_server", mcpId, Object.fromEntries(Object.entries(stored!.header_secret_refs_json).map(([name,id]) => [`header:${name}`,id])))).toEqual({"header:authorization":`Bearer ${SECRET}`,"header:x-api-key":SECRET,"header:accept":"application/json"});
   });
 
   it("schedule.update: input_json masked in audit, raw in schedules", async () => {
-    const res = await app.inject({ method: "PATCH", url: `/admin/api/schedules/${scheduleId}`, headers, payload: { input: { text: "daily", password: SECRET, auth: `Bearer ${SECRET}` } } });
+    const res = await app.inject({ method: "PATCH", url: `/admin/api/schedules/${scheduleId}`, headers: await configurationHeaders(`/admin/api/schedules/${scheduleId}`, headers), payload: { input: { text: "daily", password: SECRET, auth: `Bearer ${SECRET}` } } });
     expect(res.statusCode).toBe(200);
     const details = (await latestAudit("schedule.update", scheduleId)) as { input_json: Record<string, unknown> };
     assertNoPlaintext(details);

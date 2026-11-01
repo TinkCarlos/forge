@@ -1,3 +1,4 @@
+import { configurationHeaders } from "./helpers/configuration-headers.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance } from "fastify";
@@ -37,8 +38,8 @@ async function legacy(cron: string, status: "active" | "disabled"): Promise<stri
 }
 const create = (cron: string) =>
   app.inject({ method: "POST", url: "/admin/api/schedules", headers, payload: { key: `it-scm-new-${suffix}-${seq++}`, agentId, serviceAccountId: accountId, cron } });
-const patch = (id: string, payload: Record<string, unknown>) => app.inject({ method: "PATCH", url: `/admin/api/schedules/${id}`, headers, payload });
-const enable = (id: string) => app.inject({ method: "POST", url: `/admin/api/schedules/${id}/enable`, headers });
+const patch = async (id: string, payload: Record<string, unknown>) => app.inject({ method: "PATCH", url: `/admin/api/schedules/${id}`, headers: await configurationHeaders(`/admin/api/schedules/${id}`, headers), payload });
+const enable = async (id: string) => app.inject({ method: "POST", url: `/admin/api/schedules/${id}/enable`, headers: await configurationHeaders(`/admin/api/schedules/${id}/enable`, headers) });
 
 beforeAll(async () => {
   app = await buildApp({ logger: false });
@@ -46,8 +47,8 @@ beforeAll(async () => {
   const pa = await realSession({ name: "IT scm", role: "platform_admin", orgUnitId: ROOT, dataScope: "all" });
   headers = sessionHeaders(pa, sessionCookieValue(pa));
   agentId = await repos.createAgent({ key: `it-scm-${suffix}`, name: "IT scm", ownerOrgUnitId: ROOT, createdBy: ADMIN_ID });
-  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID });
-  await repos.publishAgentVersion(agentId, versionId);
+  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID }, { expectedRevision: "system" });
+  await repos.publishAgentVersion(agentId, versionId, { expectedRevision: "system" });
   accountId = await repos.createServiceAccount({ key: `it-scm-svc-${suffix}`, name: "IT scm svc", orgUnitId: ROOT, role: "operator", dataScope: "org", createdBy: ADMIN_ID });
 });
 

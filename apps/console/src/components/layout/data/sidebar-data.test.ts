@@ -9,15 +9,20 @@ const ORG_ADMIN_AFTER_C = ['agent.view', 'agent.manage', 'agent.publish', 'agent
 
 describe('侧栏权限规则（K-29）', () => {
   it('每个入口都配了权限', () => {
-    for (const i of items) expect(i.permission, i.title).toBeTruthy()
+    for (const i of items) expect(Boolean(i.permission) || Boolean(i.anyPermissions?.length), i.title).toBe(true)
   })
-  it('新版页面入口的权限与路由守卫一致', () => {
+  it('账号与权限支持任一获准页签，仍拒绝没有两种读取权限的用户', () => {
+    const visible = (perms: string[]) => filterNavGroups(sidebarData.navGroups, perms).flatMap(group => group.items).some(item => item.url === '/#users')
+    expect(visible(['role.view'])).toBe(true); expect(visible(['user.view'])).toBe(true); expect(visible(['role.manage'])).toBe(false); expect(visible([])).toBe(false)
+  })
+  it('新版页面入口的权限与路由守卫一致' , () => {
     for (const i of items.filter((x) => !x.external)) expect(i.permission).toBe(ROUTE_PERMISSIONS[i.url as keyof typeof ROUTE_PERMISSIONS])
   })
   it('旧版入口的权限取自 LEGACY_PAGE_PERMISSIONS', () => {
     for (const i of items.filter((x) => x.external)) {
       const id = String(i.url).replace('/#', '') as keyof typeof LEGACY_PAGE_PERMISSIONS
-      expect(i.permission, i.title).toBe(LEGACY_PAGE_PERMISSIONS[id])
+      if (id === 'users') expect(i.anyPermissions).toEqual(['user.view', 'role.view'])
+      else expect(i.permission, i.title).toBe(LEGACY_PAGE_PERMISSIONS[id])
     }
   })
   it('审计入口（新版 /audit 和旧版 #audit）都要求 audit.view', () => {

@@ -14,3 +14,8 @@ export { describeTickError, guardTick, logSafeError, redactCredentials, tickBack
 export { AUTH_GC_BATCH, AUTH_GC_INTERVAL_MS, AUTH_GC_LOCK, collectExpiredAuth, type AuthGcResult } from "./auth-gc.js";
 export { CANCEL_SWEEP_BATCH, drainRuntime, startRuntime, stopRuntime, sweepCancelRequestedRuns } from "./worker.js";
 export type { DrainOptions, DrainResult, RunHandoff } from "./drain.js";
+
+export {deliverMessages} from "./message-delivery.js";
+export {renderMessageTemplate,wecomTextBody} from "./message-protocol.js";
+
+export {fanoutMessages,renderEventMessage} from "./message-fanout.js";

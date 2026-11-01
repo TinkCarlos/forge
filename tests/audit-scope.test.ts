@@ -57,7 +57,7 @@ describe("buildAuditListQuery", () => {
 });
 
 describe("audit department sources", () => {
-  it("every resourceType written by the API is either mapped to a department source or explicitly platform-level", () => {
+  it("every resourceType written by the API or transactional repositories has a scope classification", () => {
     const dir = path.resolve(import.meta.dirname, "../apps/api/src");
     const files: string[] = [];
     const walk = (d: string): void => {
@@ -68,10 +68,12 @@ describe("audit department sources", () => {
       }
     };
     walk(dir);
+    walk(path.resolve(import.meta.dirname, "../packages/store/src/repositories"));
     const types = new Set<string>();
     for (const f of files) {
       const src = fs.readFileSync(f, "utf8");
       for (const m of src.matchAll(/writeAudit\(\s*session,\s*"[^"]+",\s*"([a-z_]+)"/g)) types.add(m[1]!);
+      for (const m of src.matchAll(/configurationWrite\(\s*request,\s*session,\s*"[^"]+",\s*"([a-z_]+)"/g)) types.add(m[1]!);
       for (const m of src.matchAll(/resourceType:\s*"([a-z_]+)"/g)) types.add(m[1]!);
     }
     expect(types.size).toBeGreaterThanOrEqual(18);

@@ -1,6 +1,6 @@
 import { type FastifyInstance } from "fastify";
-import { errors } from "@forge/core";
-import { visibleAgentOrgIds } from "@forge/governance";
+import { errors, hasPermission } from "@forge/core";
+import { assertPermission, visibleAgentOrgIds } from "@forge/governance";
 import { AGENT_STATUSES, assertAgentRunnable, createQueuedRun } from "@forge/runtime";
 import { repos } from "@forge/store";
 import {
@@ -11,6 +11,8 @@ import {
   jsonObjectBody,
   admin,
   writeAudit,
+  configurationWrite,
+  configurationResult,
   agentAccessible,
   assertAgentWritable,
   presentAgent,
@@ -23,7 +25,7 @@ export default async function adminAgentRoutes(app: FastifyInstance): Promise<vo
   app.get("/admin/api/dashboard", async (request) => {
     const session = await admin(request, "agent.view");
     const stats = await repos.stats();
-    return { ...stats, user: sessionPayload(session).user };
+    return { agents:stats.agents, ...(hasPermission(session.principal,"run.view") ? {runsToday:stats.runsToday,runsByStatus:stats.runsByStatus} : {}), ...(hasPermission(session.principal,"approval.view") ? {pendingApprovals:stats.pendingApprovals} : {}), user: sessionPayload(session).user };
   });
 
   app.get("/admin/api/agents", async (request) => {
@@ -46,6 +48,7 @@ export default async function adminAgentRoutes(app: FastifyInstance): Promise<vo
     const key = requireBodyString(body, "key").trim();
     if (!/^[a-z0-9][a-z0-9-]{1,63}$/.test(key)) throw errors.invalid("key 必须为小写字母、数字、连字符，2-64 位");
     assertValidInput(request);
+    if(body.publish === true) assertPermission(session.principal,"agent.publish");
     if (await repos.getAgentByKey(key)) throw errors.conflict("Agent key 已存在");
     // Item 7: parsed (and rejected with 400) before the agent row is created, so a bad spec leaves nothing behind.
     const spec = jsonObjectBody(body, "spec", { model: { provider: "mock", model: "mock-1" }, toolsets: [{ builtin: ["current_time"] }] });
@@ -65,21 +68,21 @@ export default async function adminAgentRoutes(app: FastifyInstance): Promise<vo
       status: body.publish === true ? "published" : "draft",
       changelog: "Initial version",
       createdBy: session.principal.id,
-    });
-    if (body.publish === true) await repos.publishAgentVersion(agentId, versionId);
+    }, { expectedRevision: "system" });
     await writeAudit(session, "agent.create", "agent", agentId, { key });
     return { id: agentId, versionId };
   });
 
-  app.get("/admin/api/agents/:id", async (request) => {
+  app.get("/admin/api/agents/:id", async (request, reply) => {
     const session = await admin(request, "agent.view");
     const agent = await repos.getAgent(param(request, "id"));
     if (!agent || !(await agentAccessible(session.principal, agent))) throw errors.notFound("Agent 不存在");
     const versions = await repos.listAgentVersions(agent.id);
-    return { ...presentAgent(agent), instructions: versions[0]?.instructions ?? null, versions };
+    configurationResult(reply, Number(agent.revision));
+    return { ...presentAgent(agent, versions.find((version) => version.id === agent.published_version_id)), instructions: versions[0]?.instructions ?? null, versions };
   });
 
-  app.patch("/admin/api/agents/:id", { schema: ROUTE_SCHEMAS.agentPatch, attachValidation: true }, async (request) => {
+  app.patch("/admin/api/agents/:id", { schema: ROUTE_SCHEMAS.agentPatch, attachValidation: true }, async (request, reply) => {
     const session = await admin(request, "agent.manage");
     const agent = await repos.getAgent(param(request, "id"));
     if (!agent || !(await agentAccessible(session.principal, agent))) throw errors.notFound("Agent 不存在");
@@ -96,19 +99,18 @@ export default async function adminAgentRoutes(app: FastifyInstance): Promise<vo
       fields.status = body.status;
     }
     if (body.apiEnabled !== undefined) fields.api_enabled = body.apiEnabled === true ? 1 : 0; // boolean (schema)
-    await repos.updateAgent(agent.id, fields);
-    await writeAudit(session, "agent.update", "agent", agent.id, fields);
-    return { ok: true };
+    const revision = await repos.updateAgent(agent.id, fields, configurationWrite(request, session, "agent.update", "agent", agent.id, fields, agent.owner_org_unit_id));
+    return configurationResult(reply, revision);
   });
 
-  app.post("/admin/api/agents/:id/versions", { schema: ROUTE_SCHEMAS.agentVersionCreate, attachValidation: true }, async (request) => {
+  app.post("/admin/api/agents/:id/versions", { schema: ROUTE_SCHEMAS.agentVersionCreate, attachValidation: true }, async (request, reply) => {
     const session = await admin(request, "agent.publish");
     const agent = await repos.getAgent(param(request, "id"));
     if (!agent || !(await agentAccessible(session.principal, agent))) throw errors.notFound("Agent 不存在");
     await assertAgentWritable(session.principal, agent);
     assertValidInput(request);
     const body = bodyOf(request);
-    const versionId = await repos.createAgentVersion({
+    const input = {
       agentId: agent.id,
       version: requireBodyString(body, "version"),
       instructions: stringBody(body, "instructions", "You are a helpful assistant."),
@@ -116,13 +118,13 @@ export default async function adminAgentRoutes(app: FastifyInstance): Promise<vo
       status: body.publish === true ? "published" : "draft",
       changelog: stringBody(body, "changelog"),
       createdBy: session.principal.id,
-    });
-    if (body.publish === true) await repos.publishAgentVersion(agent.id, versionId);
-    await writeAudit(session, "agent.version.create", "agent_version", versionId, { agentId: agent.id });
-    return { versionId };
+    };
+    const write = configurationWrite(request, session, "agent.version.create", "agent_version", null, { agentId: agent.id }, agent.owner_org_unit_id);
+    const versionId = await repos.createAgentVersion(input, write);
+    return { ...configurationResult(reply, Number(write.expectedRevision) + 1), versionId };
   });
 
-  app.post("/admin/api/agents/:id/publish", { schema: ROUTE_SCHEMAS.agentPublish, attachValidation: true }, async (request) => {
+  app.post("/admin/api/agents/:id/publish", { schema: ROUTE_SCHEMAS.agentPublish, attachValidation: true }, async (request, reply) => {
     const session = await admin(request, "agent.publish");
     const agent = await repos.getAgent(param(request, "id"));
     if (!agent || !(await agentAccessible(session.principal, agent))) throw errors.notFound("Agent 不存在");
@@ -133,9 +135,9 @@ export default async function adminAgentRoutes(app: FastifyInstance): Promise<vo
     const version = await repos.getAgentVersion(versionId);
     if (!version || version.agent_id !== agent.id) throw errors.notFound("版本不存在");
     // K-34: already published -> 200 with the current state, no second audit row.
-    const changed = await repos.publishAgentVersion(agent.id, versionId);
-    if (changed) await writeAudit(session, "agent.publish", "agent_version", versionId, { agentId: agent.id });
-    return { ok: true, changed, publishedVersionId: versionId };
+    const write = configurationWrite(request, session, "agent.publish", "agent_version", versionId, { agentId: agent.id }, agent.owner_org_unit_id);
+    const changed = await repos.publishAgentVersion(agent.id, versionId, write);
+    return { ...configurationResult(reply, Number(write.expectedRevision) + (changed ? 1 : 0)), changed, publishedVersionId: versionId };
   });
 
   app.post("/admin/api/agents/:id/run", { schema: ROUTE_SCHEMAS.agentRun, attachValidation: true }, async (request) => {

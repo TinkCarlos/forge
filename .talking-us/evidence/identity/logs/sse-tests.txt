@@ -1,0 +1,9 @@
+
+ RUN  v4.1.12 /Users/libo/projects/forge
+
+
+ Test Files  4 passed (4)
+      Tests  30 passed (30)
+   Start at  08:59:29
+   Duration  10.61s (transform 227ms, setup 0ms, import 789ms, tests 9.57s, environment 0ms)
+

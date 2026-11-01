@@ -1,3 +1,4 @@
+import { configurationHeaders } from "./helpers/configuration-headers.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance } from "fastify";
@@ -41,8 +42,8 @@ async function headersFor(principal: Principal): Promise<Record<string, string>>
 }
 
 const row = async (id: string) => (await repos.getUserById(id))!;
-const patch = (id: string, payload: Record<string, unknown>, headers = orgAdminHeaders) =>
-  app.inject({ method: "PATCH", url: `/admin/api/users/${id}`, headers, payload });
+const patch = async (id: string, payload: Record<string, unknown>, headers = orgAdminHeaders) =>
+  app.inject({ method: "PATCH", url: `/admin/api/users/${id}`, headers: await configurationHeaders(`/admin/api/users/${id}`, headers), payload });
 const create = async (payload: Record<string, unknown>, headers = orgAdminHeaders) => {
   const res = await app.inject({ method: "POST", url: "/admin/api/users", headers, payload });
   if (res.statusCode === 200) createdUsers.push((res.json() as { id: string }).id);
@@ -158,18 +159,14 @@ describe("PATCH /admin/api/users/:id by org_admin", () => {
     expect((await row(userA)).data_scope).toBe("self");
   });
 
-  // Item 6: orgUnitId is no longer a declared field of PATCH /users/{id} (it was accepted and silently ignored).
-  it("orgUnitId in the body -> 400 CFG-8501, user not moved, nothing audited", async () => {
-    const audits = async () => Number((await query<{ n: number }>("SELECT COUNT(*) AS n FROM audit_logs WHERE resource_id = ?", [userA]))[0]!.n);
-    const before = await audits();
-    for (const orgUnitId of [ORG_B, ORG_A]) {
-      const res = await patch(userA, { role: "user", orgUnitId });
-      expect(res.statusCode).toBe(400);
-      expect(errorOf(res).code).toBe("CFG-8501");
-      expect(errorOf(res).details?.field).toBe("orgUnitId");
-    }
+  it("department transfer stays inside the actor scope and records both departments", async () => {
+    expect((await patch(userA, { orgUnitId: ORG_B })).statusCode).toBe(403);
     expect((await row(userA)).org_unit_id).toBe(ORG_A);
-    expect(await audits()).toBe(before);
+    expect((await patch(userA, { orgUnitId: ORG_A_CHILD })).statusCode).toBe(200);
+    expect((await row(userA)).org_unit_id).toBe(ORG_A_CHILD);
+    const audit = await query<{ action: string; org_unit_id: string }>("SELECT action, org_unit_id FROM audit_logs WHERE resource_id = ? AND action IN ('user.update', 'user.org_transfer_out')", [userA]);
+    expect(audit).toContainEqual({ action: "user.org_transfer_out", org_unit_id: ORG_A });
+    expect((await patch(userA, { orgUnitId: ORG_A })).statusCode).toBe(200);
   });
 
   it("status change inside scope works and is audited", async () => {
@@ -191,14 +188,13 @@ describe("POST /admin/api/users by org_admin", () => {
     expect(await repos.getUserByEmail(email)).toBeNull();
   });
 
-  // Item 6: orgUnitId is no longer a declared field of POST /users (it was accepted and silently ignored).
-  it("orgUnitId in the body -> 400 CFG-8501, no user created", async () => {
+  it("may assign a child department but cannot create in another organization", async () => {
     const email = `it-ua-new-org-${suffix}@forge.local`;
-    const res = await create({ email, role: "user", orgUnitId: ORG_A });
-    expect(res.statusCode).toBe(400);
-    expect(errorOf(res).code).toBe("CFG-8501");
-    expect(errorOf(res).details?.field).toBe("orgUnitId");
+    expect((await create({ email, role: "user", orgUnitId: ORG_B })).statusCode).toBe(403);
     expect(await repos.getUserByEmail(email)).toBeNull();
+    const res = await create({ email, role: "user", orgUnitId: ORG_A_CHILD });
+    expect(res.statusCode).toBe(200);
+    expect((await row(res.json().id)).org_unit_id).toBe(ORG_A_CHILD);
   });
 
   it("auditor without dataScope -> created with the caller's scope, in the caller's department", async () => {

@@ -2,6 +2,8 @@
 
 版本：1.0　日期：2026-10-21　状态：待评审
 
+> 2026-10-31 补充：上传和安装包仍不在 API/Worker 宿主执行代码；Skill 可以携带脚本，由运行阶段在专用Linux执行服务器原生执行。该环境不引入容器/gVisor，网络开放、会话文件持续保存，依据[补充需求](../01-requirements/product-requirements.md#10-2026-10-31-补充需求通用-agent-执行环境)。本文件中的网络权限清单仅适用于既有受控工具/服务，不形成通用脚本网络ACL；详细设计见[补充方案](../../.talking-us/2026-10-31-forge-completion-plan.md)。
+
 > 目标：Agent、Skill、MCP、工具包、模型供应商都能安装、启用、停用、升级、回滚、卸载，且不破坏运行中的 Run。
 
 ## 1. 目标与非目标
@@ -74,7 +76,7 @@ com.acme.contract-review/
   "vendor": { "name": "Acme", "contact": "platform@acme.internal" },
   "compatibility": {
     "forge": ">=2.0.0 <3.0.0",
-    "pi": ">=1.3.0 <1.4.0"
+    "pi": ">=1.4.0 <1.5.0"
   },
   "resources": {
     "agents": ["resources/agents/contract-reviewer.yaml"],

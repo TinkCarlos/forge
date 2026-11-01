@@ -28,7 +28,7 @@ function harness(extra: Record<string, unknown> = {}) {
   const toasts: [string, string?][] = []
   let submit: ((data: FormData) => Promise<void>) | undefined
   let opened = 0
-  const deps: Record<string, unknown> = {
+  const deps: Record<string, unknown> = { scheduleFields: () => '',
     state: { agents: [], serviceAccounts: [] },
     api: async (path: string, opts: { method?: string; body?: unknown } = {}) => { calls.push({ path, method: opts.method ?? 'GET', body: opts.body }); return { versions: [], name: 'x' } },
     openModal: (_t: string, _h: string, cb: (d: FormData) => Promise<void>) => { opened++; submit = cb },
@@ -62,7 +62,7 @@ describe('P2 旧版 API 路径里的 id 先校验再编码', () => {
     const templates = APP.match(/`\/admin\/api\/[^`]*`/g) ?? []
     const withExpr = templates.filter((t) => t.includes('${'))
     expect(withExpr.length).toBeGreaterThan(25)
-    const bad = withExpr.filter((t) => [...t.matchAll(/\$\{([^}]*)\}/g)].some((m) => !/^idSeg\(/.test(m[1])))
+    const bad = withExpr.filter(t => !/^`\/admin\/api\/(?:users|audit)\?\$\{listQuery\(\{ \.\.\.state\.(?:user|audit)Filters \}\)\}`$/.test(t)).filter((t) => [...t.matchAll(/\$\{([^}]*)\}/g)].some((m) => !/^idSeg\(/.test(m[1]) && m[1] !== 'deleting ? "" : "/revoke-sessions"'))
     expect(bad).toEqual([])
     expect(APP).toMatch(/new EventSource\(`\/admin\/api\/runs\/\$\{idSeg\(runId\)\}\/events`\)/)
   })

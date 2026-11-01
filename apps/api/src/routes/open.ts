@@ -39,7 +39,7 @@ function appScopesOf(app: Record<string, unknown>): string[] {
   return Array.isArray(scopes) ? scopes.filter((scope): scope is string => typeof scope === "string") : [];
 }
 
-async function openApp(request: FastifyRequest, scope: string): Promise<AppContext> {
+async function openApp(request: FastifyRequest, scope: string, countRequest = true): Promise<AppContext> {
   const header = request.headers.authorization;
   if (!header?.startsWith("Bearer ")) throw errors.unauthorized("缺少 API Key");
   const keyPrincipal = await authenticateApiKey(header.slice(7));
@@ -51,6 +51,7 @@ async function openApp(request: FastifyRequest, scope: string): Promise<AppConte
     : keyPrincipal;
   assertScope(principal, scope);
   if (!app || app.status !== "active") throw errors.unauthorized("应用已停用");
+  if (!countRequest) return { principal, app };
   const minute = Math.floor(Date.now() / 60000);
   const bucket = rateBuckets.get(principal.id);
   if (!bucket || bucket.minute !== minute) {
@@ -61,7 +62,7 @@ async function openApp(request: FastifyRequest, scope: string): Promise<AppConte
     if (bucket.count > limit) {
       // P3: Retry-After = whole seconds left in the current fixed one-minute window (at least 1).
       const retryAfter = Math.max(1, Math.ceil(((minute + 1) * 60000 - Date.now()) / 1000));
-      throw new ForgeError("OPN-4502", "请求频率超限", 429, { limit, window: "minute" }, true, { "Retry-After": String(retryAfter) });
+      throw new ForgeError("OPN-4502", { message: "请求频率超限", httpStatus: 429, details: { limit, window: "minute" }, retryable: true, headers: { "Retry-After": String(retryAfter) } });
     }
   }
   return { principal, app };
@@ -79,7 +80,7 @@ async function assertDailyQuota(app: Record<string, unknown>): Promise<void> {
   // clamped to 1..86400. If MySQL cannot tell (null or query error) the documented fallback is 3600.
   const seconds = await repos.secondsUntilNextDbDay().catch(() => null);
   const retryAfter = seconds === null ? DAILY_RETRY_AFTER_FALLBACK : Math.min(86_400, Math.max(1, Math.ceil(seconds)));
-  throw new ForgeError("OPN-4501", "应用今日配额已用完", 429, undefined, false, { "Retry-After": String(retryAfter) });
+  throw new ForgeError("OPN-4501", { message: "应用今日配额已用完", httpStatus: 429, retryable: false, headers: { "Retry-After": String(retryAfter) } });
 }
 
 function openPresentRun(run: RunRow) {
@@ -219,7 +220,7 @@ export default async function openRoutes(app: FastifyInstance): Promise<void> {
     const context = await openApp(request, "runs:read");
     const run = await repos.getRun(param(request, "id"));
     if (!run || run.app_id !== String(context.app.id)) throw errors.notFound("Run 不存在");
-    if (!["succeeded", "failed", "cancelled", "budget_exhausted"].includes(run.status)) throw new ForgeError("RUN-7002", "Run 尚未结束", 409, { status: run.status });
+    if (!["succeeded", "failed", "cancelled", "budget_exhausted"].includes(run.status)) throw new ForgeError("RUN-7002", { message: "Run 尚未结束", httpStatus: 409, details: { status: run.status }, retryable: false });
     return { runId: run.id, status: run.status, output: presentRunOutput(run.output_json), error: run.error_code ? { code: run.error_code, message: run.error_message } : null, usage: run.usage_json, completedAt: run.completed_at };
   });
 
@@ -227,7 +228,11 @@ export default async function openRoutes(app: FastifyInstance): Promise<void> {
     const context = await openApp(request, "runs:read");
     const run = await repos.getRun(param(request, "id"));
     if (!run || run.app_id !== String(context.app.id)) throw errors.notFound("Run 不存在");
-    await streamRun(request, reply, run.id);
+    await streamRun(request, reply, run.id, async () => {
+      const live = await openApp(request, "runs:read", false);
+      const current = await repos.getRun(run.id);
+      if (!current || current.app_id !== String(live.app.id)) throw errors.notFound("Run 不存在");
+    });
   });
 
   app.post("/open/v1/runs/:id/cancel", { schema: ROUTE_SCHEMAS.externalNoBody, attachValidation: true }, async (request) => {

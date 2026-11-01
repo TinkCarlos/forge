@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import ts from "typescript";
 import { isDeleteClassAuditAction } from "../packages/store/src/repositories/audit-scope-sql.js";
 
 // Audit action classification (pure, static). Delete-class actions must pass orgUnitId explicitly (repos.audit throws
@@ -11,13 +12,17 @@ const REPO = join(import.meta.dirname, "..");
 const ROOTS = [join(REPO, "apps", "api", "src"), ...readdirSync(join(REPO, "packages")).map((p) => join(REPO, "packages", p, "src"))];
 
 const CLASSIFIED: Record<string, "delete" | "keep"> = {
+  "secret.create": "keep", "secret.update": "keep", "secret.rotate": "keep", "secret.delete": "delete", "secret.migrate": "keep", "secret.rewrap": "keep",
   "agent.create": "keep", "agent.publish": "keep", "agent.update": "keep", "agent.version.create": "keep",
-  "apikey.create": "keep", "app.create": "keep", "app.update": "keep", "approval.decide": "keep",
+  "apikey.create": "keep", "apikey.rotate": "keep", "apikey.revoke": "delete", "app.create": "keep", "app.update": "keep", "approval.decide": "keep",
+  "user.bootstrap": "keep",
+  "user.delete": "delete", "user.password.reset": "keep", "user.sessions.revoke": "delete", "user.sso.bind": "keep", "user.sso.unbind": "delete", "auth.password.change": "keep",
   "auth.login.local": "keep", "auth.login.oidc": "keep", "auth.logout": "keep",
   "integration.run.cancel": "keep", "integration.run.create": "keep",
   "mcp.create": "keep", "mcp.refresh": "keep", "mcp.update": "keep", "model.create": "keep", "model.update": "keep",
   "open.run.cancel": "keep", "open.run.create": "keep",
   "plugin.install": "keep", "plugin.install.failed": "keep", "plugin.uninstall": "delete",
+  "role.create":"keep","role.update":"keep","role.delete":"delete","role.copy":"keep","role.reset":"keep",
   "provider.create": "keep", "provider.update": "keep", "role_mapping.upsert": "keep",
   "run.cancel": "keep", "run.create": "keep",
   "schedule.create": "keep", "schedule.disable": "keep", "schedule.enable": "keep", "schedule.run": "keep", "schedule.update": "keep",
@@ -39,12 +44,24 @@ function files(dir: string): string[] {
   });
 }
 
-/** Action literals in apps/api/src and packages/*\/src: `action: "x"` and writeAudit/prepareAudit(session, "x", ...). */
+function actionPropertyLiterals(src: string): string[] {
+  const source = ts.createSourceFile("audit.ts", src, ts.ScriptTarget.Latest, true);
+  const actions: string[] = [];
+  function visit(node: ts.Node): void {
+    if (ts.isPropertyAssignment(node) && (ts.isIdentifier(node.name) || ts.isStringLiteral(node.name)) && node.name.text === "action" && ts.isStringLiteralLike(node.initializer)) actions.push(node.initializer.text);
+    ts.forEachChild(node, visit);
+  }
+  visit(source);
+  return actions;
+}
+
+/** Action values in object properties and audit-writing calls, excluding TypeScript type annotations. */
 function actionLiterals(): Map<string, string> {
   const found = new Map<string, string>();
   for (const file of ROOTS.flatMap(files)) {
     const src = readFileSync(file, "utf8");
-    for (const re of [/\baction: "([^"]+)"/g, /\b(?:writeAudit|prepareAudit)\(\s*\w+,\s*"([^"]+)"/g]) {
+    for (const action of actionPropertyLiterals(src)) found.set(action, file.slice(REPO.length + 1));
+    for (const re of [/\bconfigurationWrite\(\s*\w+,\s*\w+,\s*"([^"]+)"/g, /\b(?:writeAudit|prepareAudit)\(\s*\w+,\s*"([^"]+)"/g]) {
       for (const m of src.matchAll(re)) found.set(m[1]!, file.slice(REPO.length + 1));
     }
   }
@@ -52,6 +69,17 @@ function actionLiterals(): Map<string, string> {
 }
 
 describe("audit action classification", () => {
+  it("scans action values without treating literal parameter or property types as audit events", () => {
+    const source = `
+      type Options = { action: "cancel" };
+      function control(action: "retry" | "cancel") {
+        return { action: "message.retry" };
+      }
+      const audit = {action:'user.update'};
+    `;
+    expect(actionPropertyLiterals(source)).toEqual(["message.retry", "user.update"]);
+  });
+
   it("every action literal in the code is explicitly classified (scanner sanity: finds plugin.uninstall and user.update)", () => {
     const found = actionLiterals();
     expect(found.has("plugin.uninstall") && found.has("user.update") && found.has("auth.logout")).toBe(true);

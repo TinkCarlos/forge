@@ -1,0 +1,4 @@
+$ tsx scripts/sso-smoke.ts
+✓ OIDC authorization URL + token exchange + role mapping
+✓ Connector Principal signature + subject mapping
+SSO SMOKE PASS

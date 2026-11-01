@@ -135,7 +135,7 @@ async function main(): Promise<void> {
   }
   const agent = (await findByKey("/admin/api/agents", "mcp-agent")) as Record<string, unknown>;
   assert(agent && agent.id, "mcp-agent missing");
-  await call(`/admin/api/agents/${agent.id}`, { method: "PATCH", body: { apiEnabled: true } });
+  await call(`/admin/api/agents/${agent.id}`, { method: "PATCH", headers: { "If-Match": `"${agent.revision}"` }, body: { apiEnabled: true } });
 
   // Low risk tool run
   const low = await call(`/admin/api/agents/${agent.id}/run`, { method: "POST", body: { input: { text: "[use:mcp_demo-mcp_get_time]" } } });

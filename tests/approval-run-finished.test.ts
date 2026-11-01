@@ -25,7 +25,7 @@ async function approvalFor(status: string): Promise<{ runId: string; approvalId:
 }
 const decide = (id: string, decision: string) => app.inject({ method: "POST", url: `/admin/api/approvals/${id}/decide`, headers, payload: { decision } });
 const approvalStatus = async (id: string) => (await one<{ status: string }>("SELECT status FROM approvals WHERE id = ?", [id]))!.status;
-const audits = async (id: string) => (await query("SELECT id FROM audit_logs WHERE action = 'approval.decide' AND resource_id = ?", [id])).length;
+const audits = async (id: string) => (await query("SELECT id FROM audit_logs WHERE outcome = 'success' AND action = 'approval.decide' AND resource_id = ?", [id])).length;
 
 beforeAll(async () => {
   app = await buildApp({ logger: false });
@@ -33,7 +33,7 @@ beforeAll(async () => {
   const pa = await realSession({ role: "platform_admin", orgUnitId: ROOT, dataScope: "all" });
   headers = sessionHeaders(pa, sessionCookieValue(pa));
   agentId = await repos.createAgent({ key: `it-arf-${suffix}`, name: "IT arf", ownerOrgUnitId: ROOT, createdBy: ADMIN_ID });
-  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID });
+  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID }, { expectedRevision: "system" });
 });
 
 afterAll(async () => {

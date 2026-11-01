@@ -1,3 +1,4 @@
+import { ROLE_PERMISSIONS } from "@forge/core";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
@@ -58,21 +59,22 @@ afterAll(async () => {
 
 describe("loadActivePrincipal", () => {
   it("reads the current row; null for missing, disabled, deleted, missing or disabled department chain", async () => {
-    const id = await makeUser("lap", ORG_CHILD, "builder", "org");
-    expect(await loadActivePrincipal(id)).toEqual({ type: "user", id, name: "lap", role: "builder", orgUnitId: ORG_CHILD, dataScope: "org" });
+    let id = await makeUser("lap", ORG_CHILD, "builder", "org");
+    expect(await loadActivePrincipal(id)).toEqual({ type: "user", revision: 1, id, name: "lap", role: "builder", orgUnitId: ORG_CHILD, dataScope: "org",permissions:expect.arrayContaining(ROLE_PERMISSIONS.builder),grantedPermissions:expect.arrayContaining(ROLE_PERMISSIONS.builder) });
     expect(await loadActivePrincipal(id26("NOUSER"))).toBeNull();
     expect(await loadActivePrincipal("")).toBeNull();
-    await repos.updateUser(id, { status: "disabled" });
+    await repos.updateUser(id, { status: "disabled" }, { expectedRevision: "system" });
     expect(await loadActivePrincipal(id)).toBeNull();
-    await repos.updateUser(id, { status: "deleted" });
+    await repos.updateUser(id, { status: "deleted" }, { expectedRevision: "system" });
     expect(await loadActivePrincipal(id)).toBeNull();
-    await repos.updateUser(id, { status: "active" });
+    await expect(repos.updateUser(id, { status: "active" }, { expectedRevision: "system" })).rejects.toMatchObject({ code: "RUN-7001" });
+    id = await makeUser("lap-restored", ORG_CHILD, "builder", "org");
     await execute("UPDATE org_units SET status = 'disabled' WHERE id = ?", [ORG_Q]);
     expect(await loadActivePrincipal(id)).toBeNull();
     await execute("UPDATE org_units SET status = 'active' WHERE id = ?", [ORG_Q]);
-    await repos.updateUser(id, { orgUnitId: id26("NOORG") });
+    await repos.updateUser(id, { orgUnitId: id26("NOORG") }, { expectedRevision: "system" });
     expect(await loadActivePrincipal(id)).toBeNull();
-    await repos.updateUser(id, { orgUnitId: null });
+    await repos.updateUser(id, { orgUnitId: null }, { expectedRevision: "system" });
     expect((await loadActivePrincipal(id))?.orgUnitId).toBeNull();
   });
 
@@ -90,11 +92,11 @@ describe("session principal is re-read on every request", () => {
     const id = await makeUser("dis", ORG_P);
     const { headers, session } = await login(id);
     expect((await listUsers(headers)).statusCode).toBe(200);
-    await repos.updateUser(id, { status: "disabled" });
+    await repos.updateUser(id, { status: "disabled" }, { expectedRevision: "system" });
     const res = await listUsers(headers);
     expect(res.statusCode).toBe(401);
     expect(code(res)).toBe("AUTH-1001");
-    await repos.updateUser(id, { status: "active" });
+    await repos.updateUser(id, { status: "active" }, { expectedRevision: "system" });
     expect((await listUsers(headers)).statusCode).toBe(401);
     expect((await app.inject({ method: "GET", url: "/auth/session", headers })).statusCode).toBe(401);
     expect(session.token).toBeTruthy();
@@ -111,7 +113,7 @@ describe("session principal is re-read on every request", () => {
     const id = await makeUser("dem", ORG_P);
     const { headers } = await login(id);
     expect((await listUsers(headers)).statusCode).toBe(200);
-    await repos.updateUser(id, { role: "user", dataScope: "self" });
+    await repos.updateUser(id, { role: "user", dataScope: "self" }, { expectedRevision: "system" });
     const res = await listUsers(headers);
     expect(res.statusCode).toBe(403);
     expect(code(res)).toBe("POL-2001");
@@ -125,7 +127,7 @@ describe("session principal is re-read on every request", () => {
     let seen = ids(await listUsers(headers));
     expect(seen).toContain(memberP);
     expect(seen).not.toContain(memberQ);
-    await repos.updateUser(id, { orgUnitId: ORG_Q });
+    await repos.updateUser(id, { orgUnitId: ORG_Q }, { expectedRevision: "system" });
     seen = ids(await listUsers(headers));
     expect(seen).toContain(memberQ);
     expect(seen).not.toContain(memberP);
@@ -156,7 +158,7 @@ describe("session principal is re-read on every request", () => {
     // user lacks user.manage).
     const post = await app.inject({ method: "POST", url: "/admin/api/users", headers, payload: { email: `x-${suffix}@forge.local` } });
     expect(post.statusCode).toBe(403);
-    expect(spy).toHaveBeenCalledTimes(2);
+    expect(spy).toHaveBeenCalledTimes(3); // two authentication reads plus failure-audit actor snapshot
     spy.mockRestore();
   });
 });

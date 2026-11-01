@@ -61,7 +61,7 @@ class Dialog extends El {
 }
 
 type Resp = { status: number; body?: unknown }
-const SESSION = { csrfToken: 'c', user: { name: 'A', role: 'platform_admin', dataScope: 'all' } }
+const SESSION = { permissions:['*'], csrfToken: 'c', user: { name: 'A', role: 'platform_admin', dataScope: 'all' } }
 const LIST = '/admin/api/approvals'
 const APR_ID = 'apr_01M5PK6G1GPZ3APBN3QNXR'
 const RUN_ID = 'run_01M5PK6G1GPZ3APBN3QNXR'
@@ -86,7 +86,7 @@ function harness(routes: Record<string, Resp | Resp[]>) {
     return { status: resp.status, ok: resp.status >= 200 && resp.status < 300, text: async () => (resp.body === undefined ? '' : JSON.stringify(resp.body)) }
   }
   const state: Record<string, unknown> = { session: SESSION, tab: 'approvals', approvals: [] }
-  const deps: Record<string, unknown> = {
+  const deps: Record<string, unknown> = { bindConfigurationFields: () => {},
     $: (sel: string) => els[sel] ?? null, document: { querySelectorAll: () => [] }, fetch, state,
     setTimeout: () => 0, clearTimeout: () => {},
     FormData: class { constructor(public f: El) {} get(k: string) { return this.f?._data?.[k] ?? null } },
@@ -94,7 +94,7 @@ function harness(routes: Record<string, Resp | Resp[]>) {
     handleSessionExpired: () => {}, showLogin: () => {}, renderRuns: async () => { calls.push('renderRuns') },
   }
   const names = Object.keys(deps)
-  const fns = ['esc', 'errorText', 'toast', 'api', 'statusPill', 'empty', 'textarea', 'openModal', 'renderApprovals']
+  const fns = ['canPermission', 'esc', 'errorText', 'toast', 'api', 'statusPill', 'empty', 'textarea', 'openModal', 'renderApprovals']
   const optional = ['approvalReason', 'attemptText', 'approvalReasonHtml'].filter(hasFn)
   const consts = ['APPROVAL_STALE_CODES', 'APPROVAL_STALE_TEXT', 'APPROVAL_RUN_FINISHED_TEXT', 'INTERRUPTED_BADGE_TEXT'].map(constLine).join('\n')
   const src = `${consts}\n${[...fns, ...optional].map(fnSource).join('\n')}\nreturn { renderApprovals, ${method('decideApproval')}, ${method('cancelRun')} };`
@@ -118,6 +118,19 @@ function harness(routes: Record<string, Resp | Resp[]>) {
 const list = (...items: unknown[]): Resp => ({ status: 200, body: { items } })
 
 describe('R9 审批列表：中断徽标与尝试次数', () => {
+  it('policy decision shows escaped tool context, expiry and the exact Run evidence link', async () => {
+    const item = approval({ tool_name: '<img src=x>', args_preview: '<script>bad</script>' })
+    const h = harness({ [LIST]: list(item) })
+    await h.app.renderApprovals()
+    await h.app.decideApproval(APR_ID, 'approved')
+    const body = h.els['#modal-body'].innerHTML
+    expect(body).toContain('按工具风险策略暂停')
+    expect(body).toContain('调用参数（已脱敏）')
+    expect(body).toContain('到期时间')
+    expect(body).toContain(`/#runs/${RUN_ID}`)
+    expect(body).toContain('&lt;img')
+    expect(body).not.toContain('<script>')
+  })
   it('reason=interrupted、attempt=3：显示徽标和「第 3 次执行被中断」', async () => {
     const h = harness({ [LIST]: list(approval({ reason: 'interrupted', attempt: 3 })) })
     await h.app.renderApprovals()

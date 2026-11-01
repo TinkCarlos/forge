@@ -1,0 +1,16 @@
+import { API_ERROR_RESPONSE_SCHEMA } from "./errors.js";
+import { JOB_DETAIL_SCHEMA, JOB_HTTP_SCHEMAS } from "./job-api.js";
+import { IF_MATCH_PARAMETER } from "./configuration.js";
+const id={name:"id",in:"path",required:true,schema:{type:"string",minLength:26,maxLength:26}};
+const csrf={name:"X-CSRF-Token",in:"header",required:true,schema:{type:"string"}};
+const list={type:"object",required:["items","nextCursor"],properties:{items:{type:"array",items:JOB_DETAIL_SCHEMA},nextCursor:{type:["string","null"]}}};
+function operation(permission:string,result:unknown,status:string,body?:unknown,parameters:unknown[]=[]) {return {security:[{sessionCookie:[]}],"x-permission":permission,parameters,...(body?{requestBody:{required:true,content:{"application/json":{schema:body}}}}:{}),responses:{[status]:{description:"成功",...(status==="204"?{}:{content:{"application/json":{schema:result}}})},...Object.fromEntries([400,401,403,404,409,422,428,503].map(code=>[String(code),{description:"身份、范围、参数、版本或依赖拒绝",content:{"application/json":{schema:API_ERROR_RESPONSE_SCHEMA}}}]))}}}
+const config={type:"object",required:["versionId","version","revision","manifestHash"],properties:{versionId:{type:"string"},version:{type:"integer"},revision:{type:"integer"},manifestHash:{type:"string"}}};
+const pageParameters=Object.entries(JOB_HTTP_SCHEMAS.list.querystring.properties??{}).map(([name,schema])=>({name,in:"query",required:false,schema}));
+export const JOBS_OPENAPI={openapi:"3.1.0",info:{title:"Forge Job definition management",version:"0.1.0"},servers:[{url:"/admin/api"}],components:{securitySchemes:{sessionCookie:{type:"apiKey",in:"cookie",name:"forge_session"}}},paths:{
+ "/job-targets":{get:operation("job.manage",{type:"object",required:["items","nextCursor"],properties:{items:{type:"array",items:{type:"object",required:["kind","key","version","checksum","name","inputSchema","outputSchema","runtimeEngine","snapshotQuality"],properties:{kind:{const:"agent"},key:{type:"string"},version:{type:"string"},checksum:{type:"string"},name:{type:"string"},inputSchema:{type:"object"},outputSchema:{type:"object"},runtimeEngine:{const:"mysql-agent-bridge"},snapshotQuality:{const:"legacy"}}}},nextCursor:{type:"null"}}},"200")},
+ "/jobs":{get:operation("job.view",list,"200",undefined,pageParameters),post:operation("job.manage",JOB_DETAIL_SCHEMA,"201",JOB_HTTP_SCHEMAS.create.body,[csrf])},
+ "/jobs/{id}":{get:operation("job.view",JOB_DETAIL_SCHEMA,"200",undefined,[id]),patch:operation("job.manage",JOB_DETAIL_SCHEMA,"200",JOB_HTTP_SCHEMAS.patch.body,[id,csrf,IF_MATCH_PARAMETER]),delete:operation("job.manage",null,"204",undefined,[id,csrf,IF_MATCH_PARAMETER])},
+ "/jobs/{id}/publish":{post:operation("job.publish",config,"201",JOB_HTTP_SCHEMAS.empty.body,[id,csrf,IF_MATCH_PARAMETER])},
+ "/jobs/{id}/versions":{get:operation("job.view",{type:"object",required:["items","nextCursor"],properties:{items:{type:"array",items:{type:"object",required:["id","jobId","version","manifestHash","createdAt"],properties:{id:{type:"string"},jobId:{type:"string"},version:{type:"integer"},manifestHash:{type:"string"},createdAt:{type:"string",format:"date-time"}}}},nextCursor:{type:["string","null"]}}},"200",undefined,[id,...pageParameters])},
+}};

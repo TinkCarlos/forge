@@ -50,8 +50,8 @@ describe("P3-04 OIDC callback error branches -> 302 sign-in", () => {
     expect(location(await callback("state=s1")).searchParams.get("ssoError")).toBe("SSO-1203");
   });
 
-  it.each(["SSO-1203", "SSO-1204", "SSO-1205", "SSO-1206", "SSO-1201", "SSO-1210"])("handleOidcCallback throws %s -> that code", async (code) => {
-    identity.handleOidcCallback.mockRejectedValueOnce(new ForgeError(code, "x-detail-text", 401));
+  it.each(["SSO-1203", "SSO-1204", "SSO-1205", "SSO-1206", "SSO-1201", "SSO-1210"] as const)("handleOidcCallback throws %s -> that code", async (code) => {
+    identity.handleOidcCallback.mockRejectedValueOnce(new ForgeError(code, { message: "x-detail-text", httpStatus: 401, retryable: false }));
     const res = await callback("code=c&state=s1");
     const url = location(res);
     expect(url.searchParams.get("ssoError")).toBe(code);
@@ -64,14 +64,14 @@ describe("P3-04 OIDC callback error branches -> 302 sign-in", () => {
     const a = await callback("code=c&state=s1");
     expect(location(a).searchParams.get("ssoError")).toBe("SYS-9001");
     expect(String(a.headers.location)).not.toContain("boom");
-    identity.handleOidcCallback.mockRejectedValueOnce(new ForgeError("CFG-8501", "<b>x</b>", 400));
+    identity.handleOidcCallback.mockRejectedValueOnce(new ForgeError("CFG-8501", { message: "<b>x</b>", httpStatus: 400, retryable: false }));
     expect(location(await callback("code=c&state=s1")).searchParams.get("ssoError")).toBe("SYS-9001");
   });
 
   it("an off-site saved return target is dropped (S-30)", async () => {
     for (const bad of ["https://evil.example/", "//evil.example", "/\\evil.example", "javascript:alert(1)"]) {
       identity.pendingOidcReturnTo.mockReturnValueOnce(bad);
-      identity.handleOidcCallback.mockRejectedValueOnce(new ForgeError("SSO-1204", "x", 401));
+      identity.handleOidcCallback.mockRejectedValueOnce(new ForgeError("SSO-1204", { message: "x", httpStatus: 401, retryable: false }));
       const res = await callback("code=c&state=s1");
       expect(location(res).searchParams.has("redirect")).toBe(false);
       expect(String(res.headers.location)).not.toContain("evil");
@@ -79,12 +79,12 @@ describe("P3-04 OIDC callback error branches -> 302 sign-in", () => {
   });
 
   it("HTP-4003 branch unchanged: 302 even for an API client", async () => {
-    identity.handleOidcCallback.mockRejectedValueOnce(new ForgeError(OUTBOUND_BLOCKED_CODE, "x", 502));
+    identity.handleOidcCallback.mockRejectedValueOnce(new ForgeError(OUTBOUND_BLOCKED_CODE, { message: "x", httpStatus: 502, retryable: false }));
     expect(location(await callback("code=c&state=s1", JSON_ONLY)).searchParams.get("ssoError")).toBe(OUTBOUND_BLOCKED_CODE);
   });
 
   it("an API client (Accept: application/json) still gets the JSON error", async () => {
-    identity.handleOidcCallback.mockRejectedValueOnce(new ForgeError("SSO-1204", "OIDC 令牌交换失败", 401));
+    identity.handleOidcCallback.mockRejectedValueOnce(new ForgeError("SSO-1204", { message: "OIDC 令牌交换失败", httpStatus: 401, retryable: false }));
     const a = await callback("code=c&state=s1", JSON_ONLY);
     expect(a.statusCode).toBe(401);
     expect(a.json().error.code).toBe("SSO-1204");
@@ -98,7 +98,7 @@ describe("P3-04 OIDC callback error branches -> 302 sign-in", () => {
 
   it("the exported whitelist covers every redirect code", () => {
     expect([...SSO_ERROR_CODES].sort()).toEqual(
-      ["HTP-4003", "SYS-9001", ...Array.from({ length: 12 }, (_, i) => `SSO-12${String(i + 1).padStart(2, "0")}`)].sort(),
+      ["HTP-4003", "SYS-9001", ...Array.from({ length: 13 }, (_, i) => `SSO-12${String(i + 1).padStart(2, "0")}`)].sort(),
     );
   });
 });

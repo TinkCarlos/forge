@@ -1,5 +1,6 @@
+import {freezeRunNotification} from "./message-fanout.js";
 import { ForgeError, ulidWithPrefix } from "@forge/core";
-import type { ResultSetHeader } from "mysql2/promise";
+import type { PoolConnection, ResultSetHeader } from "mysql2/promise";
 import { execute, isRetryableWrite, json, one, query, transaction } from "../db.js";
 import { activeFence, fenceOwnerFor, LeaseLostError } from "../lease-fence.js";
 import type { ApprovalRow, ClaimedRun, MessageRow, RunRow, RunStepRow, ToolCallRow } from "../types.js";
@@ -21,13 +22,13 @@ async function assertLeaseOwned(runId: string, owner: string): Promise<void> {
 export const runsRepo = {
   // Runs / messages / tools / approvals / events
   async getThread(id: string): Promise<Record<string, unknown> | null> {
-    return one("SELECT * FROM threads WHERE id = ?", [id]);
+    return one("SELECT t.*,CAST(t.next_message_seq AS CHAR) AS next_message_seq FROM threads t WHERE t.id = ?", [id]);
   },
-  async createThread(input: { agentId: string; orgUnitId: string | null; subjectType: string; subjectId: string; title?: string }): Promise<string> {
+  async createThread(input: { agentId: string; orgUnitId: string | null; subjectType: string; subjectId: string; title?: string; appId?: string | null }, conn?: PoolConnection): Promise<string> {
     const id = ulidWithPrefix("thr");
-    await execute(
-      "INSERT INTO threads (id, agent_id, org_unit_id, subject_type, subject_id, title) VALUES (?, ?, ?, ?, ?, ?)",
-      [id, input.agentId, input.orgUnitId, input.subjectType, input.subjectId, input.title ?? ""],
+    await (conn ?? {execute}).execute(
+      "INSERT INTO threads (id, agent_id, org_unit_id, subject_type, subject_id, title, app_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      [id, input.agentId, input.orgUnitId, input.subjectType, input.subjectId, input.title ?? "", input.appId ?? null],
     );
     return id;
   },
@@ -45,15 +46,39 @@ export const runsRepo = {
     status?: string;
     claimedBy?: string | null;
     leaseSeconds?: number | null;
-  }): Promise<string> {
+  }, conn?: PoolConnection): Promise<string> {
     const id = ulidWithPrefix("run");
     const leaseSeconds = input.leaseSeconds == null ? null : Math.max(1, Math.floor(input.leaseSeconds));
-    await execute(
+    await (conn ?? {execute}).execute(
       `INSERT INTO runs (id, thread_id, agent_id, agent_version_id, app_id, org_unit_id, subject_type, subject_id, trigger_type, trigger_ref, input_json, status, claimed_by, lease_expires_at, heartbeat_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, IF(? IS NULL, NULL, DATE_ADD(UTC_TIMESTAMP(3), INTERVAL ${leaseSeconds ?? 0} SECOND)), IF(? IS NULL, NULL, UTC_TIMESTAMP(3)))`,
       [id, input.threadId, input.agentId, input.agentVersionId, input.appId ?? null, input.orgUnitId ?? null, input.subjectType, input.subjectId, input.triggerType ?? "manual", input.triggerRef ?? null, json(input.input), input.status ?? "queued", input.claimedBy ?? null, leaseSeconds, leaseSeconds],
     );
     return id;
+  },
+  async admitRun(input: {
+    threadId?: string | null; agentId: string; agentVersionId: string;
+    appId: string | null; orgUnitId: string | null; subjectType: string; subjectId: string;
+    triggerType: string; triggerRef: string | null; input: unknown; title: string; message: unknown;
+  }): Promise<string> {
+    return transaction(async conn => {
+      const threadId = input.threadId || await runsRepo.createThread({...input},conn);
+      const thread = await one<{agent_id:string|null;app_id:string|null;subject_type:string;subject_id:string;deleted_at:Date|null}>("SELECT agent_id,app_id,subject_type,subject_id,deleted_at FROM threads WHERE id=? FOR UPDATE",[threadId],conn);
+      if(!thread || thread.deleted_at || thread.agent_id!==input.agentId || thread.subject_type!==input.subjectType || thread.subject_id!==input.subjectId ) throw new ForgeError("RUN-7001",{message:"会话不存在"});
+      if(thread.app_id!==input.appId) {
+        const provenance=thread.app_id===null && input.appId!==null && input.subjectType==="app" && input.subjectId===input.appId
+          ? await one<{total:number;invalid:number}>("SELECT COUNT(*) AS total,COALESCE(SUM(NOT (app_id <=> ?) OR subject_type<>? OR subject_id<>? OR agent_id<>?),0) AS invalid FROM runs WHERE thread_id=?",[input.appId,input.subjectType,input.subjectId,input.agentId,threadId],conn) : null;
+        if(!provenance || Number(provenance.total)===0 || Number(provenance.invalid)!==0)throw new ForgeError("RUN-7001",{message:"会话不存在"});
+        await conn.execute("UPDATE threads SET app_id=? WHERE id=? AND app_id IS NULL",[input.appId,threadId]);
+      }
+      const active=await one("SELECT id FROM runs WHERE thread_id=? AND status NOT IN ('succeeded','failed','cancelled','budget_exhausted') LIMIT 1",[threadId],conn);
+      if(active)throw new ForgeError("CFG-8503",{message:"会话已有活动运行，请等待结束或取消后再试"});
+      const runId=await runsRepo.createRun({...input,threadId},conn);
+      await conn.execute("UPDATE threads SET active_run_id=? WHERE id=?",[runId,threadId]);
+      await runsRepo.addMessage({threadId,runId,seq:1,role:"user",content:input.message},conn);
+      await conn.execute("INSERT INTO run_events (run_id,seq,type,data_json) VALUES (?,1,'run.queued',?)",[runId,json({status:"queued"})]);
+      return runId;
+    },"READ COMMITTED");
   },
   async getRun(id: string): Promise<RunRow | null> {
     return one<RunRow>("SELECT * FROM runs WHERE id = ?", [id]);
@@ -79,8 +104,8 @@ export const runsRepo = {
     return transaction(async (conn) => {
       const [rows] = await conn.query(
         `SELECT id, status FROM runs
-         WHERE status = 'queued'
-            OR (status = 'running' AND (claimed_by IS NULL OR lease_expires_at IS NULL OR lease_expires_at < UTC_TIMESTAMP(3)))
+         WHERE runtime_engine = 'mysql-legacy' AND (status = 'queued'
+            OR (status = 'running' AND (claimed_by IS NULL OR lease_expires_at IS NULL OR lease_expires_at < UTC_TIMESTAMP(3))))
          ORDER BY CASE WHEN status = 'queued' THEN 0 ELSE 1 END, created_at
          LIMIT 1
          FOR UPDATE SKIP LOCKED`,
@@ -112,7 +137,7 @@ export const runsRepo = {
     const seconds = Math.max(1, Math.floor(leaseSeconds));
     const waitingFlag = allowWaiting ? 1 : 0;
     return transaction(async (conn) => {
-      const [rows] = await conn.query("SELECT status FROM runs WHERE id = ? FOR UPDATE", [runId]);
+      const [rows] = await conn.query("SELECT status FROM runs WHERE id = ? AND runtime_engine = 'mysql-legacy' FOR UPDATE", [runId]);
       const current = (rows as Array<{ status: string }>)[0];
       if (!current) return null;
       const [result] = await conn.execute(
@@ -195,6 +220,11 @@ export const runsRepo = {
             closedApprovalIds,
           );
         }
+        const notificationRun=await one<RunRow>("SELECT * FROM runs WHERE id=?",[id],conn);
+        if(notificationRun) {
+          await conn.execute("UPDATE threads SET active_run_id=NULL WHERE id=? AND active_run_id=?",[notificationRun.thread_id,id]);
+          await freezeRunNotification(conn,notificationRun,`run.${fields.status==="succeeded"?"completed":fields.status}`);
+        }
         return { closedApprovalIds };
       });
     }
@@ -233,7 +263,7 @@ export const runsRepo = {
   async listCancelRequestedRuns(limit: number): Promise<string[]> {
     const rows = await query<{ id: string }>(
       `SELECT id FROM runs
-       WHERE status IN ('queued','waiting_approval') AND cancel_requested = 1
+       WHERE runtime_engine='mysql-legacy' AND status IN ('queued','waiting_approval') AND cancel_requested = 1
          AND (claimed_by IS NULL OR lease_expires_at IS NULL OR lease_expires_at < UTC_TIMESTAMP(3))
        ORDER BY id LIMIT ?`,
       [Math.max(1, Math.floor(limit))],
@@ -250,7 +280,7 @@ export const runsRepo = {
       const [result] = await conn.execute(
         `UPDATE runs
          SET claimed_by = ?, lease_expires_at = DATE_ADD(UTC_TIMESTAMP(3), INTERVAL ${seconds} SECOND), heartbeat_at = UTC_TIMESTAMP(3)
-         WHERE id = ? AND status IN ('queued','waiting_approval') AND cancel_requested = 1
+         WHERE id = ? AND runtime_engine='mysql-legacy' AND status IN ('queued','waiting_approval') AND cancel_requested = 1
            AND (claimed_by IS NULL OR lease_expires_at IS NULL OR lease_expires_at < UTC_TIMESTAMP(3))`,
         [workerId, id],
       );
@@ -259,26 +289,27 @@ export const runsRepo = {
       return (fresh as RunRow[])[0] ?? null;
     });
   },
-  async addMessage(input: { threadId: string; runId: string; seq: number; role: string; content: unknown }): Promise<string> {
-    const id = ulidWithPrefix("msg");
-    const values = [id, input.threadId, input.runId, input.seq, input.role, json(input.content)];
-    const owner = fenceOwnerFor(input.runId);
-    if (owner === null) {
-      await execute("INSERT INTO messages (id, thread_id, run_id, seq, role, content_json) VALUES (?, ?, ?, ?, ?, ?)", values);
+  async addMessage(input: { threadId: string; runId: string; seq: number; role: string; content: unknown }, connection?: PoolConnection): Promise<string> {
+    const write=async (conn:PoolConnection):Promise<string> => {
+      const owner=fenceOwnerFor(input.runId);
+      const run=await one<{thread_id:string;claimed_by:string|null;status:string}>("SELECT thread_id,claimed_by,status FROM runs WHERE id=? FOR UPDATE",[input.runId],conn);
+      if(!run || (owner!==null && run.claimed_by!==owner))throw new LeaseLostError();
+      if(run.thread_id!==input.threadId)throw new ForgeError("CFG-8501",{message:"消息会话与运行不匹配"});
+      const thread=await one<{next_seq:string;active_run_id:string|null}>("SELECT CAST(next_message_seq AS CHAR) AS next_seq,active_run_id FROM threads WHERE id=? FOR UPDATE",[input.threadId],conn);
+      if(TERMINAL_RUN_STATUSES.has(run.status) || thread?.active_run_id && thread.active_run_id!==input.runId)throw new ForgeError("RUN-7005",{message:"运行已结束或会话已由其它运行接管"});
+      if(!thread || BigInt(thread.next_seq)>=18446744073709551615n)throw new ForgeError("SYS-9001",{message:"会话消息序号不可用"});
+      const id=ulidWithPrefix("msg");
+      await conn.execute("INSERT INTO messages (id,thread_id,run_id,seq,role,content_json,thread_seq,protocol_version) VALUES (?,?,?,?,?,?,?,'forge-legacy-1')",[id,input.threadId,input.runId,input.seq,input.role,json(input.content),thread.next_seq]);
+      await conn.execute("UPDATE threads SET next_message_seq=next_message_seq+1 WHERE id=?",[input.threadId]);
       return id;
-    }
-    const result = await execute(
-      "INSERT INTO messages (id, thread_id, run_id, seq, role, content_json) SELECT ?, ?, ?, ?, ?, ? FROM runs WHERE id = ? AND claimed_by = ?",
-      [...values, input.runId, owner],
-    );
-    if (result.affectedRows === 0) throw new LeaseLostError();
-    return id;
+    };
+    return connection ? write(connection) : transaction(write);
   },
   async listMessages(runId: string): Promise<MessageRow[]> {
-    return query<MessageRow>("SELECT * FROM messages WHERE run_id = ? ORDER BY seq", [runId]);
+    return query<MessageRow>("SELECT m.*,CAST(m.thread_seq AS CHAR) AS thread_seq FROM messages m WHERE m.run_id = ? ORDER BY seq", [runId]);
   },
   async listThreadMessages(threadId: string): Promise<MessageRow[]> {
-    return query<MessageRow>("SELECT * FROM messages WHERE thread_id = ? ORDER BY created_at, seq", [threadId]);
+    return query<MessageRow>("SELECT m.*,CAST(m.thread_seq AS CHAR) AS thread_seq FROM messages m WHERE m.thread_id = ? ORDER BY m.thread_seq IS NOT NULL, m.thread_seq, m.created_at, m.run_id, m.seq, m.id", [threadId]);
   },
   async nextMessageSeq(runId: string): Promise<number> {
     const row = await one<{ maxSeq: number | null }>("SELECT MAX(seq) AS maxSeq FROM messages WHERE run_id = ?", [runId]);
@@ -310,7 +341,7 @@ export const runsRepo = {
       if (!input.idempotencyKey) return null;
       const existing = await one<{ id: string; tool_key: string }>("SELECT id, tool_key FROM tool_calls WHERE run_id = ? AND idempotency_key = ?", [input.runId, input.idempotencyKey]);
       if (!existing) return null;
-      if (existing.tool_key !== input.toolKey) throw new ForgeError("SYS-9001", "工具调用记录冲突", 500);
+      if (existing.tool_key !== input.toolKey) throw new ForgeError("SYS-9001", { message: "工具调用记录冲突", httpStatus: 500, retryable: false });
       return existing.id;
     };
     const replayed = await replayOf();
@@ -377,19 +408,13 @@ export const runsRepo = {
     const id = ulidWithPrefix("apr");
     const values = [id, input.runId, input.toolCallId, input.risk, input.reason ?? "policy", input.timeoutSeconds];
     const owner = fenceOwnerFor(input.runId);
-    if (owner === null) {
-      await execute("INSERT INTO approvals (id, run_id, tool_call_id, risk_level, reason, expires_at) VALUES (?, ?, ?, ?, ?, DATE_ADD(UTC_TIMESTAMP(3), INTERVAL ? SECOND))", values);
-      await execute("UPDATE tool_calls SET status = 'pending_approval', approval_id = ? WHERE id = ?", [id, input.toolCallId]);
-    } else {
-      await transaction(async (conn) => {
-        const [inserted] = await conn.execute(
-          "INSERT INTO approvals (id, run_id, tool_call_id, risk_level, reason, expires_at) SELECT ?, ?, ?, ?, ?, DATE_ADD(UTC_TIMESTAMP(3), INTERVAL ? SECOND) FROM runs WHERE id = ? AND claimed_by = ?",
-          [...values, input.runId, owner],
-        );
-        if ((inserted as ResultSetHeader).affectedRows === 0) throw new LeaseLostError();
-        await conn.execute("UPDATE tool_calls SET status = 'pending_approval', approval_id = ? WHERE id = ?", [id, input.toolCallId]);
-      });
-    }
+    await transaction(async conn=>{
+      const current=await one<RunRow>("SELECT * FROM runs WHERE id=? FOR UPDATE",[input.runId],conn);
+      if(owner!==null&&current?.claimed_by!==owner)throw new LeaseLostError();
+      await conn.execute("INSERT INTO approvals (id, run_id, tool_call_id, risk_level, reason, expires_at) VALUES (?, ?, ?, ?, ?, DATE_ADD(UTC_TIMESTAMP(3), INTERVAL ? SECOND))",values);
+      await conn.execute("UPDATE tool_calls SET status = 'pending_approval', approval_id = ? WHERE id = ?",[id,input.toolCallId]);
+      if(current)await freezeRunNotification(conn,{...current,status:"waiting_approval"},"run.waiting_approval",id);
+    });
     const row = await one<{ expires_at: Date }>("SELECT expires_at FROM approvals WHERE id = ?", [id]);
     return { id, expiresAt: new Date(row!.expires_at) };
   },
@@ -475,7 +500,7 @@ export const runsRepo = {
       `SELECT r.id FROM approvals a
        JOIN runs r ON r.id = a.run_id
        JOIN tool_calls tc ON tc.approval_id = a.id AND tc.status = 'pending_approval'
-       WHERE r.status = 'waiting_approval' AND a.status IN ('pending','expired') AND a.expires_at < UTC_TIMESTAMP(3)
+       WHERE r.runtime_engine='mysql-legacy' AND r.status = 'waiting_approval' AND a.status IN ('pending','expired') AND a.expires_at < UTC_TIMESTAMP(3)
        GROUP BY r.id ORDER BY MIN(a.expires_at), r.id LIMIT ?`,
       [Math.max(1, Math.floor(limit))],
     );
@@ -570,7 +595,7 @@ export const runsRepo = {
         if (!isRetryableWrite(error) || attempt === 4) throw error;
       }
     }
-    throw new Error("failed to allocate run step");
+    throw new ForgeError("SYS-9001", { message: "failed to allocate run step" });
   },
   async finishRunStep(id: string, fields: { status: string; errorCode?: string | null; summary?: unknown; inputTokens?: number; outputTokens?: number; costUsd?: number }): Promise<void> {
     const sql = "UPDATE run_steps SET status = ?, error_code = ?, summary_json = COALESCE(?, summary_json), input_tokens = ?, output_tokens = ?, cost_usd = ?, ended_at = UTC_TIMESTAMP(3) WHERE id = ?";
@@ -617,7 +642,7 @@ export const runsRepo = {
         if (!isRetryableWrite(error) || attempt === 7) throw error;
       }
     }
-    throw new Error("failed to allocate run event");
+    throw new ForgeError("SYS-9001", { message: "failed to allocate run event" });
   },
   async listEvents(runId: string, afterSeq = 0): Promise<Array<{ run_id: string; seq: number; type: string; data_json: unknown; created_at: Date }>> {
     return query("SELECT * FROM run_events WHERE run_id = ? AND seq > ? ORDER BY seq", [runId, afterSeq]);

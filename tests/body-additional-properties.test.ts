@@ -12,18 +12,15 @@ import Fastify from "fastify";
 // Scope: top-level objects. Nested user JSON (plugin manifest / resources, spec, input, headers) stays open.
 // Querystring (`limit`) schemas stay open (list routes take other filters); there are no params schemas.
 // Pure (no DB / .env): @forge/core is stubbed because it parses the config on import. Real routes: route-schema-coverage.
-const { ForgeError } = vi.hoisted(() => ({
-  ForgeError: class ForgeError extends Error {
-    constructor(public readonly code: string, message: string, public readonly httpStatus = 400, public readonly details?: unknown) {
-      super(message);
-    }
-  },
-}));
-vi.mock("@forge/core", async () => ({
+import { ForgeError } from "../packages/core/src/errors/forge-error.js";
+vi.mock("@forge/core", async () => {
+  const { ForgeError } = await import("../packages/core/src/errors/forge-error.js");
+  return {
   ...(await import("../packages/core/src/cron.js")),
   ForgeError,
-  errors: { invalid: (m: string, details?: unknown) => new ForgeError("CFG-8501", m, 400, details) },
-}));
+  errors: { invalid: (m: string, details?: unknown) => new ForgeError("CFG-8501", { message: m, httpStatus: 400, details: details, retryable: false }) },
+  };
+});
 import { AJV_CUSTOM_OPTIONS, ROUTE_SCHEMAS, assertValidInput } from "../apps/api/src/plugins/input-schema.js";
 
 const ROOT = new URL("../apps/api/src/routes/", import.meta.url).pathname;
@@ -77,7 +74,7 @@ describe("P1: write body schemas are closed (admin / console) and undeclared fie
   });
 
   it("the scan sees every write route (guards the regex; update the counts with a new route)", () => {
-    expect(writeRoutes.length).toBe(42);
+    expect(writeRoutes.length).toBe(76);
     expect(writeRoutes.map((r) => r.route)).toEqual(expect.arrayContaining(["PATCH /admin/api/agents/:id", "PATCH /admin/api/schedules/:id", "POST /admin/api/schedules/:id/run", "POST /auth/logout", ...Object.keys(EXTERNAL_OPEN)]));
   });
 

@@ -1,4 +1,10 @@
+import messageCatalogRoutes from "./message-catalog.js";
+import messageDeliveryRoutes from "./message-deliveries.js";
+import messageChannelRoutes from "./message-channels.js";
+import adminJobRoutes from "./jobs.js";
+import adminRoleRoutes from "./roles.js";
 import type { FastifyInstance } from "fastify";
+import adminSecretRoutes from "./secrets.js";
 import adminAgentRoutes from "./agents.js";
 import adminModelRoutes from "./models.js";
 import adminCapabilityRoutes from "./capabilities.js";
@@ -11,6 +17,11 @@ import adminServiceAccountRoutes from "./service-accounts.js";
 
 // All /admin/api/* console routes. Session + permission checks live in each handler via admin().
 export default async function adminRoutes(app: FastifyInstance): Promise<void> {
+  await app.register(adminJobRoutes);
+  await app.register(messageChannelRoutes);
+  await app.register(messageDeliveryRoutes);
+  await app.register(messageCatalogRoutes);
+  await app.register(adminSecretRoutes);
   await app.register(adminAgentRoutes);
   await app.register(adminModelRoutes);
   await app.register(adminCapabilityRoutes);
@@ -18,6 +29,7 @@ export default async function adminRoutes(app: FastifyInstance): Promise<void> {
   await app.register(adminScheduleRoutes);
   await app.register(adminAppRoutes);
   await app.register(adminIdentityRoutes);
+  await app.register(adminRoleRoutes);
   await app.register(adminPluginRoutes);
   await app.register(adminServiceAccountRoutes);
 }

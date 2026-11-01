@@ -1,10 +1,7 @@
 import {
   config,
-  decryptSecret,
-  envRefError,
+  credentialRedactor,
   errors,
-  isEnvRef,
-  literalHeaders,
   ForgeError,
   OUTPUT_REPAIR_PREFIX,
   parseJson,
@@ -12,6 +9,7 @@ import {
   type ChatMessage,
   type ToolDefinition,
 } from "@forge/core";
+import { credentialHeaders } from "@forge/governance";
 import { repos, type ModelRow, type ProviderRow } from "@forge/store";
 
 export interface LlmUsage {
@@ -76,21 +74,9 @@ export function consumeOpenAiSse(block: string, state: OpenAiStreamState, onCont
   }
 }
 
-function headersFor(provider: ProviderRow): Record<string, string> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  // AG (S-61): literal headers only; a stored `env:` header or apiKey fails with CFG-8504 and is never sent.
-  Object.assign(headers, literalHeaders(provider.headers_json, { table: "llm_providers", column: "headers_json", id: provider.id }));
-  if (provider.api_key_encrypted) {
-    let apiKey: string;
-    try {
-      apiKey = decryptSecret(provider.api_key_encrypted, config.FORGE_MASTER_KEY);
-    } catch (error) {
-      throw new ForgeError("SYS-9002", "Provider 凭据无法解密", 500, error);
-    }
-    if (isEnvRef(apiKey)) throw envRefError();
-    headers.Authorization = `Bearer ${apiKey}`;
-  }
-  return headers;
+async function headersFor(provider: ProviderRow) {
+  const prepared = await credentialHeaders("llm_provider", provider.id, { headers: provider.headers_json, headerSecretRefs: provider.header_secret_refs_json, secretId: provider.secret_id, legacyEncrypted: provider.api_key_encrypted }, { table: "llm_providers", column: "headers_json", id: provider.id });
+  return { headers: { "content-type": "application/json", ...prepared.headers }, redact: prepared.redact };
 }
 
 function usageFor(model: ModelRow, inputTokens: number, outputTokens: number): LlmUsage {
@@ -123,7 +109,7 @@ export async function callModel(input: {
   if (!model) throw errors.model(`模型不存在: ${input.providerKey}/${input.modelKey}`);
 
   if (provider.protocol === "mock") {
-    if (model.key === "mock-fail") throw new ForgeError("MDL-3001", "Mock 模型模拟上游 5xx", 502, undefined, true);
+    if (model.key === "mock-fail") throw new ForgeError("MDL-3001", { message: "Mock 模型模拟上游 5xx", httpStatus: 502, retryable: true });
     return mockResult(input.messages, input.tools, model, input.onDelta);
   }
   if (provider.protocol !== "openai-compatible") {
@@ -165,30 +151,41 @@ async function callOpenAiCompatible(
   const timeout = setTimeout(() => controller.abort(), provider.timeout_ms);
   const abortOnCaller = () => controller.abort();
   input.signal?.addEventListener("abort", abortOnCaller, { once: true });
+  let redact = credentialRedactor([]);
+  const emitSafe = async (delta: string): Promise<void> => { const safe = redact.chunk(delta); if (safe) await input.onDelta?.(safe); };
+  const flushSafe = async (): Promise<void> => { const safe = redact.flush(); if (safe) await input.onDelta?.(safe); };
   try {
+    const credentials = await headersFor(provider);
+    redact = credentials.redact;
+    body.messages = input.messages.map(message => ({ ...message, content: redact.jsonText(message.content),
+      ...(message.name ? { name: redact.identifier(message.name) } : {}), ...(message.tool_call_id ? { tool_call_id: redact.identifier(message.tool_call_id) } : {}),
+      ...(message.tool_calls ? { tool_calls: message.tool_calls.map(call => ({ ...call, id: redact.identifier(call.id), function: { ...call.function, name: redact.identifier(call.function.name), arguments: redact.jsonText(call.function.arguments) } })) } : {}) }));
+    if (input.tools.length) body.tools = input.tools.map(tool => ({ type: "function", function: { name: redact.identifier(tool.name), description: redact.text(tool.description), parameters: redact.schema(tool.parameters) } }));
     const response = await safeFetch(url, {
       method: "POST",
-      headers: headersFor(provider),
+      headers: credentials.headers,
       body: JSON.stringify(body),
       signal: controller.signal,
     });
     if (!response.ok) {
       const text = await response.text();
-      throw new ForgeError("MDL-3001", `模型接口返回 ${response.status}`, 502, text.slice(0, 1000), response.status >= 500 || response.status === 429);
+      throw new ForgeError("MDL-3001", { message: `模型接口返回 ${response.status}`, httpStatus: 502, details: redact.text(text).slice(0, 1000), retryable: response.status >= 500 || response.status === 429 });
     }
     const contentType = response.headers.get("content-type") ?? "";
     if (!contentType.includes("text/event-stream")) {
-      return parseOpenAiJson(await response.text(), model, input.onDelta);
+      const result = await parseOpenAiJson(await response.text(), model, emitSafe, redact.text);
+      await flushSafe();
+      return { ...result, content: redact.jsonText(result.content), toolCalls: result.toolCalls.map(call => ({ ...call, ...(call.id ? { id: redact.identifier(call.id) } : {}), name: redact.identifier(call.name), arguments: redact.jsonText(call.arguments) })), raw: redact.value(result.raw) };
     }
     const state: OpenAiStreamState = { content: "", toolCalls: [] };
     const reader = response.body?.getReader();
-    if (!reader) throw new ForgeError("MDL-3003", "模型没有返回流", 502);
+    if (!reader) throw new ForgeError("MDL-3003", { message: "模型没有返回流", httpStatus: 502, retryable: false });
     const decoder = new TextDecoder();
     let buffer = "";
     const apply = async (block: string): Promise<void> => {
       const deltas: string[] = [];
       consumeOpenAiSse(block, state, (delta) => deltas.push(delta));
-      for (const delta of deltas) await input.onDelta?.(delta);
+      for (const delta of deltas) await emitSafe(delta);
     };
     while (true) {
       const { done, value } = await reader.read();
@@ -206,13 +203,14 @@ async function callOpenAiCompatible(
     const usage = state.usage
       ? usageFor(model, Number(state.usage.prompt_tokens ?? 0), Number(state.usage.completion_tokens ?? 0))
       : usageFor(model, Math.ceil(JSON.stringify(input.messages).length / 4), Math.ceil(state.content.length / 4));
-    return { content: state.content, toolCalls, usage };
+    await flushSafe();
+    return { content: redact.jsonText(state.content), toolCalls: toolCalls.map(call => ({ ...call, ...(call.id ? { id: redact.identifier(call.id) } : {}), name: redact.identifier(call.name), arguments: redact.jsonText(call.arguments) })), usage };
   } catch (error) {
-    if (error instanceof ForgeError) throw error;
+    if (error instanceof ForgeError) throw redact.error(error);
     if (error instanceof Error && error.name === "AbortError") {
-      throw new ForgeError("MDL-3004", "模型调用超时", 504, undefined, true);
+      throw new ForgeError("MDL-3004", { message: "模型调用超时", httpStatus: 504, retryable: true });
     }
-    throw new ForgeError("MDL-3001", "模型调用失败", 502, String(error), true);
+    throw new ForgeError("MDL-3001", { message: "模型调用失败", httpStatus: 502, details: redact.text(String(error)), retryable: true });
   } finally {
     clearTimeout(timeout);
     input.signal?.removeEventListener("abort", abortOnCaller);
@@ -227,12 +225,12 @@ async function emitContent(content: string, onDelta?: (delta: string) => void | 
   }
 }
 
-function parseOpenAiJson(text: string, model: ModelRow, onDelta?: (delta: string) => void | Promise<void>): Promise<LlmResult> {
+function parseOpenAiJson(text: string, model: ModelRow, onDelta?: (delta: string) => void | Promise<void>, redactText: (value: string) => string = value => value): Promise<LlmResult> {
   let payload: Record<string, unknown>;
   try {
     payload = JSON.parse(text) as Record<string, unknown>;
   } catch {
-    throw new ForgeError("MDL-3003", "模型返回不是合法 JSON", 502, text.slice(0, 500));
+    throw new ForgeError("MDL-3003", { message: "模型返回不是合法 JSON", httpStatus: 502, details: redactText(text).slice(0, 500), retryable: false });
   }
   const choice = (Array.isArray(payload.choices) ? payload.choices[0] : undefined) as Record<string, unknown> | undefined;
   const message = (choice?.message ?? {}) as Record<string, unknown>;

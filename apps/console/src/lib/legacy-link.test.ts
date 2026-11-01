@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it, vi } from 'vitest'
-import { LEGACY_LINK_ATTRS, LEGACY_LINK_HINT, openLegacy } from './legacy-link'
+import { LEGACY_LINK_ATTRS, LEGACY_LINK_HINT, openLegacy, legacyRunHref } from './legacy-link'
 
 const src = (p: string) => readFileSync(new URL(p, import.meta.url), 'utf8')
 
@@ -25,9 +25,25 @@ describe('K-32 未迁移页在新标签页打开旧版', () => {
     expect(cmd).not.toMatch(/location\.assign/)
     expect(cmd).toMatch(/openLegacy\(/)
   })
+
+  it('列表、空态和账号菜单的旧版入口也保留当前标签页', () => {
+    for (const file of ['../features/agents/index.tsx', '../features/approvals/index.tsx', '../components/layout/nav-user.tsx']) {
+      const links = src(file).match(/<a\b[^>]*href=(?:'\/(?:#[^']*)?'|\{legacyAgentHref\(a\.id\)\}|\{legacyRunHref\([^)]*\)\})[^>]*>/g) ?? []
+      expect(links.length).toBeGreaterThan(0)
+      for (const link of links) {
+        expect(link, file).toContain('{...LEGACY_LINK_ATTRS}')
+        expect(link, file).toContain('title={LEGACY_LINK_HINT}')
+      }
+    }
+  })
 })
 
 describe('K-33 新版 Agent 行跳旧版详情', () => {
+  it('审批跳到具体Run；非法ID不能进入详情路径', () => {
+    expect(legacyRunHref('01J00000000000000000000006')).toBe('/#runs/01J00000000000000000000006')
+    expect(legacyRunHref('../users')).toBe('/#runs')
+    expect(src('../features/approvals/index.tsx')).toContain('href={legacyRunHref(a.run_id)}')
+  })
   it('legacyAgentHref 生成 /#agents/<id>，id 不合法时只到列表', async () => {
     const mod = (await import('./legacy-link')) as Record<string, unknown>
     expect(mod.legacyAgentHref).toBeTypeOf('function')

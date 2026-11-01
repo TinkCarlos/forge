@@ -49,7 +49,7 @@ packages/open-platform 应用/密钥/配额/Webhook
 packages/eval     评测
 packages/sdk      TS 客户端
 packages/testkit  测试容器/fixtures
-services/doc-parser, services/browser, services/sandbox(P2)
+services/doc-parser, services/browser, services/executor（专用Linux原生执行）
 plugins/, examples/, deploy/, docs/, tests/, vendor/agent-connector/
 ```
 
@@ -62,14 +62,14 @@ plugins/, examples/, deploy/, docs/, tests/, vendor/agent-connector/
 | Node.js | 24 |
 | TypeScript | strict |
 | 包管理 | pnpm workspace |
-| Lint/Format | Biome |
-| Agent 内核 | Pi 1.3.x，仅 `core/src/pi/` 可 import |
+| Lint/Format | ESLint（沿用现有工程） |
+| Agent 内核 | Pi 1.4.0（E0 机制实验通过），仅 `core/src/pi/` 可 import |
 | 工作流 | Temporal TypeScript SDK 1.25+ |
 | HTTP | Fastify 5 + SSE |
 | 数据库 | MySQL 8.0.30+ + Drizzle ORM（**唯一系统库**） |
 | 缓存 | Redis 7 |
 | 对象存储 | S3 兼容 |
-| 前端 | React 19 + Vite + Ant Design 5 + TanStack Query |
+| 前端 | React 19 + Vite + shadcn/Radix + Tailwind + TanStack Query |
 | 身份 | OIDC + Agent Connector 0.2.0 |
 | 测试 | Vitest、Testcontainers（真实 MySQL/Redis）、Temporal Test Server、Playwright |
 | 部署 | Docker Compose（P0）、K8s/K8s（公司发布）、Helm（P1） |
@@ -87,7 +87,7 @@ plugins/, examples/, deploy/, docs/, tests/, vendor/agent-connector/
 
 ### 5.2 身份与 SSO
 
-- 所有公司 Forge 项目生产登录必须走统一 SSO（OIDC 授权码 + PKCE）；本地账号只作应急管理员。
+- 所有公司 Forge 项目生产支持统一 SSO（OIDC 授权码 + PKCE）与本地账号并行登录；SSO与本地账号仅管理员显式绑定，保留本地角色和数据权限。
 - 生产 `SSO_MODE=required`；不得为方便关闭验签、放宽 audience/issuer/environment。
 - SSO 角色只映射到 Forge 角色；**数据权限仍由 Forge 本地策略决定**。
 - 会话存 Redis；Cookie HttpOnly/Secure/SameSite=Lax；变更请求带 CSRF。

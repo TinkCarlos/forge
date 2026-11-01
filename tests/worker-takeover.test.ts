@@ -75,7 +75,7 @@ const toolMessages = async (runId: string) =>
     return content;
   });
 const decideHttp = (id: string, decision: string) => app.inject({ method: "POST", url: `/admin/api/approvals/${id}/decide`, headers, payload: { decision } });
-const audits = async (id: string) => (await query("SELECT id FROM audit_logs WHERE action = 'approval.decide' AND resource_id = ?", [id])).length;
+const audits = async (id: string) => (await query("SELECT id FROM audit_logs WHERE outcome = 'success' AND action = 'approval.decide' AND resource_id = ?", [id])).length;
 const requestKey = (runId: string, rowId: string) => createHash("sha256").update(`${runId}:${rowId}`).digest("hex");
 const resetNet = () => {
   downstream.length = 0;
@@ -142,7 +142,7 @@ beforeAll(async () => {
     spec: { model: { provider: PROVIDER_KEY, model: "stub-1" }, toolsets: [{ builtin: ["echo"] }, { openapi: SOURCE_KEY }] },
     status: "published",
     createdBy: ADMIN_ID,
-  });
+  }, { expectedRevision: "system" });
 });
 
 afterAll(async () => {

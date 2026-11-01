@@ -1,0 +1,99 @@
+{
+  "snapshot": "[p3 \"Forge Console\" | space \"Forge console critique 20261101\"(33): 3 managed, 0 untracked — p1 \"Forge Console\", p2 \"Forge Console\", p3* \"Forge Console\"]\nroot\n  container\n    container\n      text \"F\"\n      text \"Forge\"\n    container \"主导航\" [ref=145]\n      text \"概览\"\n      button [ref=146]\n        text \"D\"\n        text \"总览\"\n      text \"构建\"\n      button [ref=147]\n        text \"A\"\n        text \"Agents\"\n      button [ref=148]\n        text \"M\"\n        text \"模型\"\n      button [ref=149]\n        text \"C\"\n        text \"MCP 服务\"\n      button [ref=150]\n        text \"S\"\n        text \"Skills\"\n      button [ref=151]\n        text \"T\"\n        text \"工具源\"\n      button [ref=152]\n        text \"P\"\n        text \"能力包\"\n      text \"运行\"\n      button [ref=153]\n        text \"R\"\n        text \"运行中心\"\n      button [ref=154]\n        text \"!\"\n        text \"审批中心\"\n      button [ref=155]\n        text \"H\"\n        text \"定时任务\"\n      text \"开放平台\"\n      button [ref=156]\n        text \"K\"\n        text \"应用与密钥\"\n      text \"治理\"\n      button [ref=157]\n        text \"U\"\n        text \"账号与权限\"\n      button [ref=158]\n        text \"L\"\n        text \"操作日志\"\n      button [ref=159]\n        text \"V\"\n        text \"凭据\"\n      button [ref=160]\n        text \"I\"\n        text \"SSO / Connector\"\n    container\n      container\n        text \"Platform Admin\"\n        text \"platform_admin · all\"\n      button [ref=161]\n        text \"修改密码\"\n      button [ref=162]\n        text \"退出\"\n  container\n    container\n      container\n        heading\n          text \"总览\"\n        paragraph\n          text \"运行状态、成本与待审批\"\n      container\n        text \"API 正常\"\n        button [ref=163]\n          text \"刷新\"\n    container\n      container\n        container\n          text \"今日运行\"\n          text \"11\"\n          text \"当前实例\"\n        container\n          text \"Agents\"\n          text \"3\"\n          text \"已配置\"\n        container\n          text \"待审批\"\n          text \"0\"\n          text \"需要处理\"\n        container\n          text \"运行中\"\n          text \"0\"\n          text \"队列 + 执行中\"\n      container\n        container\n          container\n            heading\n              text \"快速开始\"\n            paragraph\n              text \"离线 Mock 模型已就绪\"\n          container\n            button [ref=164]\n              text \"新建 Agent\"\n            button [ref=165]\n              text \"接入自定义模型\"\n            button [ref=166]\n              text \"安装能力包\"\n        container\n          container\n            heading\n              text \"运行状态\"\n            paragraph\n              text \"按状态统计\"\n          container\n            text \"succeeded\"\n            text \"11\"\n      container\n        container\n          container\n            heading\n              text \"最近运行\"\n            paragraph\n              text \"点开查看消息与工具调用\"\n          button [ref=167]\n            text \"全部\"\n        table\n          table_row\n            table_cell\n              text \"Run\"\n            table_cell\n              text \"Agent\"\n            table_cell\n              text \"状态\"\n            table_cell\n              text \"成本\"\n            table_cell\n              text \"时间\"\n            table_cell\n          table_row\n            table_cell\n              text \"run_01M6AQJ4TGYCEHE5EDZERT\"\n            table_cell\n              text \"MCP 演示 Agent\"\n            table_cell\n              text \"succeeded\"\n            table_cell\n              text \"$0.0000\"\n            table_cell\n              text \"2026/11/1 12:58:22\"\n            table_cell\n              button [ref=168]\n                text \"查看\"\n          table_row\n            table_cell\n              text \"run_01M6AQJ2V6B4N6MPJF1STW\"\n            table_cell\n              text \"MCP 演示 Agent\"\n            table_cell\n              text \"succeeded\"\n            table_cell\n              text \"$0.0000\"\n            table_cell\n              text \"2026/11/1 12:58:20\"\n            table_cell\n              button [ref=169]\n                text \"查看\"\n          table_row\n            table_cell\n              text \"run_01M6AQJ1T710TG6TTNEVR0\"\n            table_cell\n              text \"MCP 演示 Agent\"\n            table_cell\n              text \"succeeded\"\n            table_cell\n              text \"$0.0000\"\n            table_cell\n              text \"2026/11/1 12:58:19\"\n            table_cell\n              button [ref=170]\n                text \"查看\"\n          table_row\n            table_cell\n              text \"run_01M6AQJ0YG4WHYYPERBB83\"\n            table_cell\n              text \"MCP 演示 Agent\"\n            table_cell\n              text \"succeeded\"\n            table_cell\n              text \"$0.0000\"\n            table_cell\n              text \"2026/11/1 12:58:18\"\n            table_cell\n              button [ref=171]\n                text \"查看\"\n          table_row\n            table_cell\n              text \"run_01M6AQHZYM2ZKKKDC0CE53\"\n            table_cell\n              text \"MCP 演示 Agent\"\n            table_cell\n              text \"succeeded\"\n            table_cell\n              text \"$0.0000\"\n            table_cell\n              text \"2026/11/1 12:58:17\"\n            table_cell\n              button [ref=172]\n                text \"查看\"\n[more content below the viewport: scrollY=0, viewport 800 / page 934 px; scroll or use snapshot({ scope: \"full_page\" })]",
+  "metrics": {
+    "url": "http://127.0.0.1:3100/#dashboard",
+    "viewport": {
+      "width": 1280,
+      "height": 800,
+      "dpr": 1
+    },
+    "document": {
+      "scrollWidth": 1280,
+      "clientWidth": 1280
+    },
+    "bodySize": "14px",
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Forge",
+        "size": "30px",
+        "visible": false
+      },
+      {
+        "tag": "H2",
+        "text": "总览",
+        "size": "24px",
+        "visible": true
+      },
+      {
+        "tag": "H3",
+        "text": "快速开始",
+        "size": "15px",
+        "visible": true
+      },
+      {
+        "tag": "H3",
+        "text": "运行状态",
+        "size": "15px",
+        "visible": true
+      },
+      {
+        "tag": "H3",
+        "text": "最近运行",
+        "size": "15px",
+        "visible": true
+      },
+      {
+        "tag": "H3",
+        "text": "",
+        "size": "16px",
+        "visible": false
+      }
+    ],
+    "body": "今日运行\n11\n当前实例\nAgents\n3\n已配置\n待审批\n0\n需要处理\n运行中\n0\n队列 + 执行中\n快速开始\n\n离线 Mock 模型已就绪\n\n新建 Agent\n接入自定义模型\n安装能力包\n运行状态\n\n按状态统计\n\nsucceeded\n11\n最近运行\n\n点开查看消息与工具调用\n\n全部\nRun\tAgent\t状态\t成本\t时间\t\nrun_01M6AQJ4TGYCEHE5EDZERT\tMCP 演示 Agent\tsucceeded\t$0.0000\t2026/11/1 12:58:22\t查看\nrun_01M6AQJ2V6B4N6MPJF1STW\tMCP 演示 Agent\tsucceeded\t$0.0000\t2026/11/1 12:58:20\t查看\nrun_01M6AQJ1T710TG6TTNEVR0\tMCP 演示 Agent\tsucceeded\t$0.0000\t2026/11/1 12:58:19\t查看\nrun_01M6AQJ0YG4WHYYPERBB83\tMCP 演示 Agent\tsucceeded\t$0.0000\t2026/11/1 12:58:18\t查看\nrun_01M6AQHZYM2ZKKKDC0CE53\tMCP 演示 Agent\tsucceeded\t$0.0000\t2026/11/1 12:58:17\t查看\nrun_01M6AQHZY6NP5B4WMZKZ09\tMCP 演示 Agent\tsucceeded\t$0.0000\t2026/11/1 12:58:17\t查看"
+  },
+  "status": {
+    "failed": "true",
+    "annotations": []
+  },
+  "events": [
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "security",
+          "level": "error",
+          "text": "Loading the script 'http://localhost:8400/detect.js' violates the following Content Security Policy directive: \"script-src 'self'\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The action has been blocked.",
+          "timestamp": 1793510545871.008,
+          "lineNumber": 1,
+          "stackTrace": {
+            "callFrames": [
+              {
+                "functionName": "",
+                "scriptId": "571",
+                "url": "",
+                "lineNumber": 1,
+                "columnNumber": 299
+              },
+              {
+                "functionName": "__egoPageEvaluate",
+                "scriptId": "571",
+                "url": "",
+                "lineNumber": 1,
+                "columnNumber": 315
+              },
+              {
+                "functionName": "",
+                "scriptId": "571",
+                "url": "",
+                "lineNumber": 2,
+                "columnNumber": 8
+              }
+            ]
+          }
+        }
+      },
+      "sessionId": "B88262A790A5DEB54D35E920B5519467"
+    }
+  ]
+}

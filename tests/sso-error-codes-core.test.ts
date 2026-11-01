@@ -13,14 +13,14 @@ describe("SSO_ERROR_CODES in @forge/core", () => {
     expect(src).not.toMatch(/\brequire\(|\bimport\(/);
   });
 
-  it("holds HTP-4003 (= OUTBOUND_BLOCKED_CODE), SSO-1201..1212 and the SYS-9001 fallback", async () => {
+  it("holds HTP-4003 (= OUTBOUND_BLOCKED_CODE), SSO-1201..1213 and the SYS-9001 fallback", async () => {
     const pure = await import("../packages/core/src/sso-error-codes.js");
     const core = await import("@forge/core");
     expect(core.SSO_ERROR_CODES).toBe(pure.SSO_ERROR_CODES);
     expect(pure.SSO_ERROR_CODES.has(core.OUTBOUND_BLOCKED_CODE)).toBe(true);
     expect(pure.SSO_ERROR_CODES.has(pure.SSO_FALLBACK_CODE)).toBe(true);
     expect([...pure.SSO_ERROR_CODES].sort()).toEqual(
-      ["HTP-4003", "SYS-9001", ...Array.from({ length: 12 }, (_, i) => `SSO-12${String(i + 1).padStart(2, "0")}`)].sort(),
+      ["HTP-4003", "SYS-9001", ...Array.from({ length: 13 }, (_, i) => `SSO-12${String(i + 1).padStart(2, "0")}`)].sort(),
     );
   });
 

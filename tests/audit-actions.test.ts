@@ -1,3 +1,4 @@
+import { configurationHeaders } from "./helpers/configuration-headers.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance } from "fastify";
@@ -55,8 +56,8 @@ beforeAll(async () => {
   headers = sessionHeaders(pa, sessionCookieValue(pa));
   agentKey = `it-ay-${suffix}`;
   agentId = await repos.createAgent({ key: agentKey, name: "IT audit y", ownerOrgUnitId: ROOT, createdBy: ADMIN_ID });
-  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID });
-  await repos.publishAgentVersion(agentId, versionId);
+  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID }, { expectedRevision: "system" });
+  await repos.publishAgentVersion(agentId, versionId, { expectedRevision: "system" });
   appId = await repos.createApiApp({ key: `it-ay-${suffix}`, name: "IT audit y", ownerOrgUnitId: ROOT, scopes: ["runs:cancel", "runs:read"] });
   openKey = `fsk_${randomBytes(32).toString("base64url")}`;
   await repos.createApiKey({ appId, name: "it", prefix: openKey.slice(0, 16), keyHash: hashApiKey(openKey, config.API_KEY_PEPPER), scopes: ["runs:cancel", "runs:read"] });
@@ -98,9 +99,9 @@ describe("audit actions (Y)", () => {
   });
 
   it("#47 / #48 schedule.enable and schedule.disable", async () => {
-    expect((await app.inject({ method: "POST", url: `/admin/api/schedules/${scheduleId}/enable`, headers, payload: {} })).statusCode).toBe(200);
+    expect((await app.inject({ method: "POST", url: `/admin/api/schedules/${scheduleId}/enable`, headers: await configurationHeaders(`/admin/api/schedules/${scheduleId}/enable`, headers), payload: {} })).statusCode).toBe(200);
     expect(await audits("schedule.enable", scheduleId)).toHaveLength(1);
-    expect((await app.inject({ method: "POST", url: `/admin/api/schedules/${scheduleId}/disable`, headers, payload: {} })).statusCode).toBe(200);
+    expect((await app.inject({ method: "POST", url: `/admin/api/schedules/${scheduleId}/disable`, headers: await configurationHeaders(`/admin/api/schedules/${scheduleId}/disable`, headers), payload: {} })).statusCode).toBe(200);
     const rows = await audits("schedule.disable", scheduleId);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ actor_type: "user", resource_type: "schedule" });

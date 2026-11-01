@@ -1,3 +1,4 @@
+import { configurationHeaders } from "./helpers/configuration-headers.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
@@ -53,8 +54,8 @@ beforeAll(async () => {
   await execute("INSERT INTO org_units (id, parent_id, `key`, name, path) VALUES (?, ?, ?, ?, ?)", [CHILD, PARENT, `it-sub-c-${suffix}`, "IT child", `/it-sub-p-${suffix}/it-sub-c-${suffix}/`]);
   await execute("INSERT INTO org_units (id, parent_id, `key`, name, path) VALUES (?, ?, ?, ?, ?)", [SIBLING, ROOT, `it-sub-s-${suffix}`, "IT sibling", `/it-sub-s-${suffix}/`]);
   agentId = await repos.createAgent({ key: `it-sub-agent-${suffix}`, name: "IT sub agent", ownerOrgUnitId: PARENT, createdBy: ADMIN_ID });
-  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID });
-  await repos.publishAgentVersion(agentId, versionId);
+  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID }, { expectedRevision: "system" });
+  await repos.publishAgentVersion(agentId, versionId, { expectedRevision: "system" });
 });
 
 afterAll(async () => {
@@ -86,7 +87,7 @@ describe("schedules: department + sub-departments", () => {
     expect(list).toEqual(expect.arrayContaining([childSch, parentSch]));
     expect(list).not.toContain(siblingSch);
     expect((await app.inject({ method: "GET", url: `/admin/api/schedules/${childSch}`, headers: parent })).statusCode).toBe(200);
-    expect((await app.inject({ method: "PATCH", url: `/admin/api/schedules/${childSch}`, headers: parent, payload: { name: "renamed" } })).statusCode).toBe(200);
+    expect((await app.inject({ method: "PATCH", url: `/admin/api/schedules/${childSch}`, headers: await configurationHeaders(`/admin/api/schedules/${childSch}`, parent), payload: { name: "renamed" } })).statusCode).toBe(200);
     expect((await app.inject({ method: "GET", url: `/admin/api/schedules/${siblingSch}`, headers: parent })).statusCode).toBe(404);
 
     expect(ids(await app.inject({ method: "GET", url: "/admin/api/schedules", headers: child }))).not.toContain(parentSch);
@@ -118,7 +119,7 @@ describe("service accounts: department + sub-departments", () => {
     expect(list).toEqual(expect.arrayContaining([childAcc, parentAcc]));
     expect(list).not.toContain(siblingAcc);
     expect((await app.inject({ method: "GET", url: `/admin/api/service-accounts/${childAcc}`, headers: parent })).statusCode).toBe(200);
-    expect((await app.inject({ method: "PATCH", url: `/admin/api/service-accounts/${childAcc}`, headers: parent, payload: { name: "x" } })).statusCode).toBe(200);
+    expect((await app.inject({ method: "PATCH", url: `/admin/api/service-accounts/${childAcc}`, headers: await configurationHeaders(`/admin/api/service-accounts/${childAcc}`, parent), payload: { name: "x" } })).statusCode).toBe(200);
     expect((await app.inject({ method: "GET", url: `/admin/api/service-accounts/${siblingAcc}`, headers: parent })).statusCode).toBe(404);
     expect((await app.inject({ method: "GET", url: `/admin/api/service-accounts/${parentAcc}`, headers: child })).statusCode).toBe(404);
   });

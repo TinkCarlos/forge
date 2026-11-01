@@ -45,7 +45,7 @@ beforeAll(async () => {
   providerId = await repos.createProvider({ key: PROVIDER_KEY, name: "HTS model", protocol: "openai-compatible", baseUrl: `http://127.0.0.1:${modelPort}/v1`, createdBy: ADMIN_ID });
   await repos.createModel({ providerId, key: "stub-1", displayName: "stub", maxOutputTokens: 256 });
   agentId = await repos.createAgent({ key: `it-hts-${suffix}`, name: "IT HTS", ownerOrgUnitId: ROOT, createdBy: ADMIN_ID });
-  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: PROVIDER_KEY, model: "stub-1" }, toolsets: [] }, status: "published", createdBy: ADMIN_ID });
+  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: PROVIDER_KEY, model: "stub-1" }, toolsets: [] }, status: "published", createdBy: ADMIN_ID }, { expectedRevision: "system" });
 });
 
 afterAll(async () => {

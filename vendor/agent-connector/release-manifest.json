@@ -1,0 +1,18 @@
+{
+  "schema": "agent-connector-release/v1",
+  "version": "0.2.0",
+  "gitSha": "2ae52adeb2cabf7662d89789fbeae00ef3de2177",
+  "buildNumber": "8",
+  "artifacts": [
+    {
+      "name": "leadong-agent-connector-0.2.0.tgz",
+      "sha256": "eaf28f8ab99bfbb085a0078777f4ce923ad70e1044a8af7e7d8a82d6cdda20a3",
+      "size": 10218
+    },
+    {
+      "name": "leadong_agent_connector-0.2.0-py3-none-any.whl",
+      "sha256": "e8791941310c115502ab06b7ecbddf7fb174075aaa64dde71db3ea72fb3824f2",
+      "size": 13058
+    }
+  ]
+}

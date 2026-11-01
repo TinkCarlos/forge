@@ -1,0 +1,46 @@
+{
+  "timestamp": "2026-11-01T06:38:41.511050+00:00",
+  "browser": {
+    "taskSpaceId": 35,
+    "finished": true,
+    "keptPages": []
+  },
+  "processGroups": {
+    "api": {
+      "pid": 22873,
+      "pgid": 22873,
+      "signal": "SIGTERM",
+      "stopped": true
+    },
+    "mock": {
+      "pid": 22865,
+      "pgid": 22865,
+      "signal": "SIGTERM",
+      "stopped": true
+    },
+    "privateApi": {
+      "pid": 51672,
+      "pgid": 51672,
+      "signal": "SIGTERM",
+      "stopped": true
+    }
+  },
+  "databases": {
+    "forge_console_fix_20261101_1355_test": {
+      "temporaryGrantRevoked": true,
+      "dropped": true
+    },
+    "forge_console_regression_20261101_1355_test": {
+      "temporaryGrantRevoked": true,
+      "dropped": true
+    }
+  },
+  "productionTouched": false,
+  "databaseAbsenceVerified": true,
+  "temporaryGrantAbsenceVerified": true,
+  "completedAt": "2026-11-01T06:38:54.786694+00:00",
+  "temporaryEvidenceRemovedAfterArchive": [
+    "/tmp/forge-console-fixes-20261101",
+    "/tmp/forge-console-fixes-latest-20261101.json"
+  ]
+}

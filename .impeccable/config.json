@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "inter",
+        "files": [
+          "apps/console/public/styles.css"
+        ],
+        "createdAt": "2026-11-01T06:40:34.749Z",
+        "reason": "Agent decision: Inter is already in the HEAD font stack for the legacy enterprise console; keep the existing product typography in this usability bug-fix scope. Browser acceptance found no font readability defect. Exception applies only to this font value in the legacy stylesheet."
+      }
+    ]
+  }
+}

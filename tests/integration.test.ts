@@ -34,8 +34,8 @@ beforeAll(async () => {
     },
     status: "published",
     createdBy: admin.id,
-  });
-  await repos.publishAgentVersion(agentId, versionId);
+  }, { expectedRevision: "system" });
+  await repos.publishAgentVersion(agentId, versionId, { expectedRevision: "system" });
   const threadId = await repos.createThread({ agentId, orgUnitId: admin.orgUnitId, subjectType: "user", subjectId: admin.id, title: "integration" });
   runId = await repos.createRun({
     threadId,
@@ -120,7 +120,7 @@ async function makeRun(spec: Record<string, unknown>, text: string, options: { s
     spec,
     status: "published",
     createdBy: admin.id,
-  });
+  }, { expectedRevision: "system" });
   const threadId = await repos.createThread({ agentId, orgUnitId: admin.orgUnitId, subjectType: "user", subjectId: admin.id, title: "runtime" });
   const runId = await repos.createRun({
     threadId,

@@ -4,6 +4,15 @@
 
 > 本文取代 [V1 设计](../superpowers/specs/2026-10-21-forge-agent-framework-design.md)。详细契约见：需求 [product-requirements.md](../01-requirements/product-requirements.md)、插件 [plugin-system.md](plugin-system.md)、控制台 [admin-console.md](admin-console.md)、API [open-platform.md](../03-api/open-platform.md)、数据 [mysql-design.md](../04-data/mysql-design.md)。
 
+## 2026-11-01 Job与消息管理设计增量
+
+本增量已由用户定稿，当前仅设计、尚未实现。完整契约见[详细需求](../../.talking-us/20261101-113405-Forge后台优化与Job消息管理-详细需求文档.md)、[开发设计](../../.talking-us/20261101-113405-Forge后台优化与Job消息管理-开发设计文档.md)、[数据库](../../.talking-us/20261101-113405-Forge后台优化与Job消息管理-数据库设计文档.md)、[接口](../../.talking-us/20261101-113405-Forge后台优化与Job消息管理-接口文档.md)。本节细化FR-JB/FR-MS与原E1–E8的交叉范围。
+
+- 编排关系：Job定义→一次Job执行→步骤/批量明细→Agent Run或受信脚本/浏览器/外部任务；Job不另建模型循环。复杂Job采用既定Temporal，旧MySQL只作单Agent桥接，执行固定引擎，不同时领同一记录。
+- MySQL保存业务/步骤/attempt/快照/事件/outbox；Temporal只传引用，Signal接受与实际业务状态分离。业务资源锁与worker lease分开，未知副作用先核查，不能按TTL转让账号/站点写入权。
+- 消息管理统一channel/version/rule/template/delivery/attempt，替代旧目标webhook_endpoints；会话messages不改语义。终态/业务事件/outbox同事务，Webhook至少一次、群消息未知人工处理，外部投递不改Job结果。
+- 既有App、Schedule、Run的兼容与切换以配套设计为准；来源/文件/人工/质量/交付分别保留事实，不以技术成功替代交付。执行器与网络边界沿原已确认方案。
+
 ## 1. 架构目标
 
 1. **一套框架、多客户交付**：客户差异通过能力包、Agent 配置、模型端点、策略表达，不复制框架代码。
@@ -19,15 +28,15 @@
 
 | 层 | 选型 | 说明 |
 | --- | --- | --- |
-| 语言/工程 | Node.js 24、TypeScript strict、pnpm workspace、Biome | 全仓统一 |
-| Agent 内核 | Pi 1.3.x（`pi-ai`、`pi-mcp`） | 仅 `packages/core/src/pi/` 可 import |
+| 语言/工程 | Node.js 24、TypeScript strict、pnpm workspace、ESLint | 全仓统一 |
+| Agent 内核 | Pi 1.4.0（`pi-agent-core`、`pi-ai`，Skill loader 同版本） | 仅 `packages/core/src/pi/` 可 import |
 | 工作流 | Temporal TypeScript SDK 1.25+ | 持久化执行、审批、重试、取消、Schedule |
 | 接入 | Fastify 5 + SSE | 管理 API、开放 API、集成 API、BFF、静态控制台 |
 | 身份 | OIDC 授权码 + PKCE；Agent Connector 0.2.0 | 统一 SSO、Principal 验签、跨系统调用 |
 | 系统库 | MySQL 8.0.30+ + Drizzle ORM | 唯一系统数据库；无其他数据库回退 |
 | 缓存/事件 | Redis 7 | 限流、SSE Stream、短缓存、会话 |
 | 对象存储 | S3 兼容（MinIO/COS/OSS） | 文件、Artifact、包、大工具结果 |
-| 前端 | React 19、Vite、Ant Design 5、TanStack Query、Monaco、ECharts | 管理控制台 |
+| 前端 | React 19、Vite、shadcn/Radix、Tailwind、TanStack Query；编辑器/图表按需引入 | 管理控制台 |
 | 文档解析/浏览器 | Python 3.12 + FastMCP（Docling/MinerU）、Playwright MCP | 以 MCP 提供 |
 | 观测 | pino、OpenTelemetry、Prometheus、可选 Langfuse | runId 贯穿 |
 | 测试 | Vitest、Testcontainers、Temporal Test Server、Playwright、k6 | 真实 MySQL/Redis |
@@ -107,7 +116,7 @@ packages/
 services/
   doc-parser/          Python FastMCP：PDF/OCR/Office
   browser/             Playwright MCP
-  sandbox/             P2 代码执行隔离
+  executor/            专用Linux原生执行（用户确认）
 plugins/               内置/示例能力包源码
 deploy/                compose、helm、镜像
 docs/                  本套契约文档
@@ -347,9 +356,11 @@ queued ──▶ running ──▶ succeeded
 - 控制台上传包不执行代码；MCP stdio 命令受白名单与运行用户限制。
 - 代码型扩展只允许运维安装；镜像固定 digest；依赖锁定。
 
-### 9.7 沙箱
+### 9.7 原生代码执行边界
 
-Pi 内置 bash/文件工具在服务端禁用。文档解析与浏览器在独立服务。代码执行 P2 才引入独立沙箱（容器 + 无网络/只读 FS + 资源限制），不与 Worker 共享进程。
+2026-10-31用户确认使用专用Linux执行服务器，只放执行器和会话文件；不引入Docker/gVisor/虚拟机沙盒。Pi驱动Forge的Agent循环，经受认证的内部协议调用原生执行服务，API/数据库机器不执行脚本。不同workspace采用独立Unix账号/目录权限，systemd管理进程、资源与取消；文件和用户级依赖持久保存，idle仅回收计算。网络不增加域名/IP/端口、公网/内网限制。
+
+此模式采用Linux账号与进程约束，不宣称容器、虚拟机或内核隔离。原“代码执行P2、无网络”及gVisor草案由[补充需求](../01-requirements/product-requirements.md#10-2026-10-31-补充需求通用-agent-执行环境)替代；[E0实测与交接](../../.talking-us/2026-10-31-forge-e0-admission.md)记录Pi/SDK机制证据及Linux部署闸门。设计准入不等于服务器已部署或验收。
 
 ### 9.8 功能权限与数据权限
 
@@ -567,3 +578,5 @@ Pi 内置 bash/文件工具在服务端禁用。文档解析与浏览器在独�
 8. 开放平台 App/Key/配额/Run/Webhook + 文档门户 + 应用数据隔离。
 9. 审计、凭据、设置、备份、Compose、发布流程与回滚演练。
 10. 契约测试、E2E、SSO/Connector 验收、数据权限矩阵、负载与安全收口。
+
+消息规则同时命中同一渠道时按 Job → Agent → API应用 → 组织 → 全局选择模板，每event/channel只生成一条投递，保留全部命中及选中规则（2026-11-01实施确认）。

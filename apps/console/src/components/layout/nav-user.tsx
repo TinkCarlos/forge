@@ -1,4 +1,7 @@
-import { ChevronsUpDown, ExternalLink, LogOut } from 'lucide-react'
+import { ChevronsUpDown, ExternalLink, KeyRound, LogOut } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { LEGACY_LINK_ATTRS, LEGACY_LINK_HINT } from '@/lib/legacy-link'
+import { PasswordChangeDialog } from '@/components/password-change-dialog'
 import useDialogState from '@/hooks/use-dialog-state'
 import { useAuthStore } from '@/stores/auth-store'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -23,6 +26,8 @@ export function NavUser() {
   const { isMobile } = useSidebar()
   const user = useAuthStore((s) => s.user)
   const [open, setOpen] = useDialogState()
+  const [passwordOpen, setPasswordOpen] = useState(false)
+  const userMenuTrigger = useRef<HTMLButtonElement>(null)
   const name = user?.name || user?.email || '管理员'
   const initial = name.slice(0, 1).toUpperCase()
 
@@ -44,7 +49,7 @@ export function NavUser() {
         <SidebarMenuItem>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <SidebarMenuButton size='lg' className='data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground'>
+              <SidebarMenuButton ref={userMenuTrigger} size='lg' className='data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground'>
                 {identity}
                 <ChevronsUpDown className='ms-auto size-4' />
               </SidebarMenuButton>
@@ -60,10 +65,11 @@ export function NavUser() {
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuGroup>
+                <DropdownMenuItem onClick={() => setPasswordOpen(true)}><KeyRound />修改密码</DropdownMenuItem>
                 <DropdownMenuItem asChild>
-                  <a href='/'>
+                  <a href='/' {...LEGACY_LINK_ATTRS} title={LEGACY_LINK_HINT}>
                     <ExternalLink />
-                    回到旧版控制台
+                    打开旧版控制台
                   </a>
                 </DropdownMenuItem>
               </DropdownMenuGroup>
@@ -78,6 +84,7 @@ export function NavUser() {
       </SidebarMenu>
 
       <SignOutDialog open={!!open} onOpenChange={setOpen} />
+      {passwordOpen && <PasswordChangeDialog onClose={() => setPasswordOpen(false)} returnFocusTo={userMenuTrigger} />}
     </>
   )
 }

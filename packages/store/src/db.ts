@@ -1,3 +1,4 @@
+import { ForgeError } from "@forge/core/errors";
 import mysql, { type Pool, type PoolConnection, type ResultSetHeader } from "mysql2/promise";
 import type { PoolConnection as CorePoolConnection, QueryError } from "mysql2";
 import { config } from "@forge/core";
@@ -9,7 +10,7 @@ const dbUrl = new URL(config.DATABASE_URL);
 if (process.env.VITEST) {
   const database = decodeURIComponent(dbUrl.pathname.replace(/^\//, "")).trim();
   if (!database.endsWith("_test")) {
-    throw new Error(`[test DB guard] 测试进程拒绝连接库「${database || "(空)"}」：库名必须以 _test 结尾（请用 TEST_DATABASE_URL 指向测试库）。`);
+    throw new ForgeError("SYS-9001", { message: `[test DB guard] 测试进程拒绝连接库「${database || "(空)"}」：库名必须以 _test 结尾（请用 TEST_DATABASE_URL 指向测试库）。` });
   }
 }
 
@@ -35,13 +36,15 @@ pool.on("connection", (connection) => {
   });
 });
 
-export async function query<T = Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<T[]> {
-  const [rows] = await pool.query(sql, params);
+export type ReadConnection = Pick<PoolConnection, "query">;
+
+export async function query<T = Record<string, unknown>>(sql: string, params: unknown[] = [], connection?: ReadConnection): Promise<T[]> {
+  const [rows] = await (connection ?? pool).query(sql, params);
   return rows as T[];
 }
 
-export async function one<T = Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<T | null> {
-  const rows = await query<T>(sql, params);
+export async function one<T = Record<string, unknown>>(sql: string, params: unknown[] = [], connection?: ReadConnection): Promise<T | null> {
+  const rows = await query<T>(sql, params, connection);
   return rows[0] ?? null;
 }
 
@@ -50,9 +53,10 @@ export async function execute(sql: string, params: unknown[] = []): Promise<Resu
   return result as ResultSetHeader;
 }
 
-export async function transaction<T>(fn: (conn: PoolConnection) => Promise<T>): Promise<T> {
+export async function transaction<T>(fn: (conn: PoolConnection) => Promise<T>, isolation?: "READ COMMITTED"): Promise<T> {
   const conn = await pool.getConnection();
   try {
+    if (isolation) await conn.query("SET TRANSACTION ISOLATION LEVEL READ COMMITTED");
     await conn.beginTransaction();
     const result = await fn(conn);
     await conn.commit();

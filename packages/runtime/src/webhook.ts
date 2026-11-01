@@ -1,5 +1,5 @@
 import { createHmac } from "node:crypto";
-import { assertOutboundAllowed, config, decryptSecret, ForgeError, OUTBOUND_BLOCKED_CODE, safeFetch } from "@forge/core";
+import { assertOutboundAllowed, config, decryptLegacySecret, loadMasterKeyring, ForgeError, OUTBOUND_BLOCKED_CODE, safeFetch } from "@forge/core";
 import { maskArgsDeep } from "@forge/governance";
 import { parseJsonValue, repos, type RunRow } from "@forge/store";
 import { describeTickError } from "./tick-guard.js";
@@ -40,7 +40,7 @@ function payloadFor(run: RunRow, status: string): { eventId: string; eventType: 
 export async function enqueueRunWebhook(run: RunRow, status: string): Promise<void> {
   if (!run.app_id) return;
   const app = await repos.getApiApp(run.app_id);
-  if (!app?.webhook_url || !app.webhook_secret_encrypted) return;
+  if (!app?.webhook_url || (!app.webhook_secret_encrypted && app.webhook_secret_id == null)) return;
   const event = payloadFor(run, status);
   await repos.enqueueWebhook({
     appId: run.app_id,
@@ -58,7 +58,7 @@ async function deliverOne(row: Record<string, unknown>, fetchImpl: typeof fetch)
   if (!claimed) return;
   const attemptNumber = attempts + 1;
   const app = await repos.getApiApp(String(row.app_id));
-  if (!app?.webhook_url || !app.webhook_secret_encrypted) {
+  if (!app?.webhook_url || (!app.webhook_secret_encrypted && app.webhook_secret_id == null)) {
     await repos.finishWebhookDelivery(id, { status: "failed", errorMessage: "Webhook 未配置" });
     return;
   }
@@ -77,8 +77,11 @@ async function deliverOne(row: Record<string, unknown>, fetchImpl: typeof fetch)
   let responseStatus: number | null = null;
   let errorMessage: string | null = null;
   let errorCode: string | null = null;
+  let permanentError = false;
   try {
-    const secret = decryptSecret(String(app.webhook_secret_encrypted), config.FORGE_MASTER_KEY);
+    const secret = app.webhook_secret_id != null
+      ? (await repos.resolveCredentialValues("api_app", String(app.id), { webhook: String(app.webhook_secret_id) })).webhook!
+      : decryptLegacySecret(String(app.webhook_secret_encrypted), loadMasterKeyring(config));
     const timestamp = Math.floor(Date.now() / 1000);
     const signature = createHmac("sha256", secret).update(`${timestamp}.${body}`).digest("hex");
     const response = await fetchImpl(url, {
@@ -103,10 +106,11 @@ async function deliverOne(row: Record<string, unknown>, fetchImpl: typeof fetch)
     errorCode = webhookShouldRetry(responseStatus) ? "HTP-4002" : "HTP-4001";
   } catch (error) {
     // A redirect hop refused by the guard (manual redirects are not followed today, kept for safety) vs. transport errors.
-    errorCode = error instanceof ForgeError && error.code === OUTBOUND_BLOCKED_CODE ? OUTBOUND_BLOCKED_CODE : "HTP-4002";
+    permanentError = error instanceof ForgeError && error.code === "SYS-9002";
+    errorCode = permanentError ? "SYS-9002" : error instanceof ForgeError && error.code === OUTBOUND_BLOCKED_CODE ? OUTBOUND_BLOCKED_CODE : "HTP-4002";
     errorMessage = (error instanceof ForgeError ? `${error.code} ${error.message}` : error instanceof Error ? error.message : "webhook failed").slice(0, 512);
   }
-  const delay = webhookShouldRetry(responseStatus) ? webhookRetryDelayMs(attemptNumber) : null;
+  const delay = !permanentError && webhookShouldRetry(responseStatus) ? webhookRetryDelayMs(attemptNumber) : null;
   if (delay === null) {
     await repos.finishWebhookDelivery(id, { status: "failed", responseStatus, errorMessage, errorCode });
     return;

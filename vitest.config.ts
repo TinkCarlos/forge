@@ -9,6 +9,9 @@ const testDatabaseUrl = process.env.TEST_DATABASE_URL?.trim() ?? "";
 export default defineConfig({
   resolve: {
     alias: {
+      "@forge/governance/sensitive": path.resolve(root, "packages/governance/src/sensitive.ts"),
+      "@forge/core/errors": path.resolve(root, "packages/core/src/errors/index.ts"),
+      "@forge/contracts": path.resolve(root, "packages/contracts/src/index.ts"),
       "@forge/core": path.resolve(root, "packages/core/src/index.ts"),
       "@forge/store": path.resolve(root, "packages/store/src/index.ts"),
       "@forge/identity": path.resolve(root, "packages/identity/src/index.ts"),

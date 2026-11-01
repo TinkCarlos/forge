@@ -2,6 +2,7 @@ import {
   Activity,
   Bot,
   CalendarClock,
+  MessagesSquare,
   Cpu,
   Fingerprint,
   KeyRound,
@@ -25,7 +26,7 @@ const legacy = (id: LegacyPage, title: string, icon: NavLink['icon']): NavLink =
   url: `/#${id}`,
   external: true,
   icon,
-  permission: LEGACY_PAGE_PERMISSIONS[id],
+  ...(id === 'users' ? { anyPermissions: ['user.view', 'role.view'] } : { permission: LEGACY_PAGE_PERMISSIONS[id] }),
 })
 
 /** 新版页面入口：权限与路由守卫共用 ROUTE_PERMISSIONS。以后加「审计」入口用 page('/audit', ...)，自动要求 audit.view。 */
@@ -52,12 +53,12 @@ export const sidebarData: SidebarData = {
     },
     {
       title: '运行',
-      items: [legacy('runs', '运行中心', Activity), page('/approvals', '审批中心', ShieldCheck), legacy('schedules', '定时任务', CalendarClock)],
+      items: [page('/jobs', 'Job 管理', CalendarClock), page('/messages', '消息管理', MessagesSquare), legacy('runs', '运行中心', Activity), page('/approvals', '审批中心', ShieldCheck), legacy('schedules', '定时任务', CalendarClock)],
     },
     { title: '开放平台', items: [legacy('apps', '应用与密钥', KeyRound)] },
     {
       title: '治理',
-      items: [legacy('users', '用户与权限', Users), legacy('sso', 'SSO / Connector', Fingerprint)],
+      items: [legacy('users', '账号与权限', Users), legacy('audit', '操作日志', Activity), legacy('secrets', '凭据', KeyRound), legacy('sso', 'SSO / Connector', Fingerprint)],
     },
   ],
 }

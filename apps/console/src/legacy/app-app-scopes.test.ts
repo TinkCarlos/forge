@@ -22,35 +22,41 @@ function method(name: string): string {
 
 type Modal = { title: string; body: string; onSubmit: (d: unknown) => Promise<unknown> }
 
-function harness(opts: { keys?: unknown[]; apps?: unknown[]; apiError?: Error } = {}) {
+function harness(opts: { keys?: unknown[]; apps?: unknown[]; apiError?: Error; manage?: boolean } = {}) {
   const modals: Modal[] = []
   const calls: { path: string; opts: unknown }[] = []
   const toasts: { m: string; kind?: string }[] = []
+  const secrets: unknown[] = []
   const deps: Record<string, unknown> = {
     openModal: (title: string, body: string, onSubmit: Modal['onSubmit']) => { modals.push({ title, body, onSubmit }) },
-    state: { apps: opts.apps ?? [{ id: 'app_1', name: 'A', status: 'active', scopes: ['agents:read', 'runs:create'], webhookUrl: '' }] },
+    state: { apps: opts.apps ?? [{ revision: 1, id: 'app_1', name: 'A', status: 'active', scopes: ['agents:read', 'runs:create'], webhookUrl: '' }] },
     api: async (path: string, o: unknown) => {
       calls.push({ path, opts: o })
       if (opts.apiError) throw opts.apiError
-      return { items: opts.keys ?? [] }
+      return { items: opts.keys ?? [], appId: 'app_1', canManage: opts.manage ?? false }
     },
     toast: (m: string, kind?: string) => { toasts.push({ m, kind }) },
     errorText: (e: Error & { code?: string }) => (e.code ? `${e.message}（错误码 ${e.code}）` : e.message),
     idSeg: (s: string) => encodeURIComponent(s),
     renderApps: async () => {},
     fmt: (v: unknown) => (v ? String(v) : '-'),
+    showAppKey: (result: unknown) => { secrets.push(result) },
+    crypto: { randomUUID: () => 'same-key-for-retry' },
   }
   const names = Object.keys(deps)
-  const optional = ['appScopesHint', 'keyScopesText'].filter((n) => new RegExp(`^function ${n}\\(`, 'm').test(APP)).map(fnSource).join('\n')
+  const optional = ['appScopeFields', 'appScopesHint', 'keyScopesText', 'credentialReferenceField', 'credentialReferenceChange', 'canManageSecrets'].filter((n) => new RegExp(`^function ${n}\\(`, 'm').test(APP)).map(fnSource).join('\n')
   const consts = APP.match(/^const APP_SCOPES_HINT_ID = .*$/m)?.[0] ?? ''
-  const fns = ['esc', 'field', 'select', 'statusPill'].map(fnSource).join('\n')
-  const src = `${consts}\n${fns}\n${optional}\nreturn { ${method('openAppCreate')}, ${method('openAppEdit')}, ${method('listAppKeys')} };`
+  const fns = ['esc', 'field', 'select', 'statusPill', 'revisionHeaders'].map(fnSource).join('\n')
+  const src = `${consts}\n${fns}\n${optional}\nreturn { ${['openAppCreate', 'openAppEdit', 'listAppKeys', 'createAppKey', 'rotateAppKey', 'revokeAppKey'].map(method).join(',')} };`
   const app = new Function(...names, src)(...names.map((n) => deps[n])) as {
     openAppCreate(): void
     openAppEdit(id: string): void
     listAppKeys(id: string): Promise<void>
+    createAppKey(id: string): void
+    rotateAppKey(id: string): void
+    revokeAppKey(keyId: string): void
   }
-  return { app, modals, calls, toasts }
+  return { app, modals, calls, toasts, secrets }
 }
 
 /** 从 HTML 里取 name="scopes" 的 input 标签和 aria-describedby 指向的元素。 */
@@ -78,12 +84,13 @@ for (const [label, open] of [
       expect(textOf(hint![3])).toBe(HINT_TEXT)
     })
 
-    it('说明紧跟在 Scopes 输入框之后、在同一个 .full 容器里，且没有内联 style / on* 属性', () => {
+    it('权限选项与说明位于同一个字段组，且没有内联 style / on* 属性', () => {
       const h = harness()
       open(h)
       const body = h.modals[0].body
-      const block = body.match(/<div class="full"><label>Scopes<input[^>]*name="scopes"[\s\S]*?<\/div>/)?.[0] ?? ''
-      expect(block).toMatch(/<\/label><p class="hint"/)
+      const block = body.match(/<fieldset class="full" data-app-scope-fields[^>]*>[\s\S]*?<\/fieldset>/)?.[0] ?? ''
+      expect(block).toContain('data-app-scope')
+      expect(block).toContain('<p class="hint"')
       expect(block).not.toMatch(/\sstyle=/)
       expect(block).not.toMatch(/\son[a-z]+=/)
     })
@@ -98,7 +105,7 @@ describe('FE-R6 编辑应用：已有行为不变', () => {
     expect(scopesHint(h.modals[0].body).input).toMatch(/value="agents:read,runs:create"/)
     const fd = { get: (k: string) => ({ name: 'A', status: 'active', scopes: 'agents:read, runs:* ', webhookUrl: '', webhookSecret: '' } as Record<string, string>)[k] }
     await expect(h.modals[0].onSubmit(fd)).rejects.toBe(err)
-    expect(h.calls[0]).toEqual({ path: '/admin/api/apps/app_1', opts: { method: 'PATCH', body: { name: 'A', status: 'active', scopes: ['agents:read', 'runs:*'], webhookUrl: '', webhookSecret: undefined } } })
+    expect(h.calls[0]).toEqual({ path: '/admin/api/apps/app_1', opts: { method: 'PATCH', headers: { 'If-Match': '"1"' }, body: { name: 'A', status: 'active', scopes: ['agents:read', 'runs:*'], webhookUrl: '', webhookSecret: undefined } } })
   })
 })
 
@@ -130,5 +137,53 @@ describe('FE-R6 Key 列表：Scopes 列', () => {
     expect(body).toMatch(/<th>Scopes<\/th>/)
     expect(body).not.toContain('oops')
     expect(body).not.toContain('undefined')
+  })
+})
+
+describe('FR-OP-02 密钥生命周期入口', () => {
+  it('创建表单提交有效期，显示一次密钥并保持结果弹窗', async () => {
+    const h = harness()
+    h.app.createAppKey('app_1')
+    expect(h.modals[0].body).toContain('type="datetime-local"')
+    expect(await h.modals[0].onSubmit({ get: (k: string) => k === 'name' ? 'release' : '2030-01-01T12:00' })).toBe(false)
+    expect(h.calls[0]).toEqual({ path: '/admin/api/apps/app_1/keys', opts: { method: 'POST', body: { name: 'release', expiresAt: new Date('2030-01-01T12:00').toISOString() } } })
+    expect(h.secrets).toHaveLength(1)
+  })
+
+  it('轮换重试复用幂等键，失败保持原表单', async () => {
+    const h = harness({ apiError: new Error('network') })
+    h.app.rotateAppKey('key_1')
+    const data = { get: () => '60' }
+    await expect(h.modals[0].onSubmit(data)).rejects.toThrow('network')
+    await expect(h.modals[0].onSubmit(data)).rejects.toThrow('network')
+    expect(h.calls[0]).toEqual(h.calls[1])
+    expect(h.calls[0]).toEqual({ path: '/admin/api/api-keys/key_1/rotate', opts: { method: 'POST', headers: { 'Idempotency-Key': 'same-key-for-retry' }, body: { overlapSeconds: 60 } } })
+  })
+
+  it('吊销确认后刷新列表；查看权限不提供写操作', async () => {
+    const h = harness()
+    h.app.revokeAppKey('key_1')
+    expect(h.calls).toHaveLength(0)
+    expect(await h.modals[0].onSubmit({})).toBe(false)
+    expect(h.calls.map(c => c.path)).toEqual(['/admin/api/api-keys/key_1/revoke', '/admin/api/apps/app_1/keys'])
+    expect(h.modals[1].title).toBe('API Keys')
+  })
+
+  it('有效密钥可轮换/吊销，已过期仅可吊销，已吊销不再操作', async () => {
+    const keys = [
+      { id: 'active', status: 'active', expires_at: null },
+      { id: 'expired', status: 'active', expires_at: '2000-01-01T00:00:00Z' },
+      { id: 'revoked', status: 'revoked' },
+    ]
+    const h = harness({ keys, manage: true })
+    await h.app.listAppKeys('app_1')
+    const html = h.modals[0].body
+    expect(html).toContain("app.rotateAppKey('active')")
+    expect(html).toContain("app.revokeAppKey('expired')")
+    expect(html).not.toContain("app.rotateAppKey('expired')")
+    expect(html).not.toContain("app.revokeAppKey('revoked')")
+    const readonly = harness({ keys })
+    await readonly.app.listAppKeys('app_1')
+    expect(readonly.modals[0].body).not.toContain('onclick=')
   })
 })

@@ -66,12 +66,16 @@ function harness() {
     if (sel.startsWith('#') && body.innerHTML.includes(`id="${id}"`)) return (els[sel] = Object.assign(new El(), { id, hidden: /id="[^"]+"[^>]*\shidden/.test(body.innerHTML.match(new RegExp(`<[^>]*id="${id}"[^>]*>`))?.[0] ?? '') }))
     return null
   }
-  class FD { get(k: string) { return k === 'text' ? textareaEl.value : null } }
-  const deps: Record<string, unknown> = {
+  let versionId = '01J00000000000000000000022'
+  class FD { get(k: string) { return k === 'text' ? textareaEl.value : k === 'versionId' ? versionId : null } }
+  const deps: Record<string, unknown> = { bindConfigurationFields: () => {},
     $,
     FormData: FD,
-    state: { agents: [{ id: 'agt_1', name: 'A' }], tab: 'agents' },
-    api: async (path: string, opts: unknown) => { calls.push({ path, opts }); return { runId: 'run_1' } },
+    state: { session:{permissions:['*']}, agents: [{ id: 'agt_1', name: 'A' }], tab: 'agents' },
+    api: async (path: string, opts: unknown) => {
+      if (!opts) return { versions: [{ id: '01J00000000000000000000022', version: '1.1.0', status: 'draft' }, { id: '01J00000000000000000000021', version: '1.0.0', status: 'published' }] }
+      calls.push({ path, opts }); return { runId: 'run_1' }
+    },
     toast: (m: string) => { toasts.push(m) },
     errorText: (e: Error) => e.message,
     agentNameById: () => 'A',
@@ -82,11 +86,11 @@ function harness() {
   }
   const names = Object.keys(deps)
   const optional = ['showFieldError'].filter((n) => new RegExp(`^function ${n}\\(`, 'm').test(APP)).map(fnSource).join('\n')
-  const fns = ['esc', 'textarea', 'openModal'].map(fnSource).join('\n')
+  const fns = ['canPermission', 'esc', 'textarea', 'select', 'vLabel', 'openModal'].map(fnSource).join('\n')
   const src = `${fns}\n${optional}\nreturn { openModal, ${method('openAgentRun')} };`
-  const api = new Function(...names, src)(...names.map((n) => deps[n])) as { openModal: (...a: unknown[]) => void; openAgentRun(id: string): void }
+  const api = new Function(...names, src)(...names.map((n) => deps[n])) as { openModal: (...a: unknown[]) => void; openAgentRun(id: string): Promise<void> }
   const submit = async () => { await form.onsubmit!({ preventDefault() {} }) }
-  return { api, calls, toasts, body, textareaEl, $, submit, closed: () => closed }
+  return { api, calls, toasts, body, textareaEl, $, submit, setVersion: (id: string) => { versionId = id }, closed: () => closed }
 }
 
 const errorEl = (h: ReturnType<typeof harness>) => {
@@ -98,7 +102,7 @@ describe('FE-R6 试运行输入框必填', () => {
   for (const [label, value] of [['空字符串', ''], ['只有空格/换行/制表', '  \n\t  '], ['全角空格', '\u3000\u3000']] as const) {
     it(`${label}：不发请求、不关弹窗、显示「请输入内容」并聚焦输入框`, async () => {
       const h = harness()
-      h.api.openAgentRun('agt_1')
+      await h.api.openAgentRun('agt_1')
       h.textareaEl.value = value
       await h.submit()
       expect(h.calls).toEqual([])
@@ -115,17 +119,17 @@ describe('FE-R6 试运行输入框必填', () => {
 
   it('有内容时 text 原样发送（不 trim），弹窗关闭，行为不变', async () => {
     const h = harness()
-    h.api.openAgentRun('agt_1')
+    await h.api.openAgentRun('agt_1')
     h.textareaEl.value = '  你好 \n'
     await h.submit()
-    expect(h.calls).toEqual([{ path: '/admin/api/agents/agt_1/run', opts: { method: 'POST', body: { input: { text: '  你好 \n' } } } }])
+    expect(h.calls).toEqual([{ path: '/admin/api/agents/agt_1/run', opts: { method: 'POST', body: { versionId: '01J00000000000000000000022', input: { text: '  你好 \n' } } } }])
     expect(h.closed()).toBe(1)
     expect(h.toasts).toEqual(['Run 已创建：run_1'])
   })
 
   it('先空提交出提示，修改输入后提示消失，再提交正常发送', async () => {
     const h = harness()
-    h.api.openAgentRun('agt_1')
+    await h.api.openAgentRun('agt_1')
     h.textareaEl.value = ' '
     await h.submit()
     const err = errorEl(h)!
@@ -139,9 +143,9 @@ describe('FE-R6 试运行输入框必填', () => {
     expect(h.closed()).toBe(1)
   })
 
-  it('表单标记：提示元素 role=alert 且默认 hidden，输入框 aria-required 并关联提示；无内联 style= / on*=', () => {
+  it('表单标记：提示元素 role=alert 且默认 hidden，输入框 aria-required 并关联提示；无内联 style= / on*=', async () => {
     const h = harness()
-    h.api.openAgentRun('agt_1')
+    await h.api.openAgentRun('agt_1')
     const html = h.body.innerHTML
     const errTag = html.match(/<[^>]*role="alert"[^>]*>/)?.[0] ?? ''
     expect(errTag).toMatch(/\shidden/)
@@ -152,6 +156,26 @@ describe('FE-R6 试运行输入框必填', () => {
     expect(ta).toContain(`aria-describedby="${errId}"`)
     expect(html).not.toMatch(/\sstyle=|\son[a-z]+=/i)
     expect(method('openAgentRun')).not.toMatch(/\sstyle=|\son[a-z]+=/i)
+  })
+
+  it('explicitly selected published version is sent without falling back to the draft', async () => {
+    const h = harness()
+    await h.api.openAgentRun('agt_1')
+    h.setVersion('01J00000000000000000000021')
+    h.textareaEl.value = 'check live'
+    await h.submit()
+    expect(h.calls[0]).toMatchObject({ opts: { body: { versionId: '01J00000000000000000000021' } } })
+  })
+
+  it('a stale or invalid version cannot create a Run', async () => {
+    const h = harness()
+    await h.api.openAgentRun('agt_1')
+    h.setVersion('missing')
+    h.textareaEl.value = 'check'
+    await h.submit()
+    expect(h.calls).toEqual([])
+    expect(h.closed()).toBe(0)
+    expect(h.toasts).toContain('请选择有效的试运行版本')
   })
 
   it('openModal：onSubmit 返回 false 保持打开；返回 undefined 照旧关闭', async () => {

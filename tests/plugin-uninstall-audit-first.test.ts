@@ -17,7 +17,7 @@ vi.mock("@forge/governance", () => ({ assertOrgWritable: vi.fn(async () => undef
 vi.mock("@forge/store", () => ({
   repos: {
     getPlugin: async (id: string) => (id === "plg_1" ? { id: "plg_1", key: "p" } : null),
-    uninstallPlugin: vi.fn(async () => { calls.push("uninstall"); }),
+    uninstallPlugin: vi.fn(async (_id: string, options: { audit: { action: string } }) => { calls.push("uninstall"); calls.push(`audit:${options.audit.action}`); return 2; }),
   },
 }));
 vi.mock("../apps/api/src/plugins/http-helpers.js", () => {
@@ -35,10 +35,11 @@ vi.mock("../apps/api/src/plugins/http-helpers.js", () => {
       guard(action, opts);
       calls.push(`audit:${action}`);
     }),
-    prepareAudit: vi.fn((_s: unknown, action: string, _t: string, _id: string | null, _d?: unknown, opts?: { orgUnitId?: string | null }) => {
-      guard(action, opts);
-      return async () => { calls.push(`audit:${action}`); };
+    configurationWrite: vi.fn((_r: unknown, _s: unknown, action: string, _t: string, _id: string | null, _d: unknown, orgUnitId: string | null) => {
+      guard(action, { orgUnitId });
+      return { expectedRevision: 1, audit: { action, orgUnitId } };
     }),
+    configurationResult: (_reply: unknown, revision: number) => ({ ok: true, revision }),
   };
 });
 

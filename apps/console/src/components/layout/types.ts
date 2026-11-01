@@ -7,6 +7,7 @@ type BaseNavItem = {
   icon?: React.ElementType
   /** K-29：没有这项权限时侧栏不显示该入口（与后端该页面列表接口要求的权限一致）。 */
   permission?: Permission
+  anyPermissions?: readonly Permission[]
 }
 
 /** external：还没迁到新版的页面，跳回旧控制台（整页跳转）。 */

@@ -1,0 +1,87 @@
+{
+  "snapshot": "[p3 \"[Human] Forge Console — B evidence\" | space \"Forge console critique 20261101\"(33): 3 managed, 0 untracked — p1 \"Forge Console\", p2 \"Forge Console\", p3* \"[Human] Forge Console — B evidence\"]\nroot\n  container\n    container\n      text \"F\"\n      text \"Forge\"\n    container \"主导航\" [ref=145]\n      text \"概览\"\n      button [ref=173]\n        text \"D\"\n        text \"总览\"\n      text \"构建\"\n      button [ref=174]\n        text \"A\"\n        text \"Agents\"\n      button [ref=175]\n        text \"M\"\n        text \"模型\"\n      button [ref=176]\n        text \"C\"\n        text \"MCP 服务\"\n      button [ref=177]\n        text \"S\"\n        text \"Skills\"\n      button [ref=178]\n        text \"T\"\n        text \"工具源\"\n      button [ref=179]\n        text \"P\"\n        text \"能力包\"\n      text \"运行\"\n      button [ref=180]\n        text \"R\"\n        text \"运行中心\"\n      button [ref=181]\n        text \"!\"\n        text \"审批中心\"\n      button [ref=182]\n        text \"H\"\n        text \"定时任务\"\n      text \"开放平台\"\n      button [ref=183]\n        text \"K\"\n        text \"应用与密钥\"\n      text \"治理\"\n      button [ref=184]\n        text \"U\"\n        text \"账号与权限\"\n      button [ref=185]\n        text \"L\"\n        text \"操作日志\"\n      button [ref=186]\n        text \"V\"\n        text \"凭据\"\n      button [ref=187]\n        text \"I\"\n        text \"SSO / Connector\"\n    container\n      container\n        text \"Platform Admin\"\n        text \"platform_admin · all\"\n      button [ref=161]\n        text \"修改密码\"\n      button [ref=162]\n        text \"退出\"\n  container\n    container\n      container\n        heading\n          text \"Agents\"\n        paragraph\n          text \"创建、发布、开放 API 与试运行\"\n      container\n        text \"API 正常\"\n        button [ref=163]\n          text \"刷新\"\n    container\n      container\n        container\n          heading\n            text \"Agents\"\n          paragraph\n            text \"发布版本、开启开放 API、试运行\"\n        container\n          button [ref=188]\n            text \"安装能力包\"\n          button [ref=189]\n            text \"新建 Agent\"\n      table\n        table_row\n          table_cell\n            text \"Key\"\n          table_cell\n            text \"名称\"\n          table_cell\n            text \"版本\"\n          table_cell\n            text \"开放 API\"\n          table_cell\n            text \"状态\"\n          table_cell\n            text \"操作\"\n        table_row\n          table_cell\n            text \"smoke-agent-1793509100380\"\n          table_cell\n            text \"Smoke Agent\"\n          table_cell\n            text \"未发布\"\n          table_cell\n            text \"未开放\"\n          table_cell\n            text \"active\"\n          table_cell\n            button [ref=190]\n              text \"试运行\"\n            button [ref=191]\n              text \"新版本\"\n            button [ref=192]\n              text \"发布草稿 v1.0.0\"\n            button [ref=193]\n              text \"开放 API\"\n            button [ref=194]\n              text \"详情\"\n        table_row\n          table_cell\n            text \"mcp-agent\"\n          table_cell\n            text \"MCP 演示 Agent\"\n          table_cell\n            text \"1.0.0\"\n          table_cell\n            text \"已开放\"\n          table_cell\n            text \"active\"\n          table_cell\n            button [ref=195]\n              text \"试运行\"\n            button [ref=196]\n              text \"新版本\"\n            button [ref=197]\n              text \"关闭 API\"\n            button [ref=198]\n              text \"详情\"\n        table_row\n          table_cell\n            text \"demo-agent\"\n          table_cell\n            text \"Forge 演示助手\"\n            text \"无需外部模型即可运行的演示 Agent\"\n          table_cell\n            text \"1.0.0\"\n          table_cell\n            text \"未开放\"\n          table_cell\n            text \"active\"\n          table_cell\n            button [ref=199]\n              text \"试运行\"\n            button [ref=200]\n              text \"新版本\"\n            button [ref=201]\n              text \"开放 API\"\n            button [ref=202]\n              text \"详情\"\n",
+  "metrics": {
+    "url": "http://127.0.0.1:3100/#agents",
+    "viewport": {
+      "width": 1280,
+      "height": 800,
+      "dpr": 1
+    },
+    "document": {
+      "scrollWidth": 1280,
+      "clientWidth": 1280
+    },
+    "bodySize": "14px",
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Forge",
+        "size": "30px",
+        "visible": false
+      },
+      {
+        "tag": "H2",
+        "text": "Agents",
+        "size": "24px",
+        "visible": true
+      },
+      {
+        "tag": "H3",
+        "text": "Agents",
+        "size": "15px",
+        "visible": true
+      },
+      {
+        "tag": "H3",
+        "text": "",
+        "size": "16px",
+        "visible": false
+      }
+    ],
+    "body": "Agents\n\n发布版本、开启开放 API、试运行\n\n安装能力包\n新建 Agent\nKey\t名称\t版本\t开放 API\t状态\t操作\nsmoke-agent-1793509100380\tSmoke Agent\n\t未发布\t未开放\tactive\t\n试运行\n新版本\n发布草稿 v1.0.0\n开放 API\n详情\n\nmcp-agent\tMCP 演示 Agent\n\t1.0.0\t已开放\tactive\t\n试运行\n新版本\n关闭 API\n详情\n\ndemo-agent\tForge 演示助手\n无需外部模型即可运行的演示 Agent\n\t1.0.0\t未开放\tactive\t\n试运行\n新版本\n开放 API\n详情"
+  },
+  "status": {
+    "failed": "true",
+    "annotations": []
+  },
+  "events": [
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "security",
+          "level": "error",
+          "text": "Loading the script 'http://localhost:8400/detect.js' violates the following Content Security Policy directive: \"script-src 'self'\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The action has been blocked.",
+          "timestamp": 1793510549525.816,
+          "lineNumber": 1,
+          "stackTrace": {
+            "callFrames": [
+              {
+                "functionName": "",
+                "scriptId": "571",
+                "url": "",
+                "lineNumber": 1,
+                "columnNumber": 299
+              },
+              {
+                "functionName": "__egoPageEvaluate",
+                "scriptId": "571",
+                "url": "",
+                "lineNumber": 1,
+                "columnNumber": 315
+              },
+              {
+                "functionName": "",
+                "scriptId": "571",
+                "url": "",
+                "lineNumber": 2,
+                "columnNumber": 8
+              }
+            ]
+          }
+        }
+      },
+      "sessionId": "B88262A790A5DEB54D35E920B5519467"
+    }
+  ]
+}

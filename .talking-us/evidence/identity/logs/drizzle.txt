@@ -1,0 +1,46 @@
+$ drizzle-kit generate --config=drizzle.config.ts --name=identity_final_check
+Reading config file '/Users/libo/projects/forge/drizzle.config.ts'
+Reading schema files:
+/Users/libo/projects/forge/packages/store/src/schema/index.ts
+
+38 tables
+agent_versions 10 columns 1 indexes 1 fks
+agents 15 columns 2 indexes 0 fks
+api_apps 16 columns 0 indexes 0 fks
+api_keys 10 columns 1 indexes 1 fks
+approvals 11 columns 2 indexes 1 fks
+audit_logs 11 columns 5 indexes 0 fks
+auth_login_limits 4 columns 1 indexes 0 fks
+auth_oidc_states 6 columns 1 indexes 0 fks
+auth_sessions 6 columns 2 indexes 1 fks
+data_policies 8 columns 0 indexes 0 fks
+files 9 columns 1 indexes 0 fks
+idempotency_keys 9 columns 1 indexes 0 fks
+llm_models 13 columns 0 indexes 1 fks
+llm_providers 15 columns 0 indexes 0 fks
+llm_routes 7 columns 0 indexes 0 fks
+mcp_servers 14 columns 0 indexes 0 fks
+mcp_tools 11 columns 0 indexes 1 fks
+messages 7 columns 1 indexes 2 fks
+oidc_role_mappings 6 columns 0 indexes 0 fks
+org_units 9 columns 1 indexes 0 fks
+plugins 11 columns 0 indexes 0 fks
+resource_references 10 columns 2 indexes 0 fks
+run_events 5 columns 1 indexes 1 fks
+run_steps 13 columns 1 indexes 1 fks
+runs 24 columns 6 indexes 3 fks
+schedules 23 columns 1 indexes 1 fks
+secret_versions 12 columns 1 indexes 1 fks
+secrets 15 columns 2 indexes 0 fks
+service_accounts 12 columns 1 indexes 0 fks
+settings 4 columns 0 indexes 0 fks
+skill_versions 7 columns 0 indexes 1 fks
+skills 12 columns 0 indexes 0 fks
+threads 7 columns 1 indexes 0 fks
+tool_calls 18 columns 1 indexes 1 fks
+tool_sources 12 columns 0 indexes 0 fks
+tools 13 columns 0 indexes 1 fks
+users 15 columns 1 indexes 0 fks
+webhook_deliveries 13 columns 1 indexes 1 fks
+
+No schema changes, nothing to migrate 😴

@@ -1,5 +1,16 @@
 # Forge 管理 API
 
+## 2026-11-01 Job/消息/业务交付接口设计增量
+
+**设计定稿、尚未实现。** 精确方法/路径、DTO、权限、ETag/幂等、错误和UI映射以[接口文档v1.0](../../.talking-us/20261101-113405-Forge后台优化与Job消息管理-接口文档.md)为唯一来源；实施时同步contracts/OpenAPI/SDK/契约测试，本轮不生成冒充实现的接口产物。
+
+- J01–J14：/admin/api/jobs、job-executions、job-steps、job-schedules、human-tasks及来源/质量/产物/交付观察。Job定义、执行stateRevision、人工任务版本分别条件写入。
+- M01–M07：/admin/api/message-channels、message-rules、message-templates、message-deliveries；Webhook与企业微信统一入口，保存不发送；测试/重发有独立权限与幂等。
+- Q01–Q02：既定评测资源面补全，作为evaluation型Job复用执行/预算，不新增另一套运行引擎。
+- 旧App配置、投递/重放、旧Schedule入口通过同一服务兼容；公开回调事件/签名保持，旧管理URL只掩码。任何channel修改同步递增关联App revision，旧表单不能覆盖新地址。
+
+所有新路由默认拒绝、行级SQL过滤、不可见404；新权限与Scope仅为设计，不因本节存在自动开放。旧实现仍以实现状态和已生成契约为准。
+
 版本：1.0　日期：2026-10-21　状态：待评审
 
 > 控制台与自动化工具使用的内部接口。对外集成使用 [open-platform.md](open-platform.md)。本文定义资源面与约定，字段细节以 `packages/contracts` 的 Zod Schema 和生成的 OpenAPI 为准。
@@ -222,8 +233,7 @@ POST /admin/v1/installations
 ```json
 {
   "packageVersionId": "pv_01J...",
-  "scopeType": "org",
-  "scopeId": "org_01J...",
+  "scope": { "type": "org", "id": "01J00000000000000000000000" },
   "config": { "erpBaseUrl": "https://erp.acme.internal" },
   "secrets": { "erp_api_key": "sec_01J..." },
   "dryRun": false
@@ -710,7 +720,9 @@ kb.view kb.manage eval.view eval.manage
 | --- | --- | --- | --- |
 | GET | `/secrets` | 列表（名称、作用域、引用数，不含值） | `secret.manage` |
 | POST | `/secrets` | 新建（只写） | `secret.manage` |
-| POST | `/secrets/{id}/rotate` | 轮换 | `secret.manage` |
+| GET | `/secrets/{id}` | 详情、版本元数据与可见引用 | `secret.manage` |
+| PATCH | `/secrets/{id}` | 名称、描述、active/disabled | `secret.manage` |
+| POST | `/secrets/{id}/rotate` | 新增密文版本并切换当前版本 | `secret.manage` |
 | DELETE | `/secrets/{id}` | 删除；有引用时阻止 | `secret.manage` |
 | GET | `/audit-logs` | 检索（actor、资源、动作、时间） | `audit.view` |
 | GET | `/audit-logs/{id}` | 详情（前后值脱敏） | `audit.view` |
@@ -723,7 +735,7 @@ kb.view kb.manage eval.view eval.manage
 
 审计详情脱敏（当前实现）：以下审计在写入前先经过 `maskArgsDeep`（规则见第 9 节），库里 `audit_logs.details_json` 不再出现明文：
 
-- `mcp.update`：改动字段，其中 `headers_json` 的敏感头（如 `Authorization`、`X-Api-Key`）为 `"***"`。
+- `mcp.update`：只记录名称/URL/状态及`headerNames`，不记录任何Header值。
 - `schedule.update`：改动字段，其中 `input_json` 按同样规则打码。
 - `role_mapping.upsert`：请求体（`agentRoleCode`、`agentRoleName`、`localRole` 原样，敏感字段打码）。
 
@@ -750,13 +762,19 @@ kb.view kb.manage eval.view eval.manage
 {
   "key": "erp_api_key",
   "name": "ERP 生产密钥",
-  "scopeType": "org",
-  "scopeId": "org_01J...",
+  "scope": { "type": "org", "id": "01J00000000000000000000000" },
   "value": "只写不读的明文"
 }
 ```
 
-响应只返回 `{ "id": "sec_01J...", "key": "erp_api_key", "version": 1 }`。
+当前凭据API已实现，前缀为`/admin/api`，生成契约见[secrets.openapi.json](secrets.openapi.json)。创建返回`{id,revision}`，条件修改/轮换/删除返回`{ok:true,id,revision}`；全部写响应和详情带ETag、所有凭据响应`Cache-Control:no-store`。GET永不返回value/ciphertext/nonce/tag/DEK。
+
+- `scope`创建后不可变：`{type:"platform"}`、`{type:"org",id}`、`{type:"resource",resourceType,id}`。resourceType为`agent/llm_provider/mcp_server/tool_source/api_app`。平台或无组织归属的配置写需all；org只能精确匹配本组织资源；resource只能匹配该类型/ID，管理组织子树不扩大取用范围。
+- GET列表支持limit=1–200（默认50）及id游标cursor，返回`{items,nextCursor}`。详情附versions/references元数据；列表默认不含deleted。
+- PATCH/rotate/DELETE必须If-Match，缺失428 CFG-8505、冲突409 CFG-8503，认证/可见性/输入错误先校验。轮换body为`{value}`，原始字节不trim，UTF-8为1–65536字节；不支持env:，Header用途另拒绝控制字符/DEL/非Latin-1。轮换不自动启用已停用凭据。
+- 停用后下一次取用立即失败；有引用删除409，无引用软删。审计失败整笔回滚，版本不可覆盖，运行按资源绑定读当前active版本，坏引用不回退旧列。
+- Provider新增`secretId/headerSecretRefs`，MCP及OpenAPI导入新增`headerSecretRefs`，App新增`webhookSecretId`。请求头名称大小写归一；原值和引用合计最多100项；同名原值/引用冲突400。显式复用ID要求secret.manage、凭据可见及scope匹配。已知原值输入由后端同事务创建resource Secret，不要求额外管理凭据权限；更新不传凭据字段则保留，传完整请求头集合则替换，清Bearer/Webhook引用显式传null。
+- 运行只在HTTP Header/HMAC边界取明文；模型/MCP/OpenAPI回显正文按已知值脱敏，固定协议role/type/usage不改变。JSON对象/数组先验证语法、只改字符串值token，保留数字原始字面量（含int64）/布尔/字段结构；工具名、自定义Schema标识符、约束或JSON字段名若含完整凭据则SYS-9002拒绝，防止泄漏或悄悄改语义。短/低熵Header也可能触发此明确冲突。自然语言流继续脱敏流式输出，疑似JSON流暂存至完整解析再发出。
 
 ## 14. P1 资源
 
@@ -801,3 +819,70 @@ curl -X POST "$FORGE/admin/v1/llm/routes" \
 - 每个写接口至少覆盖：成功、校验失败、无权限、404、并发冲突、审计写入。
 - SSE 接口测试续传与权限；文件接口测试大小/类型/越权。
 - 管理 API 不作为外部稳定契约，但变更必须同步控制台与文档；开放平台接口遵循独立版本策略。
+
+## 18. API Key 生命周期（2026-10-31 已实现增量，FR-OP-02）
+
+本节描述当前 `/admin/api` 路径；第 11 节 `/admin/v1/api-apps` 为目标契约，尚未作为兼容别名开放。请求 Schema、DTO 位于 `packages/contracts/src/api-keys.ts`；[生成的 OpenAPI 3.1](api-keys.openapi.json) 覆盖本节五个读取/写入端点，通过 `node --import tsx scripts/generate-api-key-openapi.ts` 重建。管理接口为内部契约；当前没有管理端 SDK，不将这些接口加入对外 `/open/v1` SDK。
+
+| 方法/路径 | 输入与结果 |
+| --- | --- |
+| POST `/apps/{id}/keys` | `name?`（最多128字符）、`expiresAt?`（null/省略为永久；字符串须为含时区的未来 RFC3339 时间）。返回 `id/key/prefix/expiresAt/warning`，明文只在此次响应展示 |
+| GET `/apps/{id}/keys` | 返回原有 snake_case 元数据，包括 `expires_at/last_used_at/status/scopes_json`；不返回摘要或明文。`status=active` 且到期的 Key 在控制台显示过期状态（`expired`） |
+| POST `/api-keys/{id}/revoke` | 无请求体；返回 `{ok:true,appId}`。重复调用成功，不重复写吊销审计 |
+| POST `/api-keys/{id}/rotate` | `overlapSeconds?`：整数0–86400，默认0；必需 `Idempotency-Key`（去除首尾空格后非空，原始头最多200字符）。返回新 Key 元数据、`oldKeyId/oldKeyStatus/oldKeyExpiresAt/secretAvailable`；首次返回 `key` |
+
+- 写入权限均为 `apikey.manage`，并按现有可写组织范围检查 App 归属。保持当前全局配置读取规则：Key 元数据可由 `apikey.view` 查看；列表通过 `canCreate`/逐项 `canManage` 告知控制台可用动作（不代替服务端写权限校验），跨组织写入403；未登录401、未知ID404、非法输入400 `CFG-8501`，缺少/错误CSRF为403。所有失败在产生密钥变更前拦截。
+- 创建、吊销、轮换均与审计同事务提交。轮换时锁旧 Key 行，复制名称、原有Scope与有效期；不扩大权限或延长有效期。当前 App Scope 收窄仍实时与 Key Scope 取交集。到期/已吊销 Key 不能轮换（409）；允许主动吊销过期Key。
+- 默认轮换立即吊销旧 Key；有重叠时旧到期时间取原有效期与“当前时间+重叠秒数”的较早值，不能延长旧 Key。到期边界（当前时间等于有效期）即拒绝鉴权。对已经鉴权的在途请求不追溯取消。
+- 幂等范围为旧 Key，保留24小时。相同 Key+相同参数重放返回同一新 Key 元数据，`secretAvailable:false`，**不再返回明文**；不同参数409 `OPN-4503`。明文丢失时从列表找到新 Key 再轮换。数据库和审计均不持久化明文；密钥响应带 `Cache-Control:no-store`。不同幂等键视为不同操作，重叠期仍有效的旧 Key 可再次轮换，但不能延长其剩余有效期。
+- 控制台正常入口：开放平台 → 创建应用/新建密钥/查看密钥 → 轮换或吊销。无管理权限不显示写操作。提交期间禁止重复点击；网络失败保留表单，同一次轮换表单重试复用幂等键。
+- 使用既有 `api_keys` / `idempotency_keys` / `audit_logs`，不新增表、字段或迁移。数据库实测与验证证据见[开发进度](../../.talking-us/2026-10-31-forge-development-progress.md)。
+
+## 19. 统一错误注册与响应（FR-DLV-03 / FR-OB-01）
+
+- 唯一注册表：`packages/core/src/errors/codes.ts`；[完整错误码](../reference/error-codes.md)由`pnpm errors:generate`生成，`pnpm errors:check`检测漂移，并纳入`pnpm verify`。
+- 服务端使用`new ForgeError(code, {message?, details?, httpStatus?, retryable?, headers?}, cause?)`。`code`是注册表推导的封闭联合；旧位置参数构造方式已迁移，不再允许。运行时未知code或非法HTTP状态失败关闭为`SYS-9001`/500。
+- 注册表含`code/meaning/userMessage/remedy/httpStatus/retryable/audience`。默认值来自注册表；原有SSO/上游边界需要不同状态和重试语义时显式覆盖，保留既有行为。`cause`只供内部诊断，不序列化。
+- JSON错误统一为`{error:{code,message,requestId,details,retryable,remedy}}`。`remedy`是兼容新增字段；既有字段不删除。原来没有`details`的内部错误现在显式返回null。
+- 4xx可返回必要且经过深层脱敏的details；5xx使用注册表的固定userMessage且details=null，不转发上游自由文本；`SYS-9001`固定展示内部错误。错误只在处理该错误的最外层记录一次；JSON客户端与SSO浏览器重定向各自只有一个日志边界。普通HTTP响应回显X-Request-Id以关联日志；响应不带堆栈、SQL或cause。
+- 适用于管理/开放/集成路由、未知路由、请求解析失败和Fastify路由前错误；SSE建立连接后的错误事件按事件契约继续演进，不能再发送第二份HTTP错误响应。SSO浏览器错误跳转仍只携带白名单code，保持现有前端行为。
+
+## 20. 配置版本与条件修改（E1，2026-10-31）
+
+当前实现路径为`/admin/api`。配置列表项包含`revision`，已实现的配置详情与修改响应给出`ETag: "<revision>"`及`Cache-Control: no-store`。所有现存配置写入口的输入和成功/失败契约见[生成OpenAPI](configuration.openapi.json)，对应`packages/contracts/src/configuration.ts`；不是对外`/open/v1`承诺。
+
+- PATCH Agent/Skill/MCP/Provider/Model/App/User/ServiceAccount/Schedule，Agent/Skill创建版本、Agent发布、MCP刷新、Schedule enable/disable、Plugin卸载必须携带单个强标签`If-Match: "3"`。新role code可创建；已有role code的POST更新也必须携带版本。
+- 认证、权限、可见性及原有输入校验先于前提检查。缺少前提`428 CFG-8505`；弱标签、通配符、多标签、无引号、0/前导零/越界为`400 CFG-8501`；版本变化为`409 CFG-8503`。revision有效范围1–4294967295。
+- 修改成功返回`{ok:true,revision}`；版本创建另有`versionId`，发布另有`changed/publishedVersionId`，MCP刷新另有`tools`。每次实际字段更新revision+1，空字段检查版本但不加1。重复发布已发布版本须使用当前版本，不重复审计；旧版本重放仍409。
+- 条件配置更新与审计、子版本绑定在同一事务提交；审计失败回滚。发现MCP工具期间不持有事务，提交时再检查所读版本；冲突不写入旧目录。创建/插件安装的发现失败保留新源，供稍后刷新，不覆盖他人已保存的源配置。
+- 控制台在打开表单/确认框时捕获版本，409保留输入、显示错误并要求重新读取比较；不会提交前取最新revision来覆盖。连续多步保存仅承接上一步成功返回的新revision；已有客户端与维护脚本必须一并升级。
+
+生成：`node --import tsx scripts/generate-configuration-openapi.ts`。`tests/configuration-revision.test.ts`覆盖真实HTTP/并发/故障回滚及结果Schema，`tests/api-key-contracts.test.ts`同时校验两个OpenAPI产物与代码一致。全量管理/开放/集成API及SDK生成仍在后续范围。
+
+## 账号与操作日志接口增量
+
+采用实际/admin/api前缀；完整端点、输入、权限、CAS与失败契约见[账号设计第5节](../../.talking-us/2026-11-01-forge-identity-design.md#5-接口与错误实际前缀adminapi)。生产双渠道、SSO显式绑定及本地授权保留已由用户确认；未实现部分以implementation-status为准。
+
+本地已实现的账号/日志契约产物：[identity.openapi.json](identity.openapi.json)。已有SSE在每500ms轮询前重查身份与资源范围；失败结束流，重连依当前权限返回401/403/404，不发送错误敏感详情。
+
+## 可配置角色与全局绑定（U03）
+
+管理接口以[roles.openapi.json](roles.openapi.json)和 contracts 为准：GET/POST `/roles`，GET/PATCH/DELETE `/roles/{id}`，POST `/roles/{id}/copy`、`/reset`；读取 `role.view`、写入 `role.manage` 且当前数据范围 all。修改、复制、恢复、删除要求源角色 If-Match；角色代码不可变，平台角色固定，内置不可删除，自定义引用删除409。创建/复制返回 id/revision；其它变更返回统一配置结果。`/permissions` 保留 roles 映射并增加 catalog。
+
+用户请求增加 `additionalRoleIds`，响应增加 `roles`、`additional_role_ids`、`effective_permissions`；列表保留 `grantableRoles` 并增加 `roleOptions`（id/key/name/status）。服务账号采用同样角色并集，请求 `additionalRoleIds`，响应 `roles/additionalRoleIds/effectivePermissions`；列表按调用者组织范围在SQL过滤。新增绑定只允许激活角色，停用旧绑定可保留；附加角色不可包含平台管理员、重复主角色或超过32项。
+
+角色/账号/服务账号/SSO映射写入持有共同账号锁并重读操作者权限，授权上限包含停用角色已配置权限。平台模板复制展开具体权限，不产生新平台管理员身份。SSO映射允许激活自定义角色；组织管理员等受保护身份仍只允许平台管理员授予。首次SSO创建持锁核对选择所用映射与角色版本，变化以SSO-1201拒绝创建；已有绑定保留本地授权。权限变更下一次HTTP或SSE鉴权生效；调度触发缺少agent.run会暂停。
+
+角色详情的 can_manage/can_copy/can_reset 只决定界面可用动作，不代替服务端校验。全局角色规格和CASE见[U03设计](../../.talking-us/2026-11-01-forge-roles-design.md)；组织/组绑定、完整数据策略及全量SDK仍在后续实施范围，没有接受后忽略的组织绑定字段。
+
+动态权限组合补充：创建Agent时 `publish=true` 还必须有 `agent.publish`，拒绝在任何Agent写入前发生；能力包安装的Agent版本依插件契约为draft，发布另走授权发布接口。总览只向具备run.view/approval.view的调用者返回对应统计字段。
+
+### Job / 消息本地实施增量（2026-11-01，未发布）
+
+Job定义管理的8个端点见[jobs.openapi.json](jobs.openapi.json)；消息渠道、规则、模板、测试、发送记录及补发/取消的24个端点见[messages.openapi.json](messages.openapi.json)。消息列表/详情默认只含技术元数据，正文额外校验来源Run/Job当前可见性。详情增加`duplicateRisk`供补发确认；规则详情含`templateId`与固定`templateVersionId`以支持重开编辑。上述字段不授予原资源或凭据访问权。
+
+消息配置默认disabled；保存不发送。PATCH/DELETE、模板publish及test/retry/cancel均需If-Match；三个发送动作另需资源级Idempotency-Key。版本/尝试分页只接收limit/cursor；配置列表另接收status，发送列表按独立筛选合同。补发不允许替换目标/正文/模板，未知或曾成功的尝试历史持续要求重复确认，历史目标另需message.manage及明确确认。原Secret类型目录已增加message_channel，地址版本快照不可通过Secret轮换改变。
+
+同event/channel只生成一条投递，模板按Job→Agent→API应用→组织→全局选择；`matchedRules`保留选中规则ID及全部命中规则版本。旧App回调兼容切换、Job运行/Open/集成/计划/人工/产物等剩余接口仍按定稿依赖开发，不能以这32个端点代表全部完成。
+
+消息发送记录时间筛选使用 `createdFrom`（含）与 `createdBefore`（不含），ISO8601须带时区。兼容当前控制台 `from/to` 同义参数，`to` 同为不含结束边界；同义参数同时传且时刻冲突返回400。游标绑定规范化后的时刻，等价时区/同义名不改变范围。

@@ -29,8 +29,8 @@ beforeAll(async () => {
   session = await realSession({ name: "IT jta", role: "platform_admin", orgUnitId: ROOT, dataScope: "all" });
   headers = sessionHeaders(session, sessionCookieValue(session));
   agentId = await repos.createAgent({ key: k("agent"), name: "IT jta", ownerOrgUnitId: ROOT, createdBy: session.principal.id });
-  const versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: session.principal.id });
-  await repos.publishAgentVersion(agentId, versionId);
+  const versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: session.principal.id }, { expectedRevision: "system" });
+  await repos.publishAgentVersion(agentId, versionId, { expectedRevision: "system" });
   providerId = await repos.createProvider({ key: k("prov"), name: "IT jta", protocol: "mock", baseUrl: "https://llm.example.com/v1", apiKeyEncrypted: null, headers: {}, timeoutMs: 120000, createdBy: session.principal.id });
   modelId = await repos.createModel({ providerId, key: "m1", displayName: "m1", capabilities: ["text"] });
 });

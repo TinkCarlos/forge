@@ -1,3 +1,4 @@
+import { loginDestination, permissionsOf } from "@/lib/permissions"
 import { safeRedirectPath } from '@/lib/safe-redirect'
 import { ssoLoginHref } from '@/lib/sso-login-href'
 import { useEffect, useState } from 'react'
@@ -32,12 +33,11 @@ export function UserAuthForm({ className, redirectTo }: { className?: string; re
     setBusy(true)
     setError(null)
     try {
-      setSession(await api<Session>('/auth/local/login', { method: 'POST', body: { email, password } }))
-      // redirect 是 router 记下的站内路径（不含 /next）；不合法一律回到首页（/next/）
-      const target = redirectTo === undefined ? null : safeRedirectPath(redirectTo)
-      if (target) await navigate({ href: target, replace: true })
-      else if (redirectTo !== undefined) await navigate({ to: '/', replace: true })
-      else await navigate({ to: '/agents', replace: true })
+      const session = await api<Session>('/auth/local/login', { method: 'POST', body: { email, password } })
+      setSession(session)
+      const target = loginDestination(permissionsOf(session), safeRedirectPath(redirectTo))
+      if (target.startsWith('/#')) window.location.assign(target)
+      else await navigate({ href: target, replace: true })
     } catch (err) {
       setError(err instanceof ApiError ? err : new ApiError('登录失败，请稍后再试', 0))
     } finally {
@@ -50,8 +50,8 @@ export function UserAuthForm({ className, redirectTo }: { className?: string; re
       {config.localLogin !== false ? (
         <>
           <div className='grid gap-1.5'>
-            <Label htmlFor='email'>邮箱</Label>
-            <Input id='email' type='email' required autoComplete='username' placeholder='name@company.com' value={email} onChange={(e) => setEmail(e.target.value)} />
+            <Label htmlFor='email'>登录名或邮箱</Label>
+            <Input id='email' type='text' required autoComplete='username' value={email} onChange={(e) => setEmail(e.target.value)} />
           </div>
           <div className='grid gap-1.5'>
             <Label htmlFor='password'>密码</Label>

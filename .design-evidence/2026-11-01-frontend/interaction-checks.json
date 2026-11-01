@@ -1,0 +1,26 @@
+{
+  "skip": {
+    "activeId": "content",
+    "tag": "MAIN"
+  },
+  "search": {
+    "empty": true,
+    "clearRestores": true
+  },
+  "tables": {
+    "viewport": 390,
+    "pageWidth": 390,
+    "minWidth": "640px",
+    "tableWidth": 640
+  },
+  "motionNormal": {
+    "duration": "0.18s",
+    "bodyOverflow": "hidden"
+  },
+  "motionReduced": {
+    "reduce": true,
+    "duration": "0.001s",
+    "transition": "0.001s",
+    "activeTransform": "none"
+  }
+}

@@ -80,7 +80,7 @@ beforeAll(async () => {
   providerId = await repos.createProvider({ key: PROVIDER_KEY, name: "CDT stub", protocol: "openai-compatible", baseUrl: "https://llm.invalid/v1", createdBy: ADMIN_ID });
   await repos.createModel({ providerId, key: "stub-1", displayName: "stub", maxOutputTokens: 256 });
   agentId = await repos.createAgent({ key: `it-cdt-${suffix}`, name: "IT CDT", ownerOrgUnitId: ROOT, createdBy: ADMIN_ID });
-  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: PROVIDER_KEY, model: "stub-1" }, toolsets: [] }, status: "published", createdBy: ADMIN_ID });
+  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: PROVIDER_KEY, model: "stub-1" }, toolsets: [] }, status: "published", createdBy: ADMIN_ID }, { expectedRevision: "system" });
 });
 
 afterAll(async () => {

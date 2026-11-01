@@ -53,13 +53,20 @@ type JsonSchema = { type?: string | string[]; properties?: Record<string, JsonSc
  * before validation pass, e.g. POST /admin/api/schedules resolves agentId / serviceAccountId first). Every other
  * declared field gets an invalid value.
  */
-type Fixture = { params?: Record<string, string>; keep?: Record<string, string>; auth?: "session" | "open" | "connector" | "none" };
+type Fixture = { params?: Record<string, string>; keep?: Record<string, unknown>; auth?: "session" | "open" | "connector" | "none" };
 const FIXTURES: Record<string, () => Fixture> = {
   "/admin/api/agents": () => ({}),
   "/admin/api/agents/:id": () => ({ params: { id: ids.agent! } }),
   "/admin/api/agents/:id/versions": () => ({ params: { id: ids.agent! } }),
   "/admin/api/agents/:id/publish": () => ({ params: { id: ids.agent! } }),
   "/admin/api/agents/:id/run": () => ({ params: { id: ids.agent! } }),
+  "/admin/api/secrets": () => ({}),
+  "/admin/api/secrets/:id": () => ({ params: { id: ids.secret! } }),
+  "/admin/api/secrets/:id/rotate": () => ({ params: { id: ids.secret! } }),
+  "/admin/api/roles": () => ({keep:{permissions:[]}}),
+  "/admin/api/roles/:id": () => ({params:{id:ids.role!}}),
+  "/admin/api/roles/:id/copy": () => ({params:{id:ids.role!}}),
+  "/admin/api/roles/:id/reset": () => ({params:{id:ids.role!}}),
   "/admin/api/users": () => ({}),
   "/admin/api/users/:id": () => ({ params: { id: ids.user! } }),
   "/admin/api/role-mappings": () => ({}),
@@ -71,8 +78,29 @@ const FIXTURES: Record<string, () => Fixture> = {
   "/admin/api/apps": () => ({}),
   "/admin/api/apps/:id": () => ({ params: { id: ids.app! } }),
   "/admin/api/apps/:id/keys": () => ({ params: { id: ids.app! } }),
+  "/admin/api/api-keys/:id/revoke": () => ({ params: { id: ids.apiKey! } }),
+  "/admin/api/api-keys/:id/rotate": () => ({ params: { id: ids.apiKey! } }),
   "/admin/api/service-accounts": () => ({}),
   "/admin/api/service-accounts/:id": () => ({ params: { id: ids.account! } }),
+  "/admin/api/jobs": () => ({}),
+  "/admin/api/jobs/:id": () => ({ params: { id: ids.job! } }),
+  "/admin/api/jobs/:id/versions": () => ({ params: { id: ids.job! } }),
+  "/admin/api/jobs/:id/publish": () => ({ params: { id: ids.job! } }),
+  "/admin/api/message-channels":()=>({}),
+  "/admin/api/message-channels/:id":()=>({params:{id:ids.messageChannel!}}),
+  "/admin/api/message-channels/:id/versions":()=>({params:{id:ids.messageChannel!}}),
+  "/admin/api/message-channels/:id/test":()=>({params:{id:ids.messageChannel!},keep:{eventType:"test.wecom"}}),
+  "/admin/api/message-templates":()=>({}),
+  "/admin/api/message-templates/:id":()=>({params:{id:ids.messageTemplate!}}),
+  "/admin/api/message-templates/:id/publish":()=>({params:{id:ids.messageTemplate!}}),
+  "/admin/api/message-templates/:id/versions":()=>({params:{id:ids.messageTemplate!}}),
+  "/admin/api/message-rules":()=>({keep:{scope:{type:"global"},channelId:ids.messageChannel!,eventType:"job.completed"}}),
+  "/admin/api/message-rules/:id":()=>({params:{id:ids.messageRule!}}),
+  "/admin/api/message-deliveries":()=>({}),
+  "/admin/api/message-deliveries/:id":()=>({params:{id:ids.messageDelivery!}}),
+  "/admin/api/message-deliveries/:id/attempts":()=>({params:{id:ids.messageDelivery!}}),
+  "/admin/api/message-deliveries/:id/retry":()=>({params:{id:ids.messageDelivery!}}),
+  "/admin/api/message-deliveries/:id/cancel":()=>({params:{id:ids.messageDelivery!}}),
   "/admin/api/mcp": () => ({}),
   "/admin/api/mcp/:id": () => ({ params: { id: ids.mcp! } }),
   "/admin/api/skills": () => ({}),
@@ -87,6 +115,10 @@ const FIXTURES: Record<string, () => Fixture> = {
   "/integration/v1/runs": () => ({ auth: "connector" }),
   "/open/v1/agents/:key/runs": () => ({ params: { key: ids.agentKey! }, auth: "open" }),
   "/open/v1/agents/:key/invoke": () => ({ params: { key: ids.agentKey! }, auth: "open" }),
+  "/auth/password": () => ({}),
+  "/admin/api/users/:id/password": () => ({ params: { id: ids.user! } }),
+  "/admin/api/users/:id/revoke-sessions": () => ({ params: { id: ids.user! } }),
+  "/admin/api/users/:id/sso-binding": () => ({ params: { id: ids.user! } }),
   "/auth/local/login": () => ({ auth: "none" }),
   // P1: action routes without a body (empty schema; closed except the external cancels).
   "/auth/logout": () => ({ auth: "none" }),
@@ -138,11 +170,20 @@ beforeAll(async () => {
   userHeaders = sessionHeaders(plain, sessionCookieValue(plain));
   const pa = await realSession({ name: "IT schema coverage", role: "platform_admin", orgUnitId: ROOT, dataScope: "all" });
   headers = sessionHeaders(pa, sessionCookieValue(pa));
+  const target = (await app.inject({ url: "/admin/api/job-targets", headers })).json().items[0];
+  const created = await app.inject({ method: "POST", url: "/admin/api/jobs", headers, payload: { key: `it-rsc-job-${suffix}`, name: "Schema Job", businessType: "technical", draft: { schemaVersion: 1, target: { kind: target.kind, key: target.key, version: target.version, checksum: target.checksum }, inputSchema: {}, outputSchema: {}, nodes: [] } } });
+  expect(created.statusCode, created.body).toBe(201); ids.job = created.json().id;
+  const channelResponse=await app.inject({method:"POST",url:"/admin/api/message-channels",headers,payload:{key:`rsc-channel-${suffix}`,name:"Schema channel",type:"wecom",orgUnitId:null,endpoint:{value:"https://example.invalid/schema"}}});expect(channelResponse.statusCode,channelResponse.body).toBe(201);ids.messageChannel=channelResponse.json().id;
+  const channelActive=await app.inject({method:"PATCH",url:`/admin/api/message-channels/${ids.messageChannel}`,headers:{...headers,"if-match":'"1"'},payload:{status:"active"}});expect(channelActive.statusCode,channelActive.body).toBe(200);
+  const messageResponse=await app.inject({method:"POST",url:`/admin/api/message-channels/${ids.messageChannel}/test`,headers:{...headers,"if-match":'"2"',"idempotency-key":`rsc-${suffix}`},payload:{eventType:"test.wecom"}});expect(messageResponse.statusCode,messageResponse.body).toBe(202);ids.messageDelivery=messageResponse.json().deliveryId;
+  const templateResponse=await app.inject({method:"POST",url:"/admin/api/message-templates",headers,payload:{key:`rsc-template-${suffix}`,name:"Schema template",content:"technical",variables:[],orgUnitId:null}});expect(templateResponse.statusCode,templateResponse.body).toBe(201);ids.messageTemplate=templateResponse.json().id;
+  const ruleResponse=await app.inject({method:"POST",url:"/admin/api/message-rules",headers,payload:{key:`rsc-rule-${suffix}`,name:"Schema rule",eventType:"job.completed",scope:{type:"global"},channelId:ids.messageChannel,status:"disabled",includeNestedRuns:false}});expect(ruleResponse.statusCode,ruleResponse.body).toBe(201);ids.messageRule=ruleResponse.json().id;
+  ids.secret = (await repos.createSecret({key: `it-rsc-secret-${suffix}`,name:"IT credential",scope:{type:"platform"},orgUnitId:null,value:"synthetic-route-schema"})).id;
   ids.agentKey = `it-rsc-${suffix}`;
   ids.agent = await repos.createAgent({ key: ids.agentKey, name: "IT rsc", ownerOrgUnitId: ROOT, createdBy: ADMIN_ID });
-  await repos.updateAgent(ids.agent, { api_enabled: 1 });
-  ids.version = await repos.createAgentVersion({ agentId: ids.agent, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID });
-  await repos.publishAgentVersion(ids.agent, ids.version);
+  await repos.updateAgent(ids.agent, { api_enabled: 1 }, { expectedRevision: "system" });
+  ids.version = await repos.createAgentVersion({ agentId: ids.agent, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID }, { expectedRevision: "system" });
+  await repos.publishAgentVersion(ids.agent, ids.version, { expectedRevision: "system" });
   const threadId = await repos.createThread({ agentId: ids.agent, orgUnitId: ROOT, subjectType: "user", subjectId: ADMIN_ID });
   ids.run = await repos.createRun({ threadId, agentId: ids.agent, agentVersionId: ids.version, orgUnitId: ROOT, subjectType: "user", subjectId: ADMIN_ID, input: { text: "x" }, status: "waiting_approval" });
   const toolCallId = await repos.addToolCall({ runId: ids.run, toolKey: "mail.send", args: { to: "a@example.com" }, risk: "high", status: "pending" });
@@ -154,7 +195,8 @@ beforeAll(async () => {
   });
   ids.app = await repos.createApiApp({ key: `it-rsc-${suffix}`, name: "IT rsc", ownerOrgUnitId: ROOT, scopes: ["runs:create", "runs:read"] });
   openKey = `fsk_${randomBytes(32).toString("base64url")}`;
-  await repos.createApiKey({ appId: ids.app, name: "it", prefix: openKey.slice(0, 16), keyHash: hashApiKey(openKey, config.API_KEY_PEPPER), scopes: ["runs:create", "runs:read"] });
+  ids.apiKey = await repos.createApiKey({ appId: ids.app, name: "it", prefix: openKey.slice(0, 16), keyHash: hashApiKey(openKey, config.API_KEY_PEPPER), scopes: ["runs:create", "runs:read"] });
+  ids.role = await repos.createRole({key:`rsc_${randomBytes(6).toString("hex")}`,name:"Schema test role",permissions:[]},{expectedRevision:"system"});
   ids.user = await repos.createUser({ email: `it-rsc-target-${suffix}@forge.local`, username: `it-rsc-t-${suffix}`, displayName: "IT rsc target", role: "user", dataScope: "self", orgUnitId: ROOT });
   ids.connectorUser = await repos.createUser({ email: `it-rsc-conn-${suffix}@forge.local`, username: `it-rsc-c-${suffix}`, displayName: "IT rsc conn", role: "operator", dataScope: "org", orgUnitId: ROOT, idpSubject: `it-rsc-sub-${suffix}` });
   ids.mcp = await repos.createMcpServer({ key: `it-rsc-${suffix}`, name: "IT rsc", url: "https://mcp.example.com/mcp", headers: {}, createdBy: ADMIN_ID });
@@ -166,6 +208,16 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  if(ids.messageRule)await execute("DELETE FROM message_rules WHERE id=?",[ids.messageRule]);
+  if(ids.messageDelivery){await execute("DELETE FROM message_delivery_attempts WHERE delivery_id=?",[ids.messageDelivery]);await execute("DELETE FROM message_deliveries WHERE id=?",[ids.messageDelivery]);}
+  if(ids.messageChannel){const ownSecrets=await (await import("@forge/store")).query<{id:string}>("SELECT id FROM secrets WHERE scope_resource_type='message_channel' AND scope_id=?",[ids.messageChannel]);await execute("DELETE FROM resource_references WHERE from_type='message_channel' AND from_id=?",[ids.messageChannel]);await execute("UPDATE message_channels SET published_version_id=NULL WHERE id=?",[ids.messageChannel]);await execute("DELETE FROM message_channel_versions WHERE channel_id=?",[ids.messageChannel]);await execute("DELETE FROM message_channels WHERE id=?",[ids.messageChannel]);for(const secret of ownSecrets){await execute("DELETE FROM secret_versions WHERE secret_id=?",[secret.id]);await execute("DELETE FROM secrets WHERE id=?",[secret.id]);}}
+  if(ids.messageTemplate)await execute("DELETE FROM message_templates WHERE id=?",[ids.messageTemplate]);
+  if(ids.job)await execute("DELETE FROM job_definitions WHERE id=?",[ids.job]);
+  if(ids.role){await execute("DELETE FROM role_permissions WHERE role_id=?",[ids.role]);await execute("DELETE FROM roles WHERE id=?",[ids.role]);}
+  if (ids.secret) {
+    await execute("DELETE FROM secret_versions WHERE secret_id = ?", [ids.secret]);
+    await execute("DELETE FROM secrets WHERE id = ?", [ids.secret]);
+  }
   if (ids.agent) {
     await execute("DELETE FROM schedules WHERE agent_id = ?", [ids.agent]);
     await execute("DELETE p FROM approvals p JOIN runs r ON r.id = p.run_id WHERE r.agent_id = ?", [ids.agent]);
@@ -246,9 +298,9 @@ describe("every route with a body / querystring schema rejects invalid input wit
 
   it("P1: each admin / console body route rejects an otherwise valid body with one undeclared field: 400 CFG-8501 field=__undeclared", async () => {
     // Required fields get a valid value so the only error left is the undeclared field (rejected, not stripped).
-    const REQUIRED_VALID: Record<string, unknown> = { email: `it-rsc-x-${suffix}@forge.local`, decision: "approved" };
+    const REQUIRED_VALID: Record<string, unknown> = { key: "it-coverage", name: "Coverage credential", scope: {type:"platform"}, value: "synthetic-coverage-value", email: `it-rsc-x-${suffix}@forge.local`, decision: "approved", password: "Coverage!2026", currentPassword: "Coverage!2026", newPassword: "Coverage!2026", subject: "coverage", businessType: "technical", draft: {},type:"wecom",endpoint:{value:"https://example.invalid/technical"},eventType:"test.wecom",content:"technical",variables:[],includeNestedRuns:false,status:"disabled",reason:"Technical schema" };
     const routes = schemaRoutes().filter((r) => r.part === "body" && !EXTERNAL_OPEN.has(r.url));
-    expect(routes.length).toBe(37);
+    expect(routes.length).toBe(71);
     const wrong: string[] = [];
     for (const route of routes) {
       const required = ((route.schema as { required?: string[] }).required ?? []).map((k) => [k, REQUIRED_VALID[k]]);

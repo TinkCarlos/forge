@@ -17,7 +17,7 @@ import { idSeg } from '@/lib/entity-id'
 import { useCan } from '@/hooks/use-can'
 import { versionLabel } from '@/lib/format'
 import { handleDialogServerError, handleServerError } from '@/lib/handle-server-error'
-import { legacyAgentHref } from '@/lib/legacy-link'
+import { LEGACY_LINK_ATTRS, LEGACY_LINK_HINT, legacyAgentHref } from '@/lib/legacy-link'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -47,6 +47,7 @@ const AGENT_SKELETON: SkeletonCol[] = [
 
 type Agent = {
   id: string
+  revision: number
   key: string
   name: string
   description?: string
@@ -77,6 +78,7 @@ export function Agents() {
   // K-29：开放/关闭 API 走 PATCH（agent.manage），发布要 agent.publish；没有权限的入口不显示
   const canManage = useCan('agent.manage')
   const canPublish = useCan('agent.publish')
+  const canRun = useCan('agent.run')
 
   const rows = useMemo(
     () => (data ?? []).filter((a) => (tab === 'draft' ? !!a.draftVersion : tab === 'api' ? a.apiEnabled : true)),
@@ -85,7 +87,7 @@ export function Agents() {
 
   const setApi = useMutation({
     mutationFn: ({ agent, enabled }: { agent: Agent; enabled: boolean }) =>
-      api(`/admin/api/agents/${idSeg(agent.id)}`, { method: 'PATCH', body: { apiEnabled: enabled } }),
+      api(`/admin/api/agents/${idSeg(agent.id)}`, { method: 'PATCH', headers: { 'If-Match': `"${agent.revision}"` }, body: { apiEnabled: enabled } }),
     onSuccess: (_, { agent, enabled }) => {
       toast.success(enabled ? `已开放「${agent.name}」的 API` : `已关闭「${agent.name}」的 API`)
       setPending(null)
@@ -96,7 +98,7 @@ export function Agents() {
 
   const publish = useMutation({
     mutationFn: ({ agent, draft }: { agent: Agent; draft: { id: string } }) =>
-      api(`/admin/api/agents/${idSeg(agent.id)}/publish`, { method: 'POST', body: { versionId: draft.id } }),
+      api(`/admin/api/agents/${idSeg(agent.id)}/publish`, { method: 'POST', headers: { 'If-Match': `"${agent.revision}"` }, body: { versionId: draft.id } }),
     onSuccess: (_, { agent }) => {
       if (pending?.kind === 'publish') toast.success(`已发布「${agent.name}」${versionLabel(pending.draft.version)}`)
       setPending(null)
@@ -108,14 +110,14 @@ export function Agents() {
   // 发布前实时确认草稿还在（列表可能已过期）
   async function askPublish(agent: Agent) {
     try {
-      const detail = await api<{ versions?: { id: string; version: number; status: string }[] }>(`/admin/api/agents/${idSeg(agent.id)}`)
+      const detail = await api<Agent & { versions?: { id: string; version: number; status: string }[] }>(`/admin/api/agents/${idSeg(agent.id)}`)
       const draft = detail.versions?.find((v) => v.status === 'draft')
       if (!draft) {
         toast.warning('没有待发布的草稿，可能已被其他人发布，列表已刷新')
         refetch().catch(onReject({ warn: 'agents: refresh after stale draft' }))
         return
       }
-      setPending({ kind: 'publish', agent, draft })
+      setPending({ kind: 'publish', agent: { ...agent, ...detail }, draft })
     } catch (err) {
       handleServerError(err)
     }
@@ -129,7 +131,7 @@ export function Agents() {
         accessorFn: (a) => `${a.name} ${a.key}`,
         cell: ({ row: { original: a } }) => (
           <div className='min-w-0'>
-            <div className='truncate font-medium lg:max-w-[184px]' title={a.name}>{a.name}</div>
+            <a href={legacyAgentHref(a.id)} {...LEGACY_LINK_ATTRS} title={LEGACY_LINK_HINT} className='block truncate rounded-sm font-medium underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-ring lg:max-w-[184px]'><span title={a.name}>{a.name}</span></a>
             <div className='truncate font-mono text-xs text-muted-foreground lg:max-w-[184px]' title={a.key}>{a.key}</div>
           </div>
         ),
@@ -164,7 +166,10 @@ export function Agents() {
         id: 'actions',
         header: () => <span className='sr-only'>操作</span>,
         cell: ({ row: { original: a } }) => (
-          <div className='flex items-center justify-end gap-1'>
+          <div className='flex flex-wrap items-center justify-end gap-1'>
+            <Button size='sm' variant='outline' asChild>
+              <a href={legacyAgentHref(a.id)} {...LEGACY_LINK_ATTRS} title={LEGACY_LINK_HINT}>{canManage ? canRun ? '配置 / 调试' : '配置' : canRun ? '查看 / 调试' : '查看详情'}</a>
+            </Button>
             {canPublish && a.draftVersion && (
               <Button size='sm' variant='outline' onClick={() => askPublish(a)}>
                 <Rocket /> 发布 {versionLabel(a.draftVersion.version)}
@@ -190,7 +195,7 @@ export function Agents() {
                   </>
                 )}
                 <DropdownMenuItem asChild>
-                  <a href={legacyAgentHref(a.id)}>
+                  <a href={legacyAgentHref(a.id)} {...LEGACY_LINK_ATTRS} title={LEGACY_LINK_HINT}>
                     <ExternalLink /> 在旧版中查看详情
                   </a>
                 </DropdownMenuItem>
@@ -201,7 +206,7 @@ export function Agents() {
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [setApi.isPending, setApi.variables, canManage, canPublish]
+    [setApi.isPending, setApi.variables, canManage, canPublish, canRun]
   )
 
   const table = useReactTable({
@@ -226,8 +231,8 @@ export function Agents() {
       actions={
         canManage ? (
           <Button asChild>
-            <a href='/#agents'>
-              <Plus /> 新建 Agent
+            <a href='/#agents/new' {...LEGACY_LINK_ATTRS} title={LEGACY_LINK_HINT}>
+              <Plus /> 去旧版新建
             </a>
           </Button>
         ) : undefined
@@ -254,7 +259,7 @@ export function Agents() {
             {table.getHeaderGroups().map((hg) => (
               <TableRow key={hg.id} className='hover:bg-transparent'>
                 {hg.headers.map((h) => (
-                  <TableHead key={h.id} className={h.id === 'actions' ? 'w-56' : h.id === 'name' ? 'w-[200px] max-w-[200px]' /* K-19：列宽含 2×8px 内边距共 200px，内容 184px */ : undefined}>
+                  <TableHead key={h.id} className={h.id === 'actions' ? 'w-72' : h.id === 'name' ? 'w-[200px] max-w-[200px]' /* K-19：列宽含 2×8px 内边距共 200px，内容 184px */ : undefined}>
                     {flexRender(h.column.columnDef.header, h.getContext())}
                   </TableHead>
                 ))}
@@ -275,7 +280,7 @@ export function Agents() {
                   kind='empty'
                   title='还没有 Agent'
                   hint={canManage ? '新建 Agent 目前仍在旧版控制台操作，默认使用离线 Mock 模型即可运行。' : '有 Agent 后会显示在这里。'}
-                  action={canManage ? <Button variant='outline' size='sm' className='mt-2' asChild><a href='/#agents'>去旧版新建</a></Button> : undefined}
+                  action={canManage ? <Button variant='outline' size='sm' className='mt-2' asChild><a href='/#agents' {...LEGACY_LINK_ATTRS} title={LEGACY_LINK_HINT}>去旧版新建</a></Button> : undefined}
                 />
               )
             ) : (

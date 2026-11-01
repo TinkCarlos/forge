@@ -1,3 +1,4 @@
+import { ForgeError } from "./errors/forge-error.js";
 import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual, createCipheriv, createDecipheriv } from "node:crypto";
 
 export * from "./config";
@@ -5,18 +6,31 @@ export * from "./outbound";
 export * from "./env-ref";
 export * from "./cron";
 export * from "./ids";
+export * from "./id-generator.js";
+export * from "./revision.js";
+export * from "./secret-encryption.js";
+export * from "./credential-input.js";
+export * from "./credential-redaction.js";
 export * from "./stored-json";
 export * from "./sso-error-codes";
+export * from "./errors/index.js";
 
 /** User status values written by the code (T): login / loadActivePrincipal only accept "active". */
 export const USER_STATUSES = ["active", "disabled"] as const;
+export { accountText, assertAccountPassword } from "./account-input.js";
 /** Skill status values (K-12 / I-SKL-07): getPublishedSkillContent only serves "active". */
 export const SKILL_STATUSES = ["active", "disabled"] as const;
 
-export type Role = "platform_admin" | "org_admin" | "builder" | "operator" | "auditor" | "user";
+export type Role = string;
+export * from "./auth/permissions.js";
 export type DataScope = "all" | "org" | "self" | "app";
 
 export interface Principal {
+  revision?: number;
+  /** Only used between credential verification and session creation; never sent to clients. */
+  authenticationRevision?: number;
+  permissions?: readonly string[];
+  grantedPermissions?: readonly string[];
   type: "user" | "service" | "app";
   id: string;
   name: string;
@@ -90,94 +104,10 @@ export const STATUSES = [
 ] as const;
 export type RunStatus = (typeof STATUSES)[number];
 
-export const ROLE_PERMISSIONS: Record<Role, string[]> = {
-  platform_admin: ["*"],
-  org_admin: [
-    "agent.view",
-    "agent.manage",
-    "agent.publish",
-    "agent.run",
-    "skill.view",
-    "skill.manage",
-    "mcp.view",
-    "mcp.manage",
-    "tool.view",
-    "tool.manage",
-    "model.view",
-    "model.manage",
-    "run.view",
-    "run.cancel",
-    "approval.view",
-    "approval.decide",
-    "schedule.view",
-    "schedule.manage",
-    "schedule.run",
-    "apikey.view",
-    "apikey.manage",
-    "plugin.install",
-    "user.view",
-    "user.manage",
-    "audit.view",
-    "usage.view",
-  ],
-  builder: [
-    "agent.view",
-    "agent.manage",
-    "agent.publish",
-    "agent.run",
-    "skill.view",
-    "skill.manage",
-    "mcp.view",
-    "mcp.manage",
-    "tool.view",
-    "tool.manage",
-    "model.view",
-    "model.manage",
-    "run.view",
-    "schedule.view",
-    "schedule.manage",
-    "schedule.run",
-    "plugin.install",
-    "usage.view",
-  ],
-  operator: [
-    "agent.view",
-    "agent.run",
-    "run.view",
-    "run.cancel",
-    "approval.view",
-    "approval.decide",
-    "schedule.view",
-    "schedule.run",
-  ],
-  auditor: ["run.view", "audit.view", "usage.view", "agent.view"],
-  user: ["agent.view", "agent.run", "run.view"],
-};
-
-export function hasPermission(role: Role, permission: string): boolean {
-  const list = ROLE_PERMISSIONS[role] ?? [];
-  return list.includes("*") || list.includes(permission);
-}
-
 export function defaultDataScope(role: Role): DataScope {
   if (role === "platform_admin" || role === "auditor") return "all";
-  if (role === "user") return "self";
+  if (role !== "org_admin" && role !== "builder" && role !== "operator") return "self";
   return "org";
-}
-
-export class ForgeError extends Error {
-  constructor(
-    public readonly code: string,
-    message: string,
-    public readonly httpStatus = 400,
-    public readonly details?: unknown,
-    public readonly retryable = false,
-    /** Extra response headers set by the error handler (e.g. Retry-After on 429). */
-    public readonly headers?: Readonly<Record<string, string>>,
-  ) {
-    super(message);
-    this.name = "ForgeError";
-  }
 }
 
 /** 409 on deciding an approval that is not pending any more, lost a concurrent decision, or expired (r5 §2.7). */
@@ -186,16 +116,16 @@ export const APPROVAL_NOT_PENDING_CODE = "APR-2104";
 export const APPROVAL_EXPIRED_CODE = "APR-2102";
 
 export const errors = {
-  unauthorized: (message = "未登录或会话已过期") => new ForgeError("AUTH-1001", message, 401),
-  forbidden: (message = "没有权限执行该操作") => new ForgeError("POL-2001", message, 403),
-  notFound: (message = "资源不存在") => new ForgeError("RUN-7001", message, 404),
-  invalid: (message = "参数校验失败", details?: unknown) => new ForgeError("CFG-8501", message, 400, details),
-  conflict: (message = "资源状态冲突") => new ForgeError("CFG-8503", message, 409),
-  model: (message = "模型调用失败", details?: unknown) => new ForgeError("MDL-3001", message, 502, details, true),
-  tool: (message = "工具调用失败", details?: unknown) => new ForgeError("HTP-4001", message, 502, details, false),
+  unauthorized: (message = "未登录或会话已过期") => new ForgeError("AUTH-1001", { message: message, httpStatus: 401, retryable: false }),
+  forbidden: (message = "没有权限执行该操作") => new ForgeError("POL-2001", { message: message, httpStatus: 403, retryable: false }),
+  notFound: (message = "资源不存在") => new ForgeError("RUN-7001", { message: message, httpStatus: 404, retryable: false }),
+  invalid: (message = "参数校验失败", details?: unknown) => new ForgeError("CFG-8501", { message: message, httpStatus: 400, details: details, retryable: false }),
+  conflict: (message = "资源状态冲突") => new ForgeError("CFG-8503", { message: message, httpStatus: 409, retryable: false }),
+  model: (message = "模型调用失败", details?: unknown) => new ForgeError("MDL-3001", { message: message, httpStatus: 502, details: details, retryable: true }),
+  tool: (message = "工具调用失败", details?: unknown) => new ForgeError("HTP-4001", { message: message, httpStatus: 502, details: details, retryable: false }),
   /** Infrastructure temporarily unavailable (e.g. the database during an identity lookup): 503, retryable, no internal details. */
-  unavailable: (message = "服务暂时不可用，请稍后重试") => new ForgeError("SYS-9003", message, 503, undefined, true),
-  budget: (message = "预算已耗尽") => new ForgeError("BUD-5001", message, 400),
+  unavailable: (message = "服务暂时不可用，请稍后重试") => new ForgeError("SYS-9003", { message: message, httpStatus: 503, retryable: true }),
+  budget: (message = "预算已耗尽") => new ForgeError("BUD-5001", { message: message, httpStatus: 400, retryable: false }),
 };
 
 export function hashApiKey(key: string, pepper: string): string {
@@ -212,7 +142,12 @@ export function hashPassword(password: string): string {
   return `scrypt$${salt}$${hash}`;
 }
 
+export function isPasswordHash(value: unknown): value is string {
+  return typeof value === "string" && /^scrypt\$[0-9a-f]{32}\$[0-9a-f]{128}$/.test(value);
+}
+
 export function verifyPassword(password: string, stored: string): boolean {
+  if (!isPasswordHash(stored)) return false;
   const parts = stored.split("$");
   if (parts.length !== 3 || parts[0] !== "scrypt") return false;
   const salt = parts[1]!;
@@ -232,7 +167,7 @@ export function encryptSecret(plain: string, keyB64: string): string {
 
 export function decryptSecret(payload: string, keyB64: string): string {
   const [version, ivB64, ciphertextB64, tagB64] = payload.split(".");
-  if (version !== "v1" || !ivB64 || !ciphertextB64 || !tagB64) throw new Error("invalid encrypted secret");
+  if (version !== "v1" || !ivB64 || !ciphertextB64 || !tagB64) throw new ForgeError("SYS-9002", { message: "invalid encrypted secret" });
   const key = Buffer.from(keyB64, "base64");
   const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(ivB64, "base64"));
   decipher.setAuthTag(Buffer.from(tagB64, "base64"));
@@ -265,3 +200,4 @@ export function parseJson<T>(value: unknown, fallback: T): T {
     return fallback;
   }
 }
+export * from "./query-filter.js";

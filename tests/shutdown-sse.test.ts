@@ -53,7 +53,7 @@ beforeAll(async () => {
   const pa = await realSession({ role: "platform_admin", orgUnitId: ROOT, dataScope: "all" });
   adminHeaders = sessionHeaders(pa, sessionCookieValue(pa));
   agentId = await repos.createAgent({ key: `it-sig-${suffix}`, name: "IT sig", ownerOrgUnitId: ROOT, createdBy: ADMIN_ID });
-  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" }, limits: { maxSteps: 2 } }, status: "published", createdBy: ADMIN_ID });
+  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" }, limits: { maxSteps: 2 } }, status: "published", createdBy: ADMIN_ID }, { expectedRevision: "system" });
   appId = await repos.createApiApp({ key: `it-sig-${suffix}`, name: "IT sig", ownerOrgUnitId: ROOT, scopes: ["runs:read"] });
   openKey = `fsk_${randomBytes(32).toString("base64url")}`;
   await repos.createApiKey({ appId, name: "it", prefix: openKey.slice(0, 16), keyHash: hashApiKey(openKey, config.API_KEY_PEPPER), scopes: ["runs:read"] });

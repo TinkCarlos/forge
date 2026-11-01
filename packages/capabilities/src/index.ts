@@ -1,6 +1,7 @@
 import {
   assertOutboundAllowed,
   config,
+  credentialRedactor,
   ENV_REF_CODE,
   ENV_REF_MESSAGE,
   isEnvRefError,
@@ -15,6 +16,7 @@ import {
   type ToolDefinition,
   type ToolResult,
 } from "@forge/core";
+import { credentialHeaders } from "@forge/governance";
 import { parseJsonValue, repos } from "@forge/store";
 
 /**
@@ -156,12 +158,12 @@ export function builtinTools(): Map<string, ResolvedTool> {
 
 export async function discoverMcpTools(server: Record<string, unknown>): Promise<Array<{ name: string; description: string; inputSchema: unknown; risk: string; readOnly: boolean }>> {
   const url = String(server.url);
-  const headers = envHeaders(server.headers_json, { table: "mcp_servers", column: "headers_json", id: String(server.id) });
+  const { headers, redact } = await credentialHeaders("mcp_server", String(server.id), { headers: server.headers_json, headerSecretRefs: server.header_secret_refs_json }, { table: "mcp_servers", column: "headers_json", id: String(server.id) });
   let sessionId: string | null = null;
   const call = async (method: string, params: unknown, id: number | null = null): Promise<Record<string, unknown>> => {
     const response = await safeFetch(url, {
       method: "POST",
-      headers: { ...headers, "Content-Type": "application/json", Accept: "application/json, text/event-stream", ...(sessionId ? { "Mcp-Session-Id": sessionId } : {}) },
+      headers: { ...headers, "content-type": "application/json", accept: "application/json, text/event-stream", ...(sessionId ? { "mcp-session-id": sessionId } : {}) },
       body: JSON.stringify({ jsonrpc: "2.0", ...(id === null ? {} : { id }), method, params }),
       signal: AbortSignal.timeout(config.MCP_TIMEOUT_MS),
     });
@@ -172,15 +174,17 @@ export async function discoverMcpTools(server: Record<string, unknown>): Promise
     if (!text.trim()) return {};
     try {
       const payload = JSON.parse(text) as Record<string, unknown>;
-      if (payload.error) throw errors.tool(`MCP ${method} 错误: ${JSON.stringify(payload.error)}`);
+      if (payload.error) throw new ForgeError("HTP-4001", { message: `MCP ${method} 错误`, httpStatus: 502, retryable: false }, redact.value(payload.error));
       return (payload.result ?? {}) as Record<string, unknown>;
     } catch (error) {
       if (error instanceof ForgeError) throw error;
       // Some MCP servers return SSE frames.
       const dataLine = text.split("\n").find((line) => line.startsWith("data:"));
       if (dataLine) {
-        const payload = JSON.parse(dataLine.slice(5).trim()) as Record<string, unknown>;
-        return (payload.result ?? {}) as Record<string, unknown>;
+        try {
+          const payload = JSON.parse(dataLine.slice(5).trim()) as Record<string, unknown>;
+          return (payload.result ?? {}) as Record<string, unknown>;
+        } catch { throw errors.tool("MCP 返回格式无法解析"); }
       }
       throw errors.tool("MCP 返回格式无法解析");
     }
@@ -198,9 +202,9 @@ export async function discoverMcpTools(server: Record<string, unknown>): Promise
     const annotations = (tool.annotations ?? {}) as Record<string, unknown>;
     const risk = annotations.destructiveHint ? "high" : annotations.readOnlyHint ? "low" : "medium";
     return {
-      name: String(tool.name ?? ""),
-      description: String(tool.description ?? ""),
-      inputSchema: tool.inputSchema ?? { type: "object", properties: {} },
+      name: redact.identifier(String(tool.name ?? "")),
+      description: redact.text(String(tool.description ?? "")),
+      inputSchema: redact.schema(tool.inputSchema ?? { type: "object", properties: {} }),
       risk,
       readOnly: isReadOnlyMcpTool(annotations),
     };
@@ -210,8 +214,10 @@ export async function discoverMcpTools(server: Record<string, unknown>): Promise
 export async function callMcpTool(server: Record<string, unknown>, toolName: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<ToolResult> {
   const url = String(server.url);
   let headers: Record<string, string>;
+  let redact = credentialRedactor([]);
   try {
-    headers = envHeaders(server.headers_json, { table: "mcp_servers", column: "headers_json", id: String(server.id) });
+    const credentials = await credentialHeaders("mcp_server", String(server.id), { headers: server.headers_json, headerSecretRefs: server.header_secret_refs_json }, { table: "mcp_servers", column: "headers_json", id: String(server.id) });
+    headers = credentials.headers; redact = credentials.redact;
   } catch (error) {
     const refused = envRefToolResult(error);
     if (refused) return refused;
@@ -228,7 +234,7 @@ export async function callMcpTool(server: Record<string, unknown>, toolName: str
   const rpc = async (method: string, params: unknown, id: number | null): Promise<{ ok: boolean; content: string }> => {
     const response = await safeFetch(url, {
       method: "POST",
-      headers: { ...headers, "Content-Type": "application/json", Accept: "application/json, text/event-stream", ...(sessionId ? { "Mcp-Session-Id": sessionId } : {}) },
+      headers: { ...headers, "content-type": "application/json", accept: "application/json, text/event-stream", ...(sessionId ? { "mcp-session-id": sessionId } : {}) },
       body: JSON.stringify({ jsonrpc: "2.0", ...(id === null ? {} : { id }), method, params }),
       signal: callSignal(config.MCP_TIMEOUT_MS, signal),
     });
@@ -237,8 +243,9 @@ export async function callMcpTool(server: Record<string, unknown>, toolName: str
     const text = await response.text();
     if (!response.ok) return { ok: false, content: `MCP HTTP ${response.status}` };
     if (!text.trim()) return { ok: true, content: "" };
-    const payload = JSON.parse(text) as Record<string, unknown>;
-    if (payload.error) return { ok: false, content: JSON.stringify(payload.error) };
+    let payload: Record<string, unknown>;
+    try { payload = JSON.parse(text) as Record<string, unknown>; } catch { throw errors.tool("MCP 返回格式无法解析"); }
+    if (payload.error) return { ok: false, content: JSON.stringify(redact.value(payload.error)) };
     return { ok: true, content: JSON.stringify(payload.result ?? {}) };
   };
   await rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "forge", version: "0.1.0" } }, 1).catch(() => ({}));
@@ -254,7 +261,7 @@ export async function callMcpTool(server: Record<string, unknown>, toolName: str
     .join("\n");
   return {
     ok: result.ok && parsed.isError !== true,
-    content: truncate(text || result.content),
+    content: truncate(redact.jsonText(text || result.content)),
     errorCode: result.ok && parsed.isError !== true ? undefined : "MCP-4101",
   };
 }
@@ -336,8 +343,10 @@ export async function executeOpenApiTool(input: {
     return { ok: false, content: `openapi tool failed: ${String(error)}`, errorCode: "HTP-4002" };
   }
   let headers: Record<string, string>;
+  let redact = credentialRedactor([]);
   try {
-    headers = envHeaders(input.source.headers_json, { table: "tool_sources", column: "headers_json", id: String(input.source.id) });
+    const credentials = await credentialHeaders("tool_source", String(input.source.source_id ?? input.source.id), { headers: input.source.headers_json, headerSecretRefs: input.source.header_secret_refs_json }, { table: "tool_sources", column: "headers_json", id: String(input.source.source_id ?? input.source.id) });
+    headers = credentials.headers; redact = credentials.redact;
   } catch (error) {
     const refused = envRefToolResult(error);
     if (refused) return refused;
@@ -352,7 +361,7 @@ export async function executeOpenApiTool(input: {
   if (method === "GET" || method === "DELETE" || method === "HEAD") {
     for (const [key, value] of Object.entries(args)) url.searchParams.set(key, String(value));
   } else {
-    headers["Content-Type"] = "application/json";
+    headers["content-type"] = "application/json";
     body = JSON.stringify(args);
   }
   try {
@@ -360,13 +369,14 @@ export async function executeOpenApiTool(input: {
     const text = await response.text();
     return {
       ok: response.ok,
-      content: truncate(text),
+      content: truncate(redact.jsonText(text)),
       errorCode: httpToolErrorCode(response.status),
     };
   } catch (error) {
+    if (error instanceof ForgeError && error.code === "SYS-9002") throw error;
     const blocked = blockedToolResult(error);
     if (blocked) return blocked;
-    return { ok: false, content: `openapi tool failed: ${String(error)}`, errorCode: "HTP-4002" };
+    return { ok: false, content: `openapi tool failed: ${redact.text(String(error))}`, errorCode: "HTP-4002" };
   }
 }
 
@@ -387,15 +397,16 @@ export async function resolveTools(spec: AgentSpec): Promise<Map<string, Resolve
       if (!server || unusable.has(String(server.id))) continue;
       const allowed = toolset.allow;
       const rows = await repos.listMcpToolsByServerKey(toolset.mcp);
+      const { redact } = await credentialHeaders("mcp_server", String(server.id), { headers: server.headers_json, headerSecretRefs: server.header_secret_refs_json }, { table: "mcp_servers", column: "headers_json", id: String(server.id) });
       for (const row of rows) {
         const name = String(row.name);
         if (allowed && !allowed.includes(name)) continue;
-        const key = toolNameFor("mcp", toolset.mcp, name);
+        const key = redact.identifier(toolNameFor("mcp", toolset.mcp, name));
         tools.set(key, {
           definition: {
             name: key,
-            description: `[MCP ${toolset.mcp}/${name}] ${String(row.description ?? "")}`,
-            parameters: parseJsonValue(row.input_schema_json, { type: "object", properties: {} }),
+            description: redact.text(`[MCP ${toolset.mcp}/${name}] ${String(row.description ?? "")}`),
+            parameters: redact.schema(parseJsonValue(row.input_schema_json, { type: "object", properties: {} })),
             risk: (String(row.risk_level) as ToolDefinition["risk"]) ?? "medium",
           },
           readOnly: Number(row.read_only) === 1,
@@ -408,15 +419,16 @@ export async function resolveTools(spec: AgentSpec): Promise<Map<string, Resolve
       if (!source) continue;
       const allowed = toolset.allow;
       const rows = await repos.listToolsBySourceKey(toolset.openapi);
+      const { redact } = await credentialHeaders("tool_source", String(source.id), { headers: source.headers_json, headerSecretRefs: source.header_secret_refs_json }, { table: "tool_sources", column: "headers_json", id: String(source.id) });
       for (const row of rows) {
         const name = String(row.name);
         if (allowed && !allowed.includes(name)) continue;
-        const key = toolNameFor("openapi", toolset.openapi, name);
+        const key = redact.identifier(toolNameFor("openapi", toolset.openapi, name));
         tools.set(key, {
           definition: {
             name: key,
-            description: `[OpenAPI ${toolset.openapi}/${name}] ${String(row.description ?? "")}`,
-            parameters: parseJsonValue(row.input_schema_json, { type: "object", properties: {} }),
+            description: redact.text(`[OpenAPI ${toolset.openapi}/${name}] ${String(row.description ?? "")}`),
+            parameters: redact.schema(parseJsonValue(row.input_schema_json, { type: "object", properties: {} })),
             risk: String(row.risk_level) as ToolDefinition["risk"],
           },
           readOnly: Number(row.read_only) === 1,

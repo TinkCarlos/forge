@@ -10,9 +10,9 @@
 | --- | --- |
 | 接入资料目录 | `<internal-docs>/sso-connector/` |
 | 协议版本 | Connector Contract `1.0` |
-| Node SDK | `@your-org/agent-connector` 0.2.0，`agent-connector-0.2.0.tgz` |
+| Node SDK | `@leadong/agent-connector` 0.2.0，`leadong-agent-connector-0.2.0.tgz` |
 | Node 制品 SHA256 | `eaf28f8ab99bfbb085a0078777f4ce923ad70e1044a8af7e7d8a82d6cdda20a3`（10,218 bytes） |
-| Python SDK | `agent_connector-0.2.0-py3-none-any.whl` |
+| Python SDK | `leadong_agent_connector-0.2.0-py3-none-any.whl` |
 | Python 制品 SHA256 | `e8791941310c115502ab06b7ecbddf7fb174075aaa64dde71db3ea72fb3824f2`（13,058 bytes） |
 | 发布清单 | `release-manifest.json`（gitSha `2ae52ade...`，build 8） |
 | SSO IdP | Keycloak，示例 realm `agent-platform`，令牌端点 `https://auth.example.com/realms/agent-platform/protocol/openid-connect/token` |
@@ -24,14 +24,14 @@
 // package.json
 {
   "dependencies": {
-    "@your-org/agent-connector": "file:vendor/agent-connector-0.2.0.tgz"
+    "@leadong/agent-connector": "file:vendor/agent-connector/leadong-agent-connector-0.2.0.tgz"
   }
 }
 ```
 
 ```txt
 # requirements.txt（Python）
-./vendor/agent_connector-0.2.0-py3-none-any.whl
+./vendor/agent-connector/leadong_agent_connector-0.2.0-py3-none-any.whl
 ```
 
 ## 2. 适用范围与强制要求
@@ -44,7 +44,7 @@
 | 本地开发 | 可关闭 SSO，但使用独立 dev 配置 | Connector 默认关闭 |
 
 **不可协商**
-1. 生产环境不允许仅靠本地账号登录；本地账号只作为 SSO 故障时的应急管理员。
+1. 生产提供SSO与本地账号并行登录；ALLOW_LOCAL_LOGIN控制本地渠道。SSO与本地身份只能管理员明确绑定，已绑定账号保留本地权限。
 2. 控制台、体验页（P2）以及任何 Forge 派生的管理/业务前端，都使用同一套 SSO，不另建账号体系。
 3. 不允许信任调用方自报的 `X-Agent-*`、角色、Scope、用户身份头；必须先验签再注入。
 4. 生产、预发布、测试的 Connector 注册身份、Client Secret、Instance ID、配置缓存不得共享。
@@ -255,6 +255,7 @@ ToolExecutor → ConnectorToolSource
   → 目标系统
 ```
 
+- 上述工具清单的capability/dataScope是Forge声明，适配器将capability映射为真实SDK参数capabilityCode；范围从已验签call policy读取，并按目标接口契约登记scopeBinding，不能把清单字段直接当SDK的额外参数。
 - Forge 不保存目标系统密钥；目标鉴权由 Agent Gateway/目标系统完成。
 - 工具定义仍登记输入/输出 Schema、风险级别、审批规则；`high` 风险默认审批。
 - 出站关闭时，工具调用直接失败，不允许代码直连回退。
@@ -304,7 +305,7 @@ Forge 处理：
 ### 8.1 验收清单（Forge 版）
 
 - [ ] SDK 文件名/大小/SHA256 与发布清单一致，依赖锁文件已提交。
-- [ ] 生产 SSO 为 `required`，本地账号仅应急。
+- [ ] 生产 SSO 为 `required`，可同时开启本地账号登录；同邮箱未显式绑定不得合并。
 - [ ] 登录、回调、注销、会话过期、多实例会话正常。
 - [ ] `id_token`/Principal 验签通过；伪造、过期、错误 audience/environment 被拒。
 - [ ] Agent 角色 code/name 映射正确；无访问角色被拒。
@@ -388,3 +389,11 @@ SSO 回调：https://<forge-host>/auth/callback
 | FR-TL-13 Connector 出站工具 | 第 5.5 节 |
 | FR-TL-14 数据范围传递 | 第 5.5、9 节 |
 | FR-DLV-07 发布开关与验收 | 第 8 节 + [release-process.md](../06-operations/release-process.md) |
+
+## E0 实包准入补充（2026-10-31）
+
+Node/Python 0.2.0 内部制品已按本页 SHA256 与大小重新核验。Node 真实 SDK 的签名、版本单调、LKG、0600 缓存与出站 grant 已做本地机制实验；不代表公司平台联调完成。实包normalized Principal/callSystem没有额外dataScope字段，但签名call policy已有dataScopeType/dataScope；实测确认这些字段经验签/LKG和策略选择保留。Forge必须按 [E0 实测与适配规则](../../.talking-us/2026-10-31-forge-e0-admission.md)补充边界；不得声明 SDK 自带完整行级数据范围传播。
+
+## 账号双渠道补充（用户确认，2026-11-01）
+
+ALLOW_LOCAL_LOGIN=true允许有效普通本地账号在生产登录，SSO_MODE=required仍要求生产SSO渠道。管理员显式绑定issuer+subject后共用本地账号，登录不覆盖本地授权；不按邮箱自动绑定。未分配部门的JIT账号固定self。旧绑定issuer为空拒绝SSO并要求管理员重新绑定。详见[账号开发设计](../../.talking-us/2026-11-01-forge-identity-design.md)。

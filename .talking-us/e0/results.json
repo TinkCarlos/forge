@@ -1,0 +1,65 @@
+{
+  "date": "2026-10-31",
+  "codeBaseline": "3cde87d",
+  "node": "v22.23.3",
+  "host": "Darwin arm64",
+  "pi": {
+    "node_modules/@earendil-works/pi-agent-core": {
+      "version": "1.4.0",
+      "resolved": "https://registry.npmjs.org/@earendil-works/pi-agent-core/-/pi-agent-core-1.4.0.tgz",
+      "integrity": "sha512-PoKY84SKUwnt7S5QBZaGUqfNO1kjP3KHpHUA9QpFTj4cOjaVWMYIcBPJ6FDRCdE8Zen9OSECQUd0uUfVgtSmgA==",
+      "license": "MIT",
+      "engines": {
+        "node": ">=22.19.0"
+      }
+    },
+    "node_modules/@earendil-works/pi-ai": {
+      "version": "1.4.0",
+      "resolved": "https://registry.npmjs.org/@earendil-works/pi-ai/-/pi-ai-1.4.0.tgz",
+      "integrity": "sha512-hQM/C4+1w8rHYACzDDf+0vQMnEnpzIop1tptIERVgR3ZeT/hHSzBNG8PaWPgxWQjqSeKCyBZSyp8uTT6eKK1pQ==",
+      "license": "MIT",
+      "bin": {
+        "pi-ai": "dist/cli.js"
+      },
+      "engines": {
+        "node": ">=22.19.0"
+      }
+    }
+  },
+  "piProbe": "PASS: 3 scenario groups; real runtime with deterministic stream, no provider calls",
+  "connector": {
+    "version": "0.2.0",
+    "gitSha": "2ae52adeb2cabf7662d89789fbeae00ef3de2177",
+    "buildNumber": "8",
+    "artifacts": [
+      {
+        "name": "leadong-agent-connector-0.2.0.tgz",
+        "size": 10218,
+        "sha256": "eaf28f8ab99bfbb085a0078777f4ce923ad70e1044a8af7e7d8a82d6cdda20a3",
+        "verified": true
+      },
+      {
+        "name": "leadong_agent_connector-0.2.0-py3-none-any.whl",
+        "size": 13058,
+        "sha256": "e8791941310c115502ab06b7ecbddf7fb174075aaa64dde71db3ea72fb3824f2",
+        "verified": true
+      }
+    ],
+    "probe": "PASS: real SDK with synthetic RSA keys and mocked HTTP, no company service calls",
+    "scopeEvidence": "PASS: signed call policy retains dataScopeType/dataScope through LKG and inbound/outbound selection; adapter must enforce row scope",
+    "vendoredPath": "vendor/agent-connector",
+    "copyReverified": true
+  },
+  "sandbox": {
+    "previousDirection": "gVisor",
+    "status": "SUPERSEDED_BY_USER_DECISION",
+    "notAPass": true
+  },
+  "execution": {
+    "decision": "user confirmed dedicated Linux native execution server; no Docker/gVisor/K8s prerequisite",
+    "designStatus": "READY FOR IMPLEMENTATION E1-E3",
+    "runtime": "linux-systemd",
+    "targetLinuxRuntimeTested": false,
+    "basis": "systemd 255 official execution/resource-control/kill/service documentation"
+  }
+}

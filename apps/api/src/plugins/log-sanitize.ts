@@ -1,9 +1,10 @@
 import type { FastifyInstance } from "fastify";
+import { ERROR_CODES } from "@forge/core/errors";
 
 // K-26 / OPS-014: request URLs are logged as path + query, with the value of any sensitive query key replaced by
 // [REDACTED]. Done in the request serializer (and the 404 handler, which logs the URL itself) rather than via pino
 // `redact` paths, because the secret is inside the url string, not a separate field.
-// Pure module: no @forge/* imports, so it is unit-testable without config, .env or a database.
+// Imports only the pure error catalog; no config, .env or database dependency.
 
 export const REDACTED = "[REDACTED]";
 
@@ -142,6 +143,6 @@ export function installSanitizedNotFoundHandler(app: FastifyInstance): void {
     // P3-01: the unified error body (same as an unknown id / FST_ERR_MAX_PARAM_LENGTH); the sanitized route line goes
     // to the log only, the response echoes nothing of the path or query (K-26). Wrong method on a known path is the
     // same 404 (no 405).
-    reply.code(404).send({ error: { code: "RUN-7001", message: "资源不存在", requestId: String(request.id), details: null, retryable: false } });
+    reply.code(404).send({ error: { code: "RUN-7001", message: "资源不存在", requestId: String(request.id), details: null, retryable: false, remedy: ERROR_CODES["RUN-7001"].remedy } });
   });
 }

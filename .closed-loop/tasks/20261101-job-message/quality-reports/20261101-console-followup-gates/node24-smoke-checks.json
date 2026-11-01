@@ -1,0 +1,20 @@
+[
+  {
+    "check": "smoke",
+    "exitCode": 0,
+    "nodeVersion": "v24.22.1",
+    "seconds": 11.31
+  },
+  {
+    "check": "smoke:edit",
+    "exitCode": 0,
+    "nodeVersion": "v24.22.1",
+    "seconds": 0.45
+  },
+  {
+    "check": "smoke:sso",
+    "exitCode": 0,
+    "nodeVersion": "v24.22.1",
+    "seconds": 0.36
+  }
+]

@@ -1,8 +1,33 @@
 # Forge MySQL 数据设计
 
+## 2026-11-01 Job/消息增量字典入口（设计定稿，未实施）
+
+完整字段、类型/NULL/默认/索引/FK、事务及迁移规格统一维护在[Job与消息数据库设计v1.0](../../.talking-us/20261101-113405-Forge后台优化与Job消息管理-数据库设计文档.md)，本节为正式数据目录。它细化本文件旧V2目标，不代表目标环境已存在；实际已实现结构仍见实现状态与Drizzle/迁移。以后更新同一字段只改该增量字典，避免两份DDL漂移。
+
+| 数据域 | 新增或沿用目标实体 | 归属与索引重点 |
+| --- | --- | --- |
+| Job配置 | job_definitions/job_definition_versions/job_app_grants | 定义/不可变发布版/App显式授权；组织/创建人/引用；配置revision |
+| Job执行 | job_executions/job_steps/job_step_attempts/job_resource_locks/job_events | 业务键跨入口唯一、generation/fence/attempt、组织主体SQL过滤、账号/站点单写者、事件序号 |
+| 人工/来源/质量 | human_tasks/source_snapshots/quality_checks | 经执行归属鉴权；输入/业务版本、证据、待办截止与不可变检查 |
+| 消息配置 | message_channels/message_channel_versions/message_rules/message_templates/message_template_versions | 统一Webhook/群配置；URL不可变Secret快照、签名当前Secret、精确legacy App消费者 |
+| 消息账本 | message_deliveries/message_delivery_attempts/outbox_events | 稳定事件/渠道唯一、冻结请求体字节、尝试追加、类型专属未知/重试、组织范围 |
+| 复用交付/评测/配额 | files/artifacts/eval_datasets/eval_cases/eval_runs/eval_results/quota_reservations/api_quotas；新增quota_usage_counters | 沿用同名目标；api_quotas仍是App限额配置，计数和原子预占由counter/ reservation承担，不混淆配置与用量 |
+
+扩展schedules、runs、api_apps、webhook_deliveries与Secret消费者；不建立未实施的webhook_endpoints目标表。先expand再受控回填、停止旧派发后切换；当前未分配新迁移编号、未生成SQL/Drizzle产物或执行DDL。详情参见配套开发/接口设计的切换与兼容边界。
+
 版本：1.0　日期：2026-10-21　状态：待评审
 
 > **MySQL 8.0.30+ 是 Forge 唯一系统数据库。** 不提供 SQLite/PostgreSQL 运行模式；开发、测试、生产统一使用 MySQL。Redis 与对象存储不是事实来源。
+
+## 0. 当前E1落地边界（2026-10-31）
+
+当前Repository仍使用mysql2；`packages/store/src/schema/index.ts`以独立001–008空库建立001–008的34张表Drizzle基线。`packages/store/drizzle/0000_legacy_baseline.sql`只作差分参考，不交给应用重复执行；生成的`0001_configuration_revision.sql`经审查映射唯一`schema_migrations`版本`009_configuration_revision`。后续继续`pnpm db:generate`生成、人工审查、接入`pnpm db:migrate`，不启用第二套Drizzle迁移历史或push。
+
+009只给agents、skills、mcp_servers、mcp_tools、tool_sources、tools、llm_providers、llm_models、llm_routes、api_apps、users、service_accounts、schedules、oidc_role_mappings、plugins、org_units、data_policies、settings新增`revision INT UNSIGNED NOT NULL DEFAULT 1`，不改既有类型、索引与约束。所有列成功才写历史；缺列逐项补，部分DDL中断可重跑，遇到既有不兼容revision列拒绝标记成功。迁移执行器持数据库名隔离的MySQL命名锁，防并行执行。
+
+配置CAS在行锁内读取当前版本，再`UPDATE ... WHERE id=? AND revision=?`递增，审计同事务；settings按key定位。Agent/Skill子版本及父指针同事务，失败不遗留新版本。运行时钟不增版本，自动停用/SSO同步/seed配置更新使旧版本失效。现有无CRUD的组织、策略、工具/路由等仅补Schema，并未因此交付完整管理能力。
+
+真实MySQL检查列类型、空值、默认值、字符集、排序规则、on-update、外键和索引；CURRENT_TIMESTAMP/now同义函数及tinyint显示宽度按等价规范化。导入时补齐了Drizzle未保留的ASCII二进制列和DATETIME ON UPDATE，避免未来差分改坏现有Schema。下面的V2目标表字典仍包含未实现资源，以实现状态为准。
 
 ## 1. 环境与约定
 
@@ -65,7 +90,7 @@ org_units ─┬─< users ─< role_bindings >─ roles ─< role_permissions >
            ├─< service_accounts ─< service_account_roles >─ roles
            ├─< data_scopes ─< data_scope_orgs
            ├─< data_policies >─ roles
-           ├─< api_apps ─< api_keys / api_quotas / webhook_endpoints
+           ├─< api_apps ─< api_keys / api_quotas / message_channels（2026-11-01目标）
            └─< plugin_installations >─ plugin_installation_versions >─ plugin_versions
 agents ─< agent_versions ─< resource_references
 agents ─< agent_bindings
@@ -129,9 +154,9 @@ connector_instances（本实例运行状态）
 | `plugin_installations` | 安装实例 | `id`, `package_id`, `scope_type`, `scope_id`, `status`, `active_version_id`, `config_json`, `installed_by`, `updated_at` | `uk_plugin_installations(package,scope_type,scope_id)`; `idx_plugin_installations_status` |
 | `plugin_installation_versions` | 安装版本历史 | `id`, `installation_id`, `package_version_id`, `status`, `config_json`, `installed_at`, `activated_at`, `uninstalled_at` | `uk_plugin_installation_versions(installation,package_version)` |
 | `plugin_installation_resources` | 安装创建的资源 | `installation_version_id`, `resource_type`, `resource_id`, `resource_key`, `resource_version_id` | `idx_plugin_installation_resources_resource` |
-| `resource_references` | 资源引用/卸载保护 | `id`, `from_type`, `from_id`, `from_version_id`, `to_type`, `to_id`, `to_key`, `to_version`, `created_at` | `idx_resource_refs_to(to_type,to_key)`; `idx_resource_refs_from(from_type,from_id)` |
+| `resource_references` | 资源引用/卸载保护 | `id`, `from_type`, `from_id`, `from_version_id`, `to_type`, `to_id`, `to_key`, `to_version`, `binding_key`, `created_at` | `uk_resource_reference_binding(from_type,from_id,binding_key)`; `idx_resource_refs_to(to_type,to_id)`; `idx_resource_refs_from(from_type,from_id)` |
 
-`scope_type` 为 `global`/`org`/`role`。`active_version_id` 指向 `plugin_installation_versions.id`；升级/回滚原子切换。`resource_references` 同时服务 Skill/MCP/工具/Provider/Secret 的引用检查。
+`plugin_installations.scope_type` 为 `global`/`org`/`role`（Secret作用域另见4.7.1）。`active_version_id` 指向 `plugin_installation_versions.id`；升级/回滚原子切换。`resource_references` 同时服务 Skill/MCP/工具/Provider/Secret 的引用检查。
 
 ### 4.4 MCP、工具与模型
 
@@ -165,7 +190,11 @@ connector_instances（本实例运行状态）
 | `idempotency_keys` | 创建类幂等 | `id`, `scope`, `key`, `request_hash`, `status_code`, `response_json`, `run_id`, `expires_at`, `created_at` | `uk_idempotency(scope,key)`; `idx_idempotency_expires` |
 | `files` | 上传文件 | `id`, `owner_type`, `owner_id`, `storage_key`, `name`, `mime_type`, `size`, `checksum`, `status`, `expires_at`, `created_at` | `idx_files_owner`; `idx_files_expires` |
 
-`messages.content_json` 为内容块数组（text/tool_call/tool_result/image_ref），大结果存对象存储。`seq` 按 Thread 全局递增，分配时在同一事务更新 `threads.next_seq`。`run_events` 的 `seq` 按 Run 递增。
+`messages.content_json` 为内容块数组（text/tool_call/tool_result/image_ref），大结果存对象存储。实际兼容字段 `seq` 保持 Run 内序号；016新增 `thread_seq BIGINT UNSIGNED NULL`，新消息事务锁会话并递增 `threads.next_message_seq BIGINT UNSIGNED NOT NULL DEFAULT 1`，唯一 `(thread_id,thread_seq)`。历史消息保留 NULL，不编造严格顺序；读取按旧消息原时间/Run/seq稳定排序后追加新序号消息。`protocol_version VARCHAR(32) NULL` 标明新写入的协议，旧正文保持原值。`run_events.seq` 按 Run 递增。
+
+**016运行/会话兼容扩展**（仅任务库本地实施，生产未执行）：`runs.runtime_engine VARCHAR(24) NOT NULL DEFAULT 'mysql-legacy'`、`snapshot_quality VARCHAR(16) NOT NULL DEFAULT 'legacy'`、`retry_of_run_id/workspace_id CHAR(26) NULL`、`workflow_id VARCHAR(128) NULL UNIQUE`；旧运行不改引擎、不伪造 frozen。`threads.app_id/active_run_id CHAR(26) NULL`、`revision INT UNSIGNED NOT NULL DEFAULT 1`、`deleted_at DATETIME(3) NULL`；新建会话显式写 App 归属；旧App会话仅在锁内核实主体为该App、至少存在一个历史Run且所有Run的App/主体/Agent均一致后绑定，不一致或缺证据返回404。活动受理锁会话，拒绝已有非终态 Run；终态仅清除指向自己的 active_run_id。旧 worker 的普通与指定ID领取均只接受 mysql-legacy；快照/Pi/Temporal尚未接通时不写其它引擎。
+
+索引新增 `idx_runs_engine_status(runtime_engine,status,created_at,id)`、`idx_runs_thread_status(thread_id,status,created_at,id)`、`uk_runs_workflow(workflow_id)`、`uk_messages_thread_seq(thread_id,thread_seq)`、`idx_threads_app_created(app_id,created_at,id)`。活跃指针不加循环外键，受理时验证；历史 Run 不自动选取活跃指针。016仅expand，断点重跑检查完整元数据，不做down；回兼容版保留新列。生产先备份及人工审批。
 
 **过渡调度列（Temporal 之前）**：`claimed_by`、`lease_expires_at`、`heartbeat_at` 只用于 MySQL 队列认领与崩溃续跑，不是业务事实来源。Worker 认领 `queued`，或租约已过期的 `running`；进入 `waiting_approval` 或 Run 结束后清空租约。接上 Temporal 后这三列停止写入，不在同一版本删除。`claimed_by` 的值为 `hostname:pid:epoch`（epoch 为进程启动时生成一次的 8 位 hex，总长不超过 128，超长时先截 hostname）：重启后复用同一 host 和 pid 的进程（如容器里的 pid 1）不会被当成原持有者；旧格式 `hostname:pid` 的行只按字符串比较，租约过期或为空时照常可认领，无需迁移。
 
@@ -173,7 +202,7 @@ connector_instances（本实例运行状态）
 
 **r5 迁移 008（只加列，全部 `ALGORITHM=INSTANT`，不加索引）**：`tools.read_only`、`mcp_tools.read_only`、`tool_calls.read_only`（`TINYINT(1)`，默认 0 = 有副作用；只有 `tools` 在新加列时按 HTTP 方法回填 GET/HEAD 为 1）；`approvals.reason`（`VARCHAR(16)`，默认 `policy`，接手产生的审批为 `interrupted`）；`tool_calls.call_id`（供应商调用 id，仅存档）、`model_step`、`step_index`（可空，不回填）。
 
-**0.1.x 幂等与 Webhook**：`idempotency_keys.scope` 目前是 API App id，保留 24 小时。`webhook_deliveries.app_id` 指向应用上的单个 Webhook URL；目标设计里的 `webhook_endpoints` 尚未拆出，因此没有 `endpoint_id`。投递状态为 `pending` / `delivered` / `failed`。
+**0.1.x 幂等与 Webhook**：`idempotency_keys.scope` 对Run创建使用API App id；API Key轮换使用 `apikey.rotate:{旧KeyID}`，保留24小时。轮换记录只存新/旧Key元数据，不存明文；旧Key行锁串行同Key轮换/吊销，密钥变更、幂等记录和审计同事务。当前实际列名为 `idempotency_key`，不需要新增迁移。`webhook_deliveries.app_id` 指向应用上的单个 Webhook URL；目标设计里的 `webhook_endpoints` 尚未拆出，因此没有 `endpoint_id`。投递状态为 `pending` / `delivered` / `failed`。
 
 ### 4.6 开放平台与用量
 
@@ -182,12 +211,12 @@ connector_instances（本实例运行状态）
 | `api_apps` | 调用应用 | `id`, `key`, `name`, `description`, `owner_org_unit_id`, `status`, `scopes_json`, `revision`, `created_by` | `uk_api_apps_key`; `idx_api_apps_org` |
 | `api_keys` | 密钥 | `id`, `app_id`, `name`, `prefix`, `key_hash BINARY(32)`, `scopes_json`, `status`, `expires_at`, `last_used_at`, `revoked_at` | `uk_api_keys_prefix`; `idx_api_keys_app` |
 | `api_quotas` | 应用配额 | `app_id`, `rpm`, `concurrent_runs`, `daily_runs`, `monthly_runs`, `monthly_cost_usd`, `updated_at` | PK(`app_id`) |
-| `webhook_endpoints` | Webhook 配置 | `id`, `app_id`, `url`, `secret_ciphertext`, `secret_key_version`, `events_json`, `status`, `failure_count`, `disabled_at` | `idx_webhooks_app`; `idx_webhooks_status` |
-| `webhook_deliveries` | 投递记录 | `id`, `endpoint_id`, `event_id`, `event_type`, `payload_json`, `status`, `attempts`, `next_attempt_at`, `response_status`, `error_message`, `created_at`, `delivered_at` | `uk_webhook_delivery(endpoint,event)`; `idx_webhook_delivery_due(status,next_attempt_at)` |
+| `message_channels` / `message_channel_versions` | 统一消息渠道（设计增量，未建表），替代原未实现的webhook_endpoints目标 | 配置归属、URL Secret快照、签名引用、渠道版本与legacy App消费者 | 详见本章末Job/消息增量及其唯一字段字典 |
+| `webhook_deliveries` | 现有单App回调历史及过渡兼容镜像 | 当前字段仍为app_id/event_id/payload_json等；新增message_delivery_id后由统一消息服务维护，不再单独派发 | 当前uk(app_id,event_id)保留；统一message_deliveries/attempts见增量设计 |
 | `api_request_logs` | 开放 API 访问日志 | `id`, `app_id`, `key_id`, `method`, `path`, `status_code`, `latency_ms`, `run_id`, `ip`, `user_agent`, `error_code`, `created_at` | PK(`id`,`created_at`)；按月分区；`idx_api_logs_app` |
 | `usage_daily` | 用量聚合 | `date`, `scope_type`, `scope_id`, `runs`, `input_tokens`, `output_tokens`, `cost_usd`, `errors` | PK(`date`,`scope_type`,`scope_id`) |
 
-`key_hash` 使用服务端 pepper 的 HMAC-SHA256；`prefix` 用于定位 Key（前 12–16 字符）。API Key 明文不落库。
+`key_hash` 使用服务端 pepper 的 HMAC-SHA256；`prefix` 用于定位 Key（前 12–16 字符）。API Key 明文不落库。当前MVP实际存储 `key_hash CHAR(64)`，`status=active|revoked`，没有 `revoked_at`；吊销时间从审计读取。创建可设置未来 `expires_at`，轮换继承旧Key的Scope及有效期，重叠只缩短旧Key有效期；到期在鉴权时实时判定，无需改写状态。生命周期接口见[管理API第18节](../03-api/admin-api.md#18-api-key-生命周期2026-10-31-已实现增量fr-op-02)。
 
 ### 4.7 治理、审计与通知
 
@@ -199,14 +228,29 @@ connector_instances（本实例运行状态）
 | `data_policies` | 角色数据策略 | `id`, `role_id`, `resource_type`, `actions_json`, `scope_id`, `effect`, `priority`, `revision` | `uk_data_policies(role,resource,scope,effect)`; `idx_data_policies_role` |
 | `principal_data_grants` | 例外授权/拒绝 | `id`, `principal_type`, `principal_id`, `resource_type`, `actions_json`, `scope_id`, `effect`, `expires_at` | `idx_principal_grants_principal` |
 | `resource_grants` | 单条资源共享（P1） | `id`, `resource_type`, `resource_id`, `principal_type`, `principal_id`, `actions_json`, `expires_at` | `uk_resource_grants`; `idx_resource_grants_resource` |
-| `secrets` | 凭据主记录 | `id`, `key`, `name`, `scope_type`, `scope_id`, `active_version_id`, `status` | `uk_secrets_scope(scope_type,scope_id,key)` |
-| `secret_versions` | 凭据密文版本 | `id`, `secret_id`, `version`, `ciphertext MEDIUMBLOB`, `nonce`, `tag`, `key_version`, `created_by`, `created_at` | `uk_secret_versions(secret_id,version)` |
+| `secrets` | 凭据主记录 | `id`, `key`, `name`, `scope_type`, `scope_id`, `active_version_id`, `status` | `uk_secrets_scope(scope_type,scope_resource_type,scope_id,key)` |
+| `secret_versions` | 凭据密文版本 | `id`, `secret_id`, `version`, `ciphertext MEDIUMBLOB`, `nonce`, `tag`, `encrypted_dek`, `dek_nonce`, `dek_tag`, `key_version`, `created_by`, `created_at` | `uk_secret_versions(secret_id,version)` |
 | `audit_logs` | 审计 | `id`, `actor_type`, `actor_id`, `action`, `resource_type`, `resource_id`, `before_json`, `after_json`, `ip`, `user_agent`, `trace_id`, `request_id`, `created_at` | PK(`id`,`created_at`)；按月分区；`idx_audit_resource`; `idx_audit_actor` |
 | `settings` | 系统设置 | `scope_type`, `scope_id`, `key`, `value_json`, `updated_by`, `updated_at` | PK(`scope_type`,`scope_id`,`key`) |
 | `notifications` | 站内通知 | `id`, `user_id`, `type`, `title`, `body`, `resource_type`, `resource_id`, `read_at`, `created_at` | `idx_notifications_user(user_id,read_at)` |
 | `outbox_events` | 可靠事件派发 | `id`, `topic`, `payload_json`, `status`, `attempts`, `available_at`, `created_at`, `processed_at` | `idx_outbox_due(status,available_at)` |
 
 `audit_logs` 只追加；应用不提供更新/删除 API。合规删除通过分区 DROP 或归档流程完成。
+
+### 4.7.1 E1 凭据库实际数据字典（010）
+
+当前共37张表；`0002_secret_vault.sql`由唯一迁移器映射`010_secret_vault`。009的18表清单固定，不随新表变化。010只增表/列；旧列保留供兼容读取，业务回填由独立`secrets:migrate`执行，不与结构迁移混做。
+
+| 表 | 已实现字段与约束 |
+| --- | --- |
+| `secrets` | `id CHAR(26) ascii_bin` PK；`key VARCHAR(64)`、`name(128)`、`description(1024)`；`scope_type(32)`=`platform/org/resource`，`scope_id CHAR(26) ascii_bin NOT NULL DEFAULT ''`，`scope_resource_type(32) NOT NULL DEFAULT ''`；`owner_org_unit_id/created_by/active_version_id CHAR(26) ascii_bin NULL`；`status(16)`=`active/disabled/deleted`，`revision INT UNSIGNED DEFAULT 1`，UTC毫秒创建/更新/删除时间。唯一`(scope_type,scope_resource_type,scope_id,key)`避免NULL唯一键漏洞；索引`(owner_org_unit_id,status,id)`、`(created_by,status,id)` |
+| `secret_versions` | `id` PK、`secret_id` FK RESTRICT；`version INT UNSIGNED`，唯一`(secret_id,version)`；`ciphertext MEDIUMBLOB`、`nonce VARBINARY(12)`、`tag VARBINARY(16)`；`encrypted_dek VARBINARY(32)`、`dek_nonce(12)`、`dek_tag(16)`、`key_version VARCHAR(64)`；创建人/时间；索引`(key_version,id)`。每版本独立DEK，AAD绑定Secret ID、版本和不可变作用域；仅DEK包装允许运维重包裹 |
+| `resource_references` | 通用引用字段加`binding_key VARCHAR(255) NOT NULL`，唯一`(from_type,from_id,binding_key)`；索引`(to_type,to_id)`及`(from_type,from_id)`。当前只实现Secret目标及`api-key/webhook/header:<lowercase>`槽位，其他依赖引用仍属后续阶段 |
+| `llm_providers` | 增`secret_id CHAR(26) ascii_bin NULL`及`header_secret_refs_json JSON NULL`；原`api_key_encrypted/headers_json`兼容保留 |
+| `mcp_servers/tool_sources` | 增`header_secret_refs_json JSON NULL`；非空字面Header新写全部转资源作用域Secret，空Header值可保留字面空串 |
+| `api_apps` | 增`webhook_secret_id CHAR(26) ascii_bin NULL`；原`webhook_secret_encrypted`兼容保留 |
+
+`platform`的scope_id与scope_resource_type存空串，接口scope为`{type:"platform"}`；org仅精确组织，resource仅精确类型/ID。元数据SQL按owner_org/created_by过滤，运行不返回密文和DEK。父资源CAS、Secret创建/引用与审计同事务；绑定/删除以同一Secret行锁防竞态，替换引用只按已存在主键删除以避免空范围间隙锁。软删除保留所有版本/审计；被引用不能删除；运维迁移也覆盖已软删MCP历史但不恢复其运行可见性。运维边界及旧密钥退役见[凭据维护](../06-operations/secrets.md)。
 
 ### 4.8 知识库、定时任务与评测
 
@@ -694,3 +738,26 @@ WHERE id=? AND status='pending' AND revision=?;
 - [ ] 分区表跨月自动创建；过期分区可安全 DROP。
 - [ ] 备份恢复演练通过，主密钥可正确解密凭据。
 - [ ] 关键查询走索引，无全表扫描；慢查询有监控。
+
+## 账号生命周期增量（011）
+
+users保留删除行，status=deleted并释放登录标识，历史主体ID不变；idp_subject/idp_issuer采用utf8mb4_0900_bin，旧issuer为空需管理员明确绑定。新增auth_login_limits仅存HMAC摘要、计数和UTC窗口；audit_logs新增actor_name快照、outcome和检索索引。Drizzle 0003对应迁移011；未部署。详细字段、事务和保留见[开发设计](../../.talking-us/2026-11-01-forge-identity-design.md)。
+
+## 012 全局角色与功能权限
+
+Drizzle `0004_roles.sql` 对应唯一迁移 `012_roles`，新增4表，当前Schema共42表。roles：id CHAR(26) ascii_bin、key VARCHAR(32)唯一且不可变、name128、description1024、builtin TINYINT、status active/disabled/deleted、revision UINT、UTC created/updated DATETIME(3)。permissions：key64主键、domain32、kind16、description128；仅代码当前支持的权限目录与内部平台通配符。role_permissions：role_id+permission_key复合主键，restrict外键到roles/permissions。role_bindings：id、role_id restrict外键、principal_type24、principal_id ASCII ID、scope_type16、scope_id ASCII VARCHAR(26)非NULL默认空串、created_at；唯一(role,principal,scope_type,scope_id)，主体检索索引(principal_type,principal_id)。本增量仅接受global+空scope_id，不用NULL破坏唯一性。
+
+所有新表显式InnoDB/utf8mb4_0900_ai_ci；DDL恢复及列/默认值/索引/外键校验完成后再标记迁移。角色默认模板按首次插入初始化，已有空权限/停用/自定义配置不覆盖；目录元数据可刷新。users.role/service_accounts.role仍是主角色Key，不删旧字段或改现有数据归属。删除账号清除其附加绑定，历史账号ID及操作日志保留；角色删除仅在无有效账号、服务账号、绑定、映射、策略引用后标deleted，保留代码与历史。授权变化与成功审计同事务。
+
+SQL相关子查询在同一次身份/列表查询生成角色、有效权限与全部配置权限快照；不使用GROUP_CONCAT、不逐用户补查、不在列表全量读取后过滤。既有实际数据范围尚未替换为完整策略模型。详细字段/生命周期和验收见[U03设计](../../.talking-us/2026-11-01-forge-roles-design.md)。
+
+
+## 013/014 Job基础开发批次（仅隔离库已执行）
+
+013_job_message_permissions只同步新增Job、消息、人工及评测功能目录，沿用现有initializeRoles逻辑，保留已维护的角色矩阵，不给旧非管理员角色追加权限。
+
+014_job_core_expand对应Drizzle `0005_job_core_expand.sql`，新增job_definitions、job_definition_versions、job_app_grants、job_executions、job_steps、job_step_attempts、job_events、outbox_events。完整字段/约束以[本增量字典](../../.talking-us/20261101-113405-Forge后台优化与Job消息管理-数据库设计文档.md)第3节、4.2节为准；实际DDL与Drizzle同步，显式InnoDB/utf8mb4及标识二进制排序、COMMENT、状态CHECK、RESTRICT外键。迁移以冻结的job-core-shape.json检查列/默认值/索引/FK/CHECK/字符集，不接受同名错误结构；断点后可继续，DDL自动提交不宣称事务回滚。
+
+受理事务使用READ COMMITTED，Job父行锁串行化同业务受理/发布，执行/初始根步骤/首事件/outbox/审计/HTTP幂等响应在同一连接提交；仅派生初始根节点，后续map/循环按需展开仍待运行时接入。业务去重不随HTTP缓存过期消失。列表/详情要求QueryFilter，在SQL中组合allow、deny和外部上限，NULL匹配按FALSE；查询游标签名并绑定筛选与范围。完整E1策略求值与外部身份装配尚未接入，不能把过滤编译器当成完整权限系统。
+
+真实MySQL8.4技术验证已覆盖断点/重跑/空库与升级同形、错误CHECK/默认值/索引拒绝、受理并发/去重/回滚/队列上限。MySQL8.0.30版本兼容、EXPLAIN代表规模、生产迁移、旧计划/App/投递回填及消息实体均待实施/验证；本批不切换现有worker或旧Webhook发送链，不产生真实外部副作用。回退保留新增Schema，不向原MVP代码开放Job记录；后续正式切换仍须兼容版及只读窗口。

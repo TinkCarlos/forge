@@ -25,7 +25,7 @@ async function login(name: string, principal: Pick<Principal, "role" | "orgUnitI
 const post = (who: string, agentRoleCode: string) =>
   app.inject({ method: "POST", url: "/admin/api/role-mappings", headers: headers[who]!, payload: { agentRoleCode, agentRoleName: "IT rm", localRole: "user" } });
 const mappings = (c: string) => query("SELECT agent_role_code, local_role FROM oidc_role_mappings WHERE agent_role_code = ?", [c]);
-const audits = async () => Number((await query<{ n: number }>(`SELECT COUNT(*) AS n FROM audit_logs WHERE action = 'role_mapping.upsert' AND actor_id IN (${actors.map(() => "?").join(",")})`, actors))[0]!.n);
+const audits = async () => Number((await query<{ n: number }>(`SELECT COUNT(*) AS n FROM audit_logs WHERE outcome = 'success' AND action = 'role_mapping.upsert' AND actor_id IN (${actors.map(() => "?").join(",")})`, actors))[0]!.n);
 
 beforeAll(async () => {
   app = await buildApp({ logger: false });

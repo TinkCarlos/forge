@@ -40,7 +40,7 @@ beforeAll(async () => {
   const session = await realSession({ name: "IT headers", role: "platform_admin", orgUnitId: ROOT, dataScope: "all" });
   headers = sessionHeaders(session, sessionCookieValue(session));
   ids.agent = await repos.createAgent({ key: `it-hdr-${suffix}`, name: "IT hdr", ownerOrgUnitId: ROOT, createdBy: ADMIN_ID });
-  ids.version = await repos.createAgentVersion({ agentId: ids.agent, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID });
+  ids.version = await repos.createAgentVersion({ agentId: ids.agent, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID }, { expectedRevision: "system" });
   ids.thread = await repos.createThread({ agentId: ids.agent, orgUnitId: ROOT, subjectType: "user", subjectId: ADMIN_ID });
   ids.run = await repos.createRun({ threadId: ids.thread, agentId: ids.agent, agentVersionId: ids.version, orgUnitId: ROOT, subjectType: "user", subjectId: ADMIN_ID, input: { text: "x" }, status: "succeeded" });
 });

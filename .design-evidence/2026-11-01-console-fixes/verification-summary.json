@@ -1,0 +1,59 @@
+{
+  "console": {
+    "files": 54,
+    "tests": 586,
+    "status": "passed"
+  },
+  "changedLint": "passed",
+  "typecheck": "passed",
+  "build": "passed",
+  "consoleBuild": "passed",
+  "smoke": [
+    {
+      "check": "smoke",
+      "exitCode": 0
+    },
+    {
+      "check": "smoke:sso",
+      "exitCode": 0
+    }
+  ],
+  "fullRepo": {
+    "lint": "failed: 34 no-floating-promises errors in ongoing Job/message UI",
+    "tests": {
+      "passed": 2261,
+      "failed": 25,
+      "filesFailed": 10,
+      "failureNames": [
+        "tests/api-key-contracts.test.ts > keeps credential metadata and write-only value OpenAPI in sync",
+        "tests/audit-scope.test.ts > audit department sources > every resourceType written by the API or transactional repositories has a scope classification",
+        "tests/body-additional-properties.test.ts > P1: write body schemas are closed (admin / console) and undeclared fields are rejected > the scan sees every write route (guards the regex; update the counts with a new route)",
+        "tests/body-additional-properties.test.ts > P1: write body schemas are closed (admin / console) and undeclared fields are rejected > every write route registers a body schema",
+        "tests/body-additional-properties.test.ts > P1: write body schemas are closed (admin / console) and undeclared fields are rejected > every admin / console write route is closed; only the listed external routes are open, each with a reason",
+        "tests/input-schema.test.ts > route schemas are JSON schema with bounds everywhere > every string has maxLength and every array has maxItems",
+        "tests/message-api.test.ts > explicit test requires active channel/CSRF/ETag/idempotency and records a read-back technical message",
+        "tests/message-api.test.ts > enforces deny policies on message metadata and independently redacts source payload",
+        "tests/message-delivery.test.ts > sends the exact frozen webhook bytes and signature; automatic retry retains identity and appends attempts",
+        "tests/message-delivery.test.ts > makes WeCom transport ambiguity unknown without auto-retry and requires duplicate acknowledgment for a new cycle",
+        "tests/message-delivery.test.ts > stops dispatch authorization after disable and never releases held history just by enabling",
+        "tests/message-delivery.test.ts > retains real in-flight success after cancel and preserves first success across explicit replay",
+        "tests/message-delivery.test.ts > recovers submitted WeCom leases as unknown and records late evidence without changing a newer cycle",
+        "tests/message-delivery.test.ts > deduplicates a lost test response and rejects changed content under the same key",
+        "tests/message-delivery.test.ts > holds old destinations after address changes, rejects missing historical confirmation and purged payload replay",
+        "tests/message-delivery.test.ts > does not auto-release in-flight failures after disable and re-enable",
+        "tests/message-delivery.test.ts > preserves unknown duplicate risk through cancel and later cycles",
+        "tests/message-delivery.test.ts > scopes idempotency to each channel and each logical delivery",
+        "tests/message-fanout.test.ts > retains an explicit failed record for an oversized rendered custom template without sending",
+        "tests/route-body-fields.test.ts > body fields read by handlers are declared and typed > every property of every body schema declares a type (recursively)",
+        "tests/route-schema-coverage.test.ts > every route with a body / querystring schema rejects invalid input with 400 (attachValidation backstop) > each one answers 400 CFG-8501 to an invalid request from an authorised caller",
+        "tests/route-schema-coverage.test.ts > every route with a body / querystring schema rejects invalid input with 400 (attachValidation backstop) > P1: each admin / console body route rejects an otherwise valid body with one undeclared field: 400 CFG-8501 field=__undeclared",
+        "tests/route-schema-coverage.test.ts > every route with a body / querystring schema rejects invalid input with 400 (attachValidation backstop) > F1: 403 before 400 - a session without the permission gets 403 POL-2001 for the same invalid body",
+        "tests/route-schema-coverage.test.ts > every route with a body / querystring schema rejects invalid input with 400 (attachValidation backstop) > F1: an over-long path id is 404 (not 400) even with an invalid body",
+        "tests/routes.test.ts > route set > matches the 109-route baseline (including API Key rotate/revoke; excluding auto HEAD and /assets/*)"
+      ]
+    },
+    "integrationScript": "not-configured",
+    "contractScript": "not-configured"
+  },
+  "diffCheckExit": 0
+}

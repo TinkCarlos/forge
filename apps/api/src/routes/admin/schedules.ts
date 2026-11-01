@@ -1,4 +1,4 @@
-import { type FastifyInstance, type FastifyRequest } from "fastify";
+import { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import type { Session } from "@forge/identity";
 import { CronExpressionParser } from "cron-parser";
 import { errors, ForgeError, normalizeCron, storedJsonValue, type Principal } from "@forge/core";
@@ -12,6 +12,8 @@ import {
   jsonBody,
   admin,
   writeAudit,
+  configurationWrite,
+  configurationResult,
   agentAccessible,
   requireBodyString,
 } from "../../plugins/http-helpers.js";
@@ -21,8 +23,8 @@ import { ROUTE_SCHEMAS, assertScheduleTiming, assertValidInput, isValidCron } fr
 async function requireUsableServiceAccount(principal: Principal, id: string) {
   const account = await repos.getServiceAccount(id);
   if (!account || !inOrgScope(await orgScopeIds(principal), account.org_unit_id)) throw errors.notFound("服务账号不存在");
-  if (account.status !== "active") throw new ForgeError("SCD-4801", "服务账号已停用", 409);
-  if (account.role === "platform_admin") throw new ForgeError("SCD-4804", "不能绑定 platform_admin 角色的服务账号", 400);
+  if (account.status !== "active") throw new ForgeError("SCD-4801", { message: "服务账号已停用", httpStatus: 409, retryable: false });
+  if (account.role === "platform_admin") throw new ForgeError("SCD-4804", { message: "不能绑定 platform_admin 角色的服务账号", httpStatus: 400, retryable: false });
   return account;
 }
 
@@ -38,7 +40,7 @@ async function loadVisibleScheduleOr404(principal: Principal, id: string): Promi
   return schedule;
 }
 
-type ScheduleByIdContext = { request: FastifyRequest; session: Session; schedule: Record<string, unknown> };
+type ScheduleByIdContext = { request: FastifyRequest; reply: FastifyReply; session: Session; schedule: Record<string, unknown> };
 
 /**
  * The only way to register a `/admin/api/schedules/:id...` route: checks the permission, then loads the schedule
@@ -56,10 +58,10 @@ function scheduleByIdRoute(
     method,
     url: `/admin/api/schedules/:id${suffix}`,
     ...(options.schema ? { schema: options.schema, attachValidation: true } : {}),
-    handler: async (request) => {
+    handler: async (request, reply) => {
       const session = await admin(request, permission);
       const schedule = await loadVisibleScheduleOr404(session.principal, param(request, "id"));
-      return handler({ request, session, schedule });
+      return handler({ request, reply, session, schedule });
     },
   });
 }
@@ -86,9 +88,10 @@ export default async function adminScheduleRoutes(app: FastifyInstance): Promise
   });
 
   // Detail: same permission and data scope as the list (invisible and nonexistent -> identical 404), same item shape.
-  scheduleByIdRoute(app, "GET", "", "schedule.view", async ({ schedule }) => {
+  scheduleByIdRoute(app, "GET", "", "schedule.view", async ({ schedule, reply }) => {
     const row = await repos.getScheduleListRow(String(schedule.id));
     if (!row) throw errors.notFound("定时任务不存在");
+    configurationResult(reply, Number(row.revision));
     return presentScheduleExtras(row);
   });
 
@@ -125,7 +128,7 @@ export default async function adminScheduleRoutes(app: FastifyInstance): Promise
     return { id };
   });
 
-  scheduleByIdRoute(app, "PATCH", "", "schedule.manage", async ({ request, session, schedule }) => {
+  scheduleByIdRoute(app, "PATCH", "", "schedule.manage", async ({ request, reply, session, schedule }) => {
     const body = bodyOf(request);
     // F3 (P1): status is not editable here; enabling / disabling only through /enable (stored cron, SCD-4801 service
     // account, next_run_at) and /disable. Any status in the body -> 400 CFG-8501, nothing stored.
@@ -151,16 +154,15 @@ export default async function adminScheduleRoutes(app: FastifyInstance): Promise
     if ((input.cron !== undefined || input.timezone !== undefined) && schedule.status === "active") {
       fields.next_run_at = CronExpressionParser.parse(cron, { currentDate: new Date(), tz: timezone }).next().toDate();
     }
-    await repos.updateSchedule(schedule.id as string, fields);
-    await writeAudit(session, "schedule.update", "schedule", String(schedule.id), maskArgsDeep(fields));
-    return { ok: true };
+    const revision = await repos.updateSchedule(schedule.id as string, fields, configurationWrite(request, session, "schedule.update", "schedule", String(schedule.id), maskArgsDeep(fields), schedule.org_unit_id as string | null));
+    return configurationResult(reply, revision);
   }, { schema: ROUTE_SCHEMAS.schedulePatch });
 
-  scheduleByIdRoute(app, "POST", "/enable", "schedule.manage", async ({ request, session, schedule }) => {
+  scheduleByIdRoute(app, "POST", "/enable", "schedule.manage", async ({ request, reply, session, schedule }) => {
     assertValidInput(request);
     if (schedule.service_account_id) {
       const account = await repos.getServiceAccount(String(schedule.service_account_id));
-      if (!account || account.status !== "active") throw new ForgeError("SCD-4801", "服务账号已停用，不能启用定时任务", 409);
+      if (!account || account.status !== "active") throw new ForgeError("SCD-4801", { message: "服务账号已停用，不能启用定时任务", httpStatus: 409, retryable: false });
     }
     // I-SCH-12: a cron / timezone stored before validation existed -> 400 CFG-8501, nothing changes (was 500).
     // A legacy macro (@daily, ...) is normalized first, then checked, and its 5-field form is stored with the enable.
@@ -168,19 +170,17 @@ export default async function adminScheduleRoutes(app: FastifyInstance): Promise
     const cron = normalizeCron(storedCron);
     assertScheduleTiming(cron, String(schedule.timezone));
     const next = CronExpressionParser.parse(cron, { currentDate: new Date(), tz: String(schedule.timezone) }).next().toDate();
-    await repos.updateSchedule(String(schedule.id), { status: "active", next_run_at: next, ...(cron !== storedCron ? { cron } : {}) });
-    await writeAudit(session, "schedule.enable", "schedule", String(schedule.id), { nextRunAt: next });
-    return { ok: true };
+    const revision = await repos.updateSchedule(String(schedule.id), { status: "active", next_run_at: next, ...(cron !== storedCron ? { cron } : {}) }, configurationWrite(request, session, "schedule.enable", "schedule", String(schedule.id), { nextRunAt: next }, schedule.org_unit_id as string | null));
+    return configurationResult(reply, revision);
   }, { schema: ROUTE_SCHEMAS.noBody });
 
-  scheduleByIdRoute(app, "POST", "/disable", "schedule.manage", async ({ request, session, schedule }) => {
+  scheduleByIdRoute(app, "POST", "/disable", "schedule.manage", async ({ request, reply, session, schedule }) => {
     assertValidInput(request);
-    await repos.updateSchedule(String(schedule.id), { status: "disabled", next_run_at: null });
-    await writeAudit(session, "schedule.disable", "schedule", String(schedule.id));
-    return { ok: true };
+    const revision = await repos.updateSchedule(String(schedule.id), { status: "disabled", next_run_at: null }, configurationWrite(request, session, "schedule.disable", "schedule", String(schedule.id), undefined, schedule.org_unit_id as string | null));
+    return configurationResult(reply, revision);
   }, { schema: ROUTE_SCHEMAS.noBody });
 
-  scheduleByIdRoute(app, "POST", "/run", "schedule.run", async ({ request, session, schedule }) => {
+  scheduleByIdRoute(app, "POST", "/run", "schedule.run", async ({ request, reply, session, schedule }) => {
     assertValidInput(request);
     const agent = await repos.getAgent(String(schedule.agent_id));
     if (!agent?.published_version_id) throw errors.invalid("Agent 尚未发布");
@@ -189,7 +189,7 @@ export default async function adminScheduleRoutes(app: FastifyInstance): Promise
     // Identity re-read live (S-45): unusable -> 409 SCD-4801 / SCD-4804, database error -> 503 SYS-9003.
     const principal = await resolveScheduleIdentity(schedule);
     if (String(schedule.concurrency_policy ?? "skip") === "skip" && (await repos.hasInFlightScheduleRun(String(schedule.id)))) {
-      throw new ForgeError("SCD-4802", "该定时任务已有运行中的 Run（并发策略 skip）", 409);
+      throw new ForgeError("SCD-4802", { message: "该定时任务已有运行中的 Run（并发策略 skip）", httpStatus: 409, retryable: false });
     }
     const runId = await createQueuedRun({
       agentId: agent.id,

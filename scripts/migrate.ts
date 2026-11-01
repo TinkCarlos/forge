@@ -1,7 +1,15 @@
+import {applyRunThreadProtocol} from "../packages/store/src/migrations/run-thread-protocol.js";
+import {applyMessageManagement} from "../packages/store/src/migrations/message-management.js";
 import fs from "node:fs";
 import path from "node:path";
 import mysql, { type Connection } from "mysql2/promise";
-import { config } from "@forge/core";
+import { config, ForgeError, sha256 } from "@forge/core";
+import { applySecretVault } from "../packages/store/src/migrations/secret-vault.js";
+import { applyJobCore } from "../packages/store/src/migrations/job-core.js";
+import { initializeRoles } from "../packages/store/src/role-defaults.js";
+import { applyRoles } from "../packages/store/src/migrations/roles.js";
+import { applyIdentityLifecycle } from "../packages/store/src/migrations/identity-lifecycle.js";
+import { applyConfigurationRevision } from "../packages/store/src/migrations/configuration-revision.js";
 import { requireScriptDatabase } from "./db-guard.js";
 import { applyToolSideEffects } from "./migrate-008.js";
 
@@ -194,7 +202,12 @@ async function applyAuthSessions(conn: Connection): Promise<void> {
   await conn.query(AUTH_OIDC_STATES_DDL);
 }
 
+let migrationLocked = false;
+const lockName = `forge:migrate:${sha256(dbUrl.pathname).slice(0, 40)}`;
 try {
+  const [lockRows] = await connection.query("SELECT GET_LOCK(?, 10) AS acquired", [lockName]);
+  migrationLocked = Number((lockRows as Array<{ acquired: number }>)[0]?.acquired) === 1;
+  if (!migrationLocked) throw new ForgeError("SYS-9003", { message: "另一个迁移进程正在执行" });
   await connection.query(
     "CREATE TABLE IF NOT EXISTS schema_migrations (version VARCHAR(128) NOT NULL PRIMARY KEY, applied_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
   );
@@ -266,6 +279,55 @@ try {
   } else {
     console.log("Migration 008_tool_side_effects already applied");
   }
+  if (!applied.has("009_configuration_revision")) {
+    await applyConfigurationRevision(connection);
+    await connection.query("INSERT INTO schema_migrations (version) VALUES (?)", ["009_configuration_revision"]);
+    console.log("Migration 009_configuration_revision applied");
+  } else console.log("Migration 009_configuration_revision already applied");
+  if (!applied.has("010_secret_vault")) {
+    await applySecretVault(connection);
+    await connection.query("INSERT INTO schema_migrations (version) VALUES (?)", ["010_secret_vault"]);
+    console.log("Migration 010_secret_vault applied");
+  } else console.log("Migration 010_secret_vault already applied");
+  if (!applied.has("011_identity_lifecycle")) {
+    await applyIdentityLifecycle(connection);
+    await connection.query("INSERT INTO schema_migrations (version) VALUES (?)", ["011_identity_lifecycle"]);
+    console.log("Migration 011_identity_lifecycle applied");
+  } else console.log("Migration 011_identity_lifecycle already applied");
+  if (!applied.has("012_roles")) {
+    await applyRoles(connection);
+    await connection.query("INSERT INTO schema_migrations (version) VALUES (?)", ["012_roles"]);
+    console.log("Migration 012_roles applied");
+  } else console.log("Migration 012_roles already applied");
+
+  if (!applied.has("013_job_message_permissions")) {
+    await initializeRoles(connection);
+    await connection.query("INSERT INTO schema_migrations (version) VALUES (?)", ["013_job_message_permissions"]);
+    console.log("Migration 013_job_message_permissions applied");
+  } else console.log("Migration 013_job_message_permissions already applied");
+
+  if (!applied.has("014_job_core_expand")) {
+    await applyJobCore(connection);
+    await connection.query("INSERT INTO schema_migrations (version) VALUES (?)", ["014_job_core_expand"]);
+    console.log("Migration 014_job_core_expand applied");
+  } else console.log("Migration 014_job_core_expand already applied");
+
+  if (!applied.has("015_message_management_expand")) {
+    await applyMessageManagement(connection);
+    await connection.query("INSERT INTO schema_migrations (version) VALUES (?)", ["015_message_management_expand"]);
+    console.log("Migration 015_message_management_expand applied");
+  } else console.log("Migration 015_message_management_expand already applied");
+
+  if (!applied.has("016_run_thread_protocol")) {
+    await applyRunThreadProtocol(connection);
+    await connection.query("INSERT INTO schema_migrations (version) VALUES (?)", ["016_run_thread_protocol"]);
+    console.log("Migration 016_run_thread_protocol applied");
+  } else console.log("Migration 016_run_thread_protocol already applied");
+
 } finally {
-  await connection.end();
+  try {
+    if (migrationLocked) await connection.query("SELECT RELEASE_LOCK(?)", [lockName]);
+  } finally {
+    await connection.end();
+  }
 }

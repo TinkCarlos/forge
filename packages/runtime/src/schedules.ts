@@ -1,5 +1,5 @@
 import { CronExpressionParser } from "cron-parser";
-import { errors, ForgeError, normalizeCron, storedJsonValue, type DataScope, type Principal, type Role } from "@forge/core";
+import { errors, ForgeError, readAuthorization, hasPermission, normalizeCron, storedJsonValue, type DataScope, type Principal, type Role } from "@forge/core";
 import { repos, type ServiceAccountRow } from "@forge/store";
 import { assertAgentPluginUsable, createQueuedRun } from "./loop.js";
 
@@ -26,16 +26,17 @@ export type ScheduleTriggerResult =
 export function buildScheduleIdentity(schedule: Record<string, unknown>, account: ServiceAccountRow | null): Principal {
   if (schedule.service_account_id) {
     if (!account || account.id !== String(schedule.service_account_id)) {
-      throw new ForgeError(SCHEDULE_PAUSED_CODE, "定时任务绑定的服务账号不可用", 409);
+      throw new ForgeError(SCHEDULE_PAUSED_CODE, { message: "定时任务绑定的服务账号不可用", httpStatus: 409, retryable: false });
     }
     if (account.role === "platform_admin") {
-      throw new ForgeError(SCHEDULE_FORBIDDEN_ROLE_CODE, "服务账号不能以 platform_admin 身份运行定时任务", 409);
+      throw new ForgeError(SCHEDULE_FORBIDDEN_ROLE_CODE, { message: "服务账号不能以 platform_admin 身份运行定时任务", httpStatus: 409, retryable: false });
     }
     return {
       type: "service",
       id: account.id,
       name: account.name,
       role: account.role as Role,
+      permissions:readAuthorization(account.authorization_json).permissions,
       orgUnitId: account.org_unit_id,
       dataScope: account.data_scope as DataScope,
     };
@@ -68,12 +69,19 @@ export async function resolveScheduleIdentity(schedule: Record<string, unknown>)
   };
   if (schedule.service_account_id) {
     const account = await lookup(() => repos.getActiveServiceAccountById(String(schedule.service_account_id)));
-    return buildScheduleIdentity(schedule, account);
+    const principal=buildScheduleIdentity(schedule,account);
+    if(!hasPermission(principal,"agent.run"))throw new ForgeError(SCHEDULE_PAUSED_CODE,{message:"服务账号没有 Agent 运行权限"});
+    return principal;
   }
   const userId = String(schedule.subject_type ?? "") === "user" ? schedule.subject_id : schedule.created_by;
   const user = userId ? await lookup(() => repos.getActiveUserById(String(userId))) : null;
-  if (!user) throw new ForgeError(SCHEDULE_PAUSED_CODE, "定时任务的运行身份不可用", 409);
-  return buildScheduleIdentity(schedule, null);
+  if (!user) throw new ForgeError(SCHEDULE_PAUSED_CODE, { message: "定时任务的运行身份不可用", httpStatus: 409, retryable: false });
+  const legacyRole=await lookup(()=>repos.getRoleByKey("user"));
+  const current=readAuthorization(user.authorization_json).permissions;
+  const permissions=legacyRole?.status==="active" ? legacyRole.permissions_json.filter(code=>current.includes("*")||current.includes(code)) : [];
+  const principal={...buildScheduleIdentity(schedule,null),permissions};
+  if(!hasPermission(principal,"agent.run"))throw new ForgeError(SCHEDULE_PAUSED_CODE,{message:"定时任务身份没有 Agent 运行权限"});
+  return principal;
 }
 
 /** Triggers one due schedule row. Failures are recorded on the schedule (failure_count, last_error_code) and stop it. */
@@ -86,17 +94,17 @@ export async function triggerSchedule(schedule: Record<string, unknown>, now = n
     try {
       // Legacy rows may hold a macro (@daily, @MIDNIGHT, ...): same normalizer as the API write side.
       const cron = normalizeCron(String(schedule.cron ?? ""));
-      if (!cron) throw new Error("empty cron");
+      if (!cron) throw new ForgeError("CFG-8501", { message: "empty cron" });
       nextSlot = CronExpressionParser.parse(cron, { currentDate: now, tz: String(schedule.timezone ?? "Asia/Shanghai") }).next().toDate();
     } catch {
-      await repos.recordScheduleFailure(scheduleId, SCHEDULE_TRIGGER_FAILED_CODE);
+      await repos.recordScheduleFailure(scheduleId, SCHEDULE_TRIGGER_FAILED_CODE, Number(schedule.revision));
       return { kind: "failed", code: SCHEDULE_TRIGGER_FAILED_CODE };
     }
     const nextRunAt = () => nextSlot;
     const agentId = String(schedule.agent_id);
     const agent = await repos.getAgent(agentId);
     if (!agent || agent.status !== "active" || !agent.published_version_id) {
-      await repos.recordScheduleFailure(scheduleId, SCHEDULE_PAUSED_CODE);
+      await repos.recordScheduleFailure(scheduleId, SCHEDULE_PAUSED_CODE, Number(schedule.revision));
       return { kind: "paused", code: SCHEDULE_PAUSED_CODE };
     }
     let principal: Principal;
@@ -105,13 +113,13 @@ export async function triggerSchedule(schedule: Record<string, unknown>, now = n
     } catch (error) {
       // Identity refused (unusable account/user/department chain, or platform_admin account): pause.
       if (error instanceof ForgeError && (error.code === SCHEDULE_PAUSED_CODE || error.code === SCHEDULE_FORBIDDEN_ROLE_CODE)) {
-        await repos.recordScheduleFailure(scheduleId, error.code);
+        await repos.recordScheduleFailure(scheduleId, error.code, Number(schedule.revision));
         return { kind: "paused", code: error.code };
       }
       // Database error during the identity lookup: fail only this trigger, keep the schedule active.
       if (error instanceof ForgeError && error.code === "SYS-9003") {
         try {
-          await repos.recordScheduleTriggerError(scheduleId, SCHEDULE_TRIGGER_FAILED_CODE, nextRunAt());
+          await repos.recordScheduleTriggerError(scheduleId, SCHEDULE_TRIGGER_FAILED_CODE, nextRunAt(), Number(schedule.revision));
         } catch {
           // database still down: nothing recorded; the row stays due and is retried on the next tick
         }
@@ -125,12 +133,12 @@ export async function triggerSchedule(schedule: Record<string, unknown>, now = n
       await assertAgentPluginUsable(agentId);
     } catch (error) {
       if (!(error instanceof ForgeError) || error.code !== "CFG-8503") throw error;
-      await repos.recordScheduleTriggerError(scheduleId, error.code, nextRunAt());
+      await repos.recordScheduleTriggerError(scheduleId, error.code, nextRunAt(), Number(schedule.revision));
       return { kind: "failed", code: error.code };
     }
     // concurrency_policy: only 'skip' (the default) is implemented; other values currently behave as before (always enqueue).
     if (String(schedule.concurrency_policy ?? "skip") === "skip" && (await repos.hasInFlightScheduleRun(scheduleId))) {
-      await repos.updateSchedule(scheduleId, { next_run_at: nextRunAt() });
+      await repos.advanceScheduleClock(scheduleId, nextRunAt(), Number(schedule.revision));
       return { kind: "skipped", reason: "concurrency" };
     }
     const runId = await createQueuedRun({
@@ -141,11 +149,11 @@ export async function triggerSchedule(schedule: Record<string, unknown>, now = n
       triggerType: "schedule",
       triggerRef: scheduleId,
     });
-    await repos.markScheduleRun(scheduleId, nextRunAt(), runId);
+    await repos.markScheduleRun(scheduleId, nextRunAt(), runId, Number(schedule.revision));
     return { kind: "run", runId };
   } catch (error) {
     const code = error instanceof ForgeError ? error.code : SCHEDULE_TRIGGER_FAILED_CODE;
-    await repos.recordScheduleFailure(scheduleId, code);
+    await repos.recordScheduleFailure(scheduleId, code, Number(schedule.revision));
     return { kind: "failed", code };
   }
 }

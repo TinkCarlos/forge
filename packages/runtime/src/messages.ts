@@ -22,5 +22,5 @@ export async function appendMessage(run: RunRow, role: string, content: Record<s
       if (!isRetryableWrite(error)) throw error;
     }
   }
-  throw new ForgeError("SYS-9001", "消息序号分配失败", 500);
+  throw new ForgeError("SYS-9001", { message: "消息序号分配失败", httpStatus: 500, retryable: false });
 }

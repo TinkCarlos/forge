@@ -54,9 +54,9 @@ beforeAll(async () => {
   const pa = await realSession({ name: "IT om", role: "platform_admin", orgUnitId: ROOT, dataScope: "all" });
   adminHeaders = sessionHeaders(pa, sessionCookieValue(pa));
   ids.agent = await repos.createAgent({ key: `it-om-${suffix}`, name: "IT om", ownerOrgUnitId: ROOT, createdBy: ADMIN_ID });
-  await repos.updateAgent(ids.agent, { api_enabled: 1 });
-  ids.version = await repos.createAgentVersion({ agentId: ids.agent, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID });
-  await repos.publishAgentVersion(ids.agent, ids.version);
+  await repos.updateAgent(ids.agent, { api_enabled: 1 }, { expectedRevision: "system" });
+  ids.version = await repos.createAgentVersion({ agentId: ids.agent, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID }, { expectedRevision: "system" });
+  await repos.publishAgentVersion(ids.agent, ids.version, { expectedRevision: "system" });
   ids.user = await repos.createUser({ email: `it-om-${suffix}@forge.local`, username: `it-om-${suffix}`, displayName: "IT om", role: "operator", dataScope: "org", orgUnitId: ROOT, idpSubject: `it-om-${suffix}` });
   ids.app = await repos.createApiApp({ key: `it-om-${suffix}`, name: "IT om", ownerOrgUnitId: ROOT, scopes: ["runs:read"] });
   openKey = `fsk_${randomBytes(32).toString("base64url")}`;

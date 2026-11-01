@@ -1,6 +1,7 @@
 import { type FastifyInstance } from "fastify";
 import { APPROVAL_NOT_PENDING_CODE, errors, ForgeError } from "@forge/core";
-import { assertRunAccess, buildArgsPreview, canAccessRun, maskArgsDeep, runFilterFor } from "@forge/governance";
+import { assertPermission, assertRunAccess, buildArgsPreview, canAccessRun, maskArgsDeep, runFilterFor } from "@forge/governance";
+import { readSignedSessionCookie } from "@forge/identity";
 import { cancelRun, describeTickError, executeRun, isRunFinished, RUN_FINISHED_CODE } from "@forge/runtime";
 import { repos } from "@forge/store";
 import {
@@ -60,7 +61,12 @@ export default async function adminRunRoutes(app: FastifyInstance): Promise<void
     const session = await admin(request, "run.view");
     const run = await repos.getRun(param(request, "id"));
     await assertRunAccess(session.principal, run);
-    await streamRun(request, reply, run!.id);
+    await streamRun(request, reply, run!.id, async () => {
+      const live = await readSignedSessionCookie(request.cookies.forge_session);
+      if (!live) throw errors.unauthorized();
+      assertPermission(live.principal, "run.view");
+      await assertRunAccess(live.principal, await repos.getRun(run!.id));
+    });
   });
 
   app.post("/admin/api/runs/:id/cancel", { schema: ROUTE_SCHEMAS.noBody, attachValidation: true }, async (request) => {
@@ -100,18 +106,18 @@ export default async function adminRunRoutes(app: FastifyInstance): Promise<void
     const comment = typeof body.comment === "string" ? body.comment : undefined;
     // P3-02 / r5 §2.7: an approval that is no longer pending (approved / rejected / expired) -> 409 APR-2104 whatever
     // the Run's status; the approval state is checked before the Run state.
-    if (approval.status !== "pending") throw new ForgeError(APPROVAL_NOT_PENDING_CODE, "审批已处理或已过期", 409);
+    if (approval.status !== "pending") throw new ForgeError(APPROVAL_NOT_PENDING_CODE, { message: "审批已处理或已过期", httpStatus: 409, retryable: false });
     // I-APR-38: the Run already ended -> the approval is no longer operable (pending -> expired), 409 RUN-7005, no audit,
     // no executeRun. Checked here at the API, not in the loop.
     if (isRunFinished(run.status)) {
       await repos.expirePendingApproval(approval.id);
-      throw new ForgeError(RUN_FINISHED_CODE, "Run 已结束，审批不可操作", 409);
+      throw new ForgeError(RUN_FINISHED_CODE, { message: "Run 已结束，审批不可操作", httpStatus: 409, retryable: false });
     }
     const ok = await repos.decideApproval(approval.id, decision, session.principal.id, comment ?? "");
     if (!ok) {
       // Lost a concurrent decision, or (r5 §2.3) still pending but past expires_at: mark it expired (no-op otherwise).
       await repos.expireOverdueApproval(approval.id);
-      throw new ForgeError(APPROVAL_NOT_PENDING_CODE, "审批已处理或已过期", 409);
+      throw new ForgeError(APPROVAL_NOT_PENDING_CODE, { message: "审批已处理或已过期", httpStatus: 409, retryable: false });
     }
     await writeAudit(session, "approval.decide", "approval", approval.id, { decision });
     // Fire-and-forget like the worker (K-20): a rejected executeRun is logged (sanitized), never an unhandled rejection.

@@ -2,7 +2,8 @@
 // (e.g. the database is down) is caught and logged instead of becoming an unhandled rejection that exits the process,
 // and consecutive failures back off exponentially (1s, 2s, 4s, ... capped at 30s) so an outage does not flood the log
 // (OPS-004). A success resets the backoff. No global unhandledRejection handler is installed on purpose.
-// Pure module: no imports, injectable clock and logger, so it is unit-testable without a database.
+// Only pure masking rules are imported; clock and logger stay injectable without a database.
+import { maskProseSecrets } from "@forge/governance/sensitive";
 
 export const TICK_BACKOFF_MIN_MS = 1_000;
 export const TICK_BACKOFF_MAX_MS = 30_000;
@@ -43,7 +44,7 @@ const BARE_SECRET = new RegExp(`((?:^|[^\\w?&;#.-])(?:${BARE_KEY})=)(?!\\[REDACT
  * survive half-masked.
  */
 export function redactCredentials(message: string): string {
-  return message
+  const redacted = message
     .replace(URL_USERINFO, `$1${REDACTED}@`)
     .replace(BARE_USERINFO, `$1${REDACTED}@`)
     .replace(JSON_SECRET, `$1${REDACTED}"`)
@@ -51,6 +52,8 @@ export function redactCredentials(message: string): string {
     .replace(AUTH_HEADER, `$1${REDACTED}`)
     .replace(SENSITIVE_QUERY, `$1${REDACTED}`)
     .replace(BARE_SECRET, `$1${REDACTED}`);
+  return redacted.split(/((?:(?:Bearer|bearer|BEARER|Basic)\s+)?\[REDACTED\])/g)
+    .map((part, index) => index % 2 ? part : maskProseSecrets(part)).join("");
 }
 
 const truncate = (text: string): string => (text.length > 300 ? `${text.slice(0, 300)}…` : text);

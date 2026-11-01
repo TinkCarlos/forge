@@ -1,3 +1,4 @@
+import { configurationHeaders } from "./helpers/configuration-headers.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
@@ -29,8 +30,8 @@ beforeAll(async () => {
   const builder: Principal = { type: "user", id: `it-builder-${suffix}`, name: "IT Builder", role: "builder", orgUnitId: "01J00000000000000000000000", dataScope: "org" };
   builderSession = await realSession(builder);
   agentId = await repos.createAgent({ key: `it-sa-agent-${suffix}`, name: "IT SA agent", ownerOrgUnitId: ORG, createdBy: ADMIN_ID });
-  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID });
-  await repos.publishAgentVersion(agentId, versionId);
+  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID }, { expectedRevision: "system" });
+  await repos.publishAgentVersion(agentId, versionId, { expectedRevision: "system" });
   builderHeaders = { cookie: `forge_session=${sessionCookieValue(builderSession)}`, "x-csrf-token": builderSession.csrfToken };
 });
 
@@ -74,7 +75,7 @@ describe("service accounts admin API", () => {
     const get = await app.inject({ method: "GET", url: `/admin/api/service-accounts/${id}`, headers: adminHeaders });
     expect(get.json()).toMatchObject({ id, key: `it-svc-${suffix}`, role: "operator", dataScope: "org", status: "active" });
 
-    const disable = await app.inject({ method: "PATCH", url: `/admin/api/service-accounts/${id}`, headers: adminHeaders, payload: { status: "disabled" } });
+    const disable = await app.inject({ method: "PATCH", url: `/admin/api/service-accounts/${id}`, headers: await configurationHeaders(`/admin/api/service-accounts/${id}`, adminHeaders), payload: { status: "disabled" } });
     expect(disable.statusCode).toBe(200);
     const after = await app.inject({ method: "GET", url: `/admin/api/service-accounts/${id}`, headers: adminHeaders });
     expect(after.json()).toMatchObject({ status: "disabled" });
@@ -89,7 +90,7 @@ describe("service accounts admin API", () => {
     const first = await bad({ key, name: "dup" });
     createdAccounts.push((first.json() as { id: string }).id);
     expect((await bad({ key, name: "dup" })).statusCode).toBe(409);
-    const patch = await app.inject({ method: "PATCH", url: `/admin/api/service-accounts/${createdAccounts.at(-1)}`, headers: adminHeaders, payload: { status: "paused" } });
+    const patch = await app.inject({ method: "PATCH", url: `/admin/api/service-accounts/${createdAccounts.at(-1)}`, headers: await configurationHeaders(`/admin/api/service-accounts/${createdAccounts.at(-1)}`, adminHeaders), payload: { status: "paused" } });
     expect(patch.statusCode).toBe(400);
   });
 
@@ -109,7 +110,7 @@ describe("schedule binding to a service account", () => {
     app.inject({ method: "POST", url: "/admin/api/schedules", headers: adminHeaders, payload: { agentId, cron: "0 9 * * 1", timezone: "Asia/Shanghai", ...payload } });
   const newAccount = async (status: "active" | "disabled", orgUnitId = ORG): Promise<string> => {
     const id = await repos.createServiceAccount({ key: `it-sa-bind-${suffix}-${createdAccounts.length}`, name: "IT bind", orgUnitId, createdBy: ADMIN_ID });
-    if (status === "disabled") await repos.updateServiceAccount(id, { status: "disabled" });
+    if (status === "disabled") await repos.updateServiceAccount(id, { status: "disabled" }, { expectedRevision: "system" });
     createdAccounts.push(id);
     return id;
   };
@@ -141,16 +142,16 @@ describe("schedule binding to a service account", () => {
     expect(item).toMatchObject({ serviceAccountId: accountId, failureCount: 0, lastErrorCode: null });
 
     const disabledId = await newAccount("disabled");
-    const patchBad = await app.inject({ method: "PATCH", url: `/admin/api/schedules/${id}`, headers: adminHeaders, payload: { serviceAccountId: disabledId } });
+    const patchBad = await app.inject({ method: "PATCH", url: `/admin/api/schedules/${id}`, headers: await configurationHeaders(`/admin/api/schedules/${id}`, adminHeaders), payload: { serviceAccountId: disabledId } });
     expect(patchBad.statusCode).toBe(409);
     const otherId = await newAccount("active");
-    const patchOk = await app.inject({ method: "PATCH", url: `/admin/api/schedules/${id}`, headers: adminHeaders, payload: { serviceAccountId: otherId } });
+    const patchOk = await app.inject({ method: "PATCH", url: `/admin/api/schedules/${id}`, headers: await configurationHeaders(`/admin/api/schedules/${id}`, adminHeaders), payload: { serviceAccountId: otherId } });
     expect(patchOk.statusCode).toBe(200);
     expect((await repos.getSchedule(id))!.service_account_id).toBe(otherId);
 
     // enabling a schedule whose account is disabled is refused
-    await repos.updateServiceAccount(otherId, { status: "disabled" });
-    const enable = await app.inject({ method: "POST", url: `/admin/api/schedules/${id}/enable`, headers: adminHeaders, payload: {} });
+    await repos.updateServiceAccount(otherId, { status: "disabled" }, { expectedRevision: "system" });
+    const enable = await app.inject({ method: "POST", url: `/admin/api/schedules/${id}/enable`, headers: await configurationHeaders(`/admin/api/schedules/${id}/enable`, adminHeaders), payload: {} });
     expect(enable.statusCode).toBe(409);
   });
 });
@@ -166,7 +167,7 @@ describe("manual schedule run (POST /admin/api/schedules/:id/run)", () => {
   });
   const account = async (status: "active" | "disabled"): Promise<string> => {
     const id = await repos.createServiceAccount({ key: `it-sa-run-${suffix}-${createdAccounts.length}`, name: "IT run-as", orgUnitId: ACCOUNT_ORG, role: "operator", dataScope: "org", createdBy: ADMIN_ID });
-    if (status === "disabled") await repos.updateServiceAccount(id, { status: "disabled" });
+    if (status === "disabled") await repos.updateServiceAccount(id, { status: "disabled" }, { expectedRevision: "system" });
     createdAccounts.push(id);
     return id;
   };
@@ -179,7 +180,7 @@ describe("manual schedule run (POST /admin/api/schedules/:id/run)", () => {
     createdSchedules.push(id);
     return id;
   };
-  const run = (id: string): Promise<LightMyRequestResponse> => app.inject({ method: "POST", url: `/admin/api/schedules/${id}/run`, headers: adminHeaders, payload: {} });
+  const run = async (id: string): Promise<LightMyRequestResponse> => app.inject({ method: "POST", url: `/admin/api/schedules/${id}/run`, headers: await configurationHeaders(`/admin/api/schedules/${id}/run`, adminHeaders), payload: {} });
 
   it("runs as the bound service account, not the clicking admin", async () => {
     const accountId = await account("active");
@@ -235,14 +236,15 @@ describe("service accounts may not be platform_admin", () => {
     const ok = await app.inject({ method: "POST", url: "/admin/api/service-accounts", headers: adminHeaders, payload: { key: `it-sa-pa2-${suffix}`, name: "op", role: "operator" } });
     const id = (ok.json() as { id: string }).id;
     createdAccounts.push(id);
-    const patch = await app.inject({ method: "PATCH", url: `/admin/api/service-accounts/${id}`, headers: adminHeaders, payload: { role: "platform_admin" } });
+    const patch = await app.inject({ method: "PATCH", url: `/admin/api/service-accounts/${id}`, headers: await configurationHeaders(`/admin/api/service-accounts/${id}`, adminHeaders), payload: { role: "platform_admin" } });
     expect(patch.statusCode).toBe(400);
     expect(errorCode(patch)).toBe("SCD-4804");
     expect((await repos.getServiceAccount(id))!.role).toBe("operator");
   });
 
   it("binding a schedule (POST/PATCH) to a platform_admin account -> 400 SCD-4804; manual run of such a legacy row -> 409 SCD-4804", async () => {
-    const paId = await repos.createServiceAccount({ key: `it-sa-pa-legacy-${suffix}`, name: "Legacy PA", orgUnitId: ORG, role: "platform_admin", dataScope: "all", createdBy: ADMIN_ID });
+    const paId = await repos.createServiceAccount({ key: `it-sa-pa-legacy-${suffix}`, name: "Legacy PA", orgUnitId: ORG, role: "user", dataScope: "all", createdBy: ADMIN_ID });
+    await execute("UPDATE service_accounts SET role='platform_admin' WHERE id=?",[paId]);
     createdAccounts.push(paId);
     const post = await app.inject({ method: "POST", url: "/admin/api/schedules", headers: adminHeaders, payload: { agentId, cron: "0 9 * * 1", key: `it-sa-pa-sch-${suffix}`, serviceAccountId: paId } });
     expect(post.statusCode).toBe(400);
@@ -255,14 +257,14 @@ describe("service accounts may not be platform_admin", () => {
       cron: "0 9 * * 1", timezone: "Asia/Shanghai", input: { text: "x" }, createdBy: ADMIN_ID,
     });
     createdSchedules.push(scheduleId);
-    const patch = await app.inject({ method: "PATCH", url: `/admin/api/schedules/${scheduleId}`, headers: adminHeaders, payload: { serviceAccountId: paId } });
+    const patch = await app.inject({ method: "PATCH", url: `/admin/api/schedules/${scheduleId}`, headers: await configurationHeaders(`/admin/api/schedules/${scheduleId}`, adminHeaders), payload: { serviceAccountId: paId } });
     expect(patch.statusCode).toBe(400);
     expect(errorCode(patch)).toBe("SCD-4804");
     expect((await repos.getSchedule(scheduleId))!.service_account_id).toBe(okAccount);
 
     // legacy row bound to a platform_admin account (bypassing the API)
     await execute("UPDATE schedules SET service_account_id = ? WHERE id = ?", [paId, scheduleId]);
-    const run = await app.inject({ method: "POST", url: `/admin/api/schedules/${scheduleId}/run`, headers: adminHeaders, payload: {} });
+    const run = await app.inject({ method: "POST", url: `/admin/api/schedules/${scheduleId}/run`, headers: await configurationHeaders(`/admin/api/schedules/${scheduleId}/run`, adminHeaders), payload: {} });
     expect(run.statusCode).toBe(409);
     expect(errorCode(run)).toBe("SCD-4804");
     expect((await repos.listRuns({ limit: 200 })).some((r) => r.trigger_ref === scheduleId)).toBe(false);
@@ -289,8 +291,8 @@ describe("manual run respects schedule data scope", () => {
     });
     createdSchedules.push(scheduleId);
     const foreign = await operatorHeaders("01J0000000000000000000OTHR");
-    const hidden = await app.inject({ method: "POST", url: `/admin/api/schedules/${scheduleId}/run`, headers: foreign, payload: {} });
-    const missing = await app.inject({ method: "POST", url: `/admin/api/schedules/sch_missing_${suffix}/run`, headers: foreign, payload: {} });
+    const hidden = await app.inject({ method: "POST", url: `/admin/api/schedules/${scheduleId}/run`, headers: await configurationHeaders(`/admin/api/schedules/${scheduleId}/run`, foreign), payload: {} });
+    const missing = await app.inject({ method: "POST", url: `/admin/api/schedules/sch_missing_${suffix}/run`, headers: await configurationHeaders(`/admin/api/schedules/sch_missing_${suffix}/run`, foreign), payload: {} });
     expect(hidden.statusCode).toBe(404);
     expect(missing.statusCode).toBe(404);
     const strip = (res: LightMyRequestResponse) => {
@@ -300,7 +302,7 @@ describe("manual run respects schedule data scope", () => {
     expect(strip(hidden)).toEqual(strip(missing));
     expect((await repos.listRuns({ limit: 200 })).some((r) => r.trigger_ref === scheduleId)).toBe(false);
 
-    const sameOrg = await app.inject({ method: "POST", url: `/admin/api/schedules/${scheduleId}/run`, headers: await operatorHeaders(ORG), payload: {} });
+    const sameOrg = await app.inject({ method: "POST", url: `/admin/api/schedules/${scheduleId}/run`, headers: await configurationHeaders(`/admin/api/schedules/${scheduleId}/run`, await operatorHeaders(ORG)), payload: {} });
     expect(sameOrg.statusCode).toBe(200);
   });
 });
@@ -332,7 +334,7 @@ describe("every /admin/api/schedules/:id route loads through one data scope (inv
     return rest;
   };
   const auditCount = async (scheduleId: string) =>
-    (await query<{ n: number }>("SELECT COUNT(*) AS n FROM audit_logs WHERE resource_type = 'schedule' AND resource_id = ?", [scheduleId]))[0]!.n;
+    (await query<{ n: number }>("SELECT COUNT(*) AS n FROM audit_logs WHERE outcome = 'success' AND resource_type = 'schedule' AND resource_id = ?", [scheduleId]))[0]!.n;
 
   const routes: Array<{ name: string; method: "PATCH" | "POST"; suffix: string; role: "builder" | "operator"; payload: Record<string, unknown> }> = [
     { name: "PATCH /:id", method: "PATCH", suffix: "", role: "builder", payload: { name: "renamed" } },
@@ -356,7 +358,7 @@ describe("every /admin/api/schedules/:id route loads through one data scope (inv
       expect(await auditCount(scheduleId)).toBe(0);
       expect((await repos.listRuns({ limit: 200 })).some((r) => r.trigger_ref === scheduleId)).toBe(false);
 
-      const sameOrg = await app.inject({ method: route.method, url: `/admin/api/schedules/${scheduleId}${route.suffix}`, headers: await headersFor(route.role, ORG), payload: route.payload });
+      const sameOrg = await app.inject({ method: route.method, url: `/admin/api/schedules/${scheduleId}${route.suffix}`, headers: await configurationHeaders(`/admin/api/schedules/${scheduleId}${route.suffix}`, await headersFor(route.role, ORG)), payload: route.payload });
       expect(sameOrg.statusCode).toBe(200);
     });
   }
@@ -414,7 +416,7 @@ describe("every /admin/api/schedules/:id route loads through one data scope (inv
 
   it("platform_admin (dataScope all) manual run on another department's schedule is not scope-restricted -> 200", async () => {
     const scheduleId = await makeSchedule(OTHER_ORG, "scope-admin-run");
-    const res = await app.inject({ method: "POST", url: `/admin/api/schedules/${scheduleId}/run`, headers: adminHeaders, payload: {} });
+    const res = await app.inject({ method: "POST", url: `/admin/api/schedules/${scheduleId}/run`, headers: await configurationHeaders(`/admin/api/schedules/${scheduleId}/run`, adminHeaders), payload: {} });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ trigger: "schedule" });
     expect(await auditCount(scheduleId)).toBe(1);

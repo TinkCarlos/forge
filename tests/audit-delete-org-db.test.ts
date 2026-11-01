@@ -1,3 +1,4 @@
+import { configurationHeaders } from "./helpers/configuration-headers.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance } from "fastify";
@@ -28,7 +29,7 @@ async function headersFor(role: "platform_admin" | "org_admin", orgUnitId: strin
   return sessionHeaders(session, sessionCookieValue(session));
 }
 async function visibleActions(headers: Record<string, string>, resourceId: string): Promise<string[]> {
-  const res = await app.inject({ method: "GET", url: "/admin/api/audit?limit=500", headers });
+  const res = await app.inject({ method: "GET", url: "/admin/api/audit?limit=200", headers });
   expect(res.statusCode).toBe(200);
   return (res.json() as { items: Array<{ resource_id?: string; resourceId?: string; action: string }> }).items
     .filter((row) => (row.resource_id ?? row.resourceId) === resourceId)
@@ -66,7 +67,7 @@ afterAll(async () => {
 
 describe("delete / deactivate audit rows keep their department", () => {
   it("plugin.uninstall (the delete-class route on 058c1fc, platform-level): row NULL, visible to dataScope all only", async () => {
-    const res = await app.inject({ method: "POST", url: `/admin/api/plugins/${ids.plugin}/uninstall`, headers: pa });
+    const res = await app.inject({ method: "POST", url: `/admin/api/plugins/${ids.plugin}/uninstall`, headers: await configurationHeaders(`/admin/api/plugins/${ids.plugin}/uninstall`, pa) });
     expect(res.statusCode).toBe(200);
     const row = await one<{ org_unit_id: string | null; resource_id: string }>("SELECT org_unit_id, resource_id FROM audit_logs WHERE action = 'plugin.uninstall' AND resource_id = ?", [ids.plugin]);
     expect(row).toEqual({ org_unit_id: null, resource_id: ids.plugin });
@@ -75,7 +76,7 @@ describe("delete / deactivate audit rows keep their department", () => {
   });
 
   it("schedule.disable in department D: row records D at write time; D's org_admin sees it, S's does not, also after the schedule row is gone", async () => {
-    const res = await app.inject({ method: "POST", url: `/admin/api/schedules/${ids.schedule}/disable`, headers: pa });
+    const res = await app.inject({ method: "POST", url: `/admin/api/schedules/${ids.schedule}/disable`, headers: await configurationHeaders(`/admin/api/schedules/${ids.schedule}/disable`, pa) });
     expect(res.statusCode).toBe(200);
     const rows = await query<{ org_unit_id: string | null }>("SELECT org_unit_id FROM audit_logs WHERE action = 'schedule.disable' AND resource_id = ?", [ids.schedule]);
     expect(rows).toEqual([{ org_unit_id: D }]);

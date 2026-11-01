@@ -112,7 +112,7 @@ beforeAll(async () => {
     spec: { model: { provider: PROVIDER_KEY, model: "stub-1" }, toolsets: [{ openapi: SOURCE_KEY }] },
     status: "published",
     createdBy: ADMIN_ID,
-  });
+  }, { expectedRevision: "system" });
 });
 afterEach(() => resetDrain());
 afterAll(async () => {

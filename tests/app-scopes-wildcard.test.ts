@@ -1,3 +1,4 @@
+import { configurationHeaders } from "./helpers/configuration-headers.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
@@ -78,7 +79,7 @@ describe("P2 scopes containing `*` cannot be saved; stored `*` is never a wildca
 
   it.each(WILDCARDS.map((s) => [JSON.stringify(s), s]))("WC-01 PATCH /admin/api/apps/:id scopes=%s -> 400 CFG-8501, stored scopes unchanged", async (_label, scopes) => {
     const before = await appRow(baseAppId);
-    const res = await app.inject({ method: "PATCH", url: `/admin/api/apps/${baseAppId}`, headers, payload: { scopes } });
+    const res = await app.inject({ method: "PATCH", url: `/admin/api/apps/${baseAppId}`, headers: await configurationHeaders(`/admin/api/apps/${baseAppId}`, headers), payload: { scopes } });
     expect(res.statusCode, res.body).toBe(400);
     expect(errorOf(res).code).toBe("CFG-8501");
     expect(errorOf(res).details?.field).toBe(`scopes.${scopes.findIndex((s) => s.includes("*"))}`);
@@ -90,14 +91,14 @@ describe("P2 scopes containing `*` cannot be saved; stored `*` is never a wildca
     expect(created.statusCode, created.body).toBe(200);
     const id = (created.json() as { id: string }).id;
     expect(JSON.parse((await appRow(id))!.scopes)).toEqual(["agents:read", "runs:create"]);
-    const patched = await app.inject({ method: "PATCH", url: `/admin/api/apps/${id}`, headers, payload: { scopes: ["runs:read"] } });
+    const patched = await app.inject({ method: "PATCH", url: `/admin/api/apps/${id}`, headers: await configurationHeaders(`/admin/api/apps/${id}`, headers), payload: { scopes: ["runs:read"] } });
     expect(patched.statusCode, patched.body).toBe(200);
     expect(JSON.parse((await appRow(id))!.scopes)).toEqual(["runs:read"]);
   });
 
   it("WC-02 POST /admin/api/apps/:id/keys with scopes [\"*\"] -> 400 CFG-8501, no Key created", async () => {
     const before = await keyCount(baseAppId);
-    const res = await app.inject({ method: "POST", url: `/admin/api/apps/${baseAppId}/keys`, headers, payload: { name: "wc", scopes: ["*"] } });
+    const res = await app.inject({ method: "POST", url: `/admin/api/apps/${baseAppId}/keys`, headers: await configurationHeaders(`/admin/api/apps/${baseAppId}/keys`, headers), payload: { name: "wc", scopes: ["*"] } });
     expect(res.statusCode, res.body).toBe(400);
     expect(errorOf(res).code).toBe("CFG-8501");
     expect(JSON.stringify(res.json())).not.toContain("fsk_");
@@ -125,14 +126,14 @@ describe("P2 scopes containing `*` cannot be saved; stored `*` is never a wildca
 
   it("WC-04 legacy app with stored `runs:*`: re-saving its scopes -> 400 details.field scopes.N; dropping that item saves; PATCH without scopes unaffected", async () => {
     const { appId } = await legacyApp("legacy-resave", ["agents:read", "runs:*"], ["agents:read"]);
-    const resave = await app.inject({ method: "PATCH", url: `/admin/api/apps/${appId}`, headers, payload: { scopes: ["agents:read", "runs:*"] } });
+    const resave = await app.inject({ method: "PATCH", url: `/admin/api/apps/${appId}`, headers: await configurationHeaders(`/admin/api/apps/${appId}`, headers), payload: { scopes: ["agents:read", "runs:*"] } });
     expect(resave.statusCode, resave.body).toBe(400);
     expect(errorOf(resave).code).toBe("CFG-8501");
     expect(errorOf(resave).details?.field).toBe("scopes.1");
     expect(JSON.parse((await appRow(appId))!.scopes)).toEqual(["agents:read", "runs:*"]);
-    const other = await app.inject({ method: "PATCH", url: `/admin/api/apps/${appId}`, headers, payload: { description: "wc" } });
+    const other = await app.inject({ method: "PATCH", url: `/admin/api/apps/${appId}`, headers: await configurationHeaders(`/admin/api/apps/${appId}`, headers), payload: { description: "wc" } });
     expect(other.statusCode, other.body).toBe(200);
-    const fixed = await app.inject({ method: "PATCH", url: `/admin/api/apps/${appId}`, headers, payload: { scopes: ["agents:read", "runs:create"] } });
+    const fixed = await app.inject({ method: "PATCH", url: `/admin/api/apps/${appId}`, headers: await configurationHeaders(`/admin/api/apps/${appId}`, headers), payload: { scopes: ["agents:read", "runs:create"] } });
     expect(fixed.statusCode, fixed.body).toBe(200);
     expect(JSON.parse((await appRow(appId))!.scopes)).toEqual(["agents:read", "runs:create"]);
   });

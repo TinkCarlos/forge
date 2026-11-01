@@ -1,0 +1,40 @@
+{
+  "startedAt": "2026-11-01T07:27:36.849539+00:00",
+  "browser": {
+    "taskSpaceId": 38,
+    "finished": true,
+    "keptPages": []
+  },
+  "processes": {
+    "mock": {
+      "pid": 4652,
+      "pgid": 4652,
+      "signal": "SIGTERM",
+      "stopped": true
+    },
+    "api": {
+      "pid": 3839,
+      "pgid": 3839,
+      "signal": "SIGTERM",
+      "stopped": true
+    }
+  },
+  "databases": {
+    "forge_job_message_gates_20261101_1445_test": {
+      "dropped": true
+    },
+    "forge_job_message_smoke_gates_20261101_1445_test": {
+      "dropped": true
+    },
+    "forge_job_message_node24_gates_20261101_test": {
+      "dropped": true
+    }
+  },
+  "temporaryDatabaseGrantsAdded": false,
+  "productionTouched": false,
+  "databaseAbsenceVerified": true,
+  "completedAt": "2026-11-01T07:27:37.719722+00:00",
+  "temporaryDirectoryRemoved": true,
+  "privateLoginFileRemoved": true,
+  "durableArchive": "/Users/libo/projects/forge/.closed-loop/tasks/20261101-job-message/quality-reports/20261101-console-followup-gates"
+}

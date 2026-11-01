@@ -1,3 +1,4 @@
+import { assertPermission } from "@forge/governance";
 import {
   APPROVAL_EXPIRED_CODE,
   config,
@@ -361,7 +362,7 @@ export async function runClaimed(claimed: ClaimedRun, workerId = currentWorkerId
         await runLoop(run, workerId, lease.signal, drain.signal);
       } catch (error) {
         if (lease.signal.aborted || error instanceof LeaseLostError) return;
-        const forgeError = error instanceof ForgeError ? error : new ForgeError("SYS-9001", String(error), 500);
+        const forgeError = error instanceof ForgeError ? error : new ForgeError("SYS-9001", { message: String(error), httpStatus: 500, retryable: false });
         const fresh = await repos.getRun(run.id);
         if (fresh && !TERMINAL.includes(fresh.status)) {
           await finalize(fresh, "failed", null, forgeError.code, forgeError.message).catch((failure: unknown) => {
@@ -426,13 +427,13 @@ export function isRunFinished(status: string): boolean {
 export async function cancelRun(runId: string): Promise<void> {
   const run = await repos.getRun(runId);
   if (!run) return;
-  if (TERMINAL.includes(run.status)) throw new ForgeError(RUN_FINISHED_CODE, "Run 已结束，不能取消", 409, { status: run.status });
+  if (TERMINAL.includes(run.status)) throw new ForgeError(RUN_FINISHED_CODE, { message: "Run 已结束，不能取消", httpStatus: 409, details: { status: run.status }, retryable: false });
   // r6 decide-cancel-race: a cancel of a Run that has not finished is never refused. Committed under the Run's row lock
   // (serialized with decideApproval): a decision committed first is kept and the executing Run stops once the tool
   // call in hand has ended (cancelledAfterTools); a cancel committed first makes the decision lose (409 APR-2104).
   const requested = await repos.requestCancelSerialized(runId);
   if (requested.result === "missing") return;
-  if (requested.result === "finished") throw new ForgeError(RUN_FINISHED_CODE, "Run 已结束，不能取消", 409, { status: requested.status });
+  if (requested.result === "finished") throw new ForgeError(RUN_FINISHED_CODE, { message: "Run 已结束，不能取消", httpStatus: 409, details: { status: requested.status }, retryable: false });
   if (requested.status === "queued" || requested.status === "waiting_approval") {
     // Nobody executes it: finished here (claimRun no longer claims a waiting Run with the cancel flag). The cancel is
     // committed either way; if finishing fails, the worker's cancel sweep finishes the Run (never left to a re-cancel).
@@ -468,7 +469,7 @@ export const AGENT_STATUSES = ["active", "disabled"] as const;
 
 /** Run entry points refuse an Agent whose status is not active (I-AGT-11): 409 CFG-8503, checked before any Run or audit is written. */
 export function assertAgentRunnable(agent: { status?: unknown }): void {
-  if (agent.status !== "active") throw new ForgeError("CFG-8503", "Agent 已停用，不能运行", 409);
+  if (agent.status !== "active") throw new ForgeError("CFG-8503", { message: "Agent 已停用，不能运行", httpStatus: 409, retryable: false });
 }
 
 /**
@@ -476,7 +477,7 @@ export function assertAgentRunnable(agent: { status?: unknown }): void {
  * 409 CFG-8503, before any Run is written. The agent row is not changed; once the manifest is fixed the agent runs again.
  */
 export async function assertAgentPluginUsable(agentId: string): Promise<void> {
-  if ((await repos.unusablePluginResourceIds()).agents.has(agentId)) throw new ForgeError("CFG-8503", "Agent 所属插件不可用，不能运行", 409);
+  if ((await repos.unusablePluginResourceIds()).agents.has(agentId)) throw new ForgeError("CFG-8503", { message: "Agent 所属插件不可用，不能运行", httpStatus: 409, retryable: false });
 }
 
 export async function createQueuedRun(input: {
@@ -489,45 +490,20 @@ export async function createQueuedRun(input: {
   triggerRef?: string | null;
   threadId?: string | null;
 }): Promise<string> {
+  if(input.principal.type!=="app")assertPermission(input.principal,"agent.run");
   const agent = await repos.getAgent(input.agentId);
   if (!agent) throw errors.notFound("Agent 不存在");
   await assertAgentPluginUsable(agent.id); // item F: every entry (admin, /open, /integration, schedules) goes through here
-  let threadId = input.threadId?.trim() || "";
-  if (threadId) {
-    const thread = await repos.getThread(threadId);
-    const sameSubject = thread && String(thread.agent_id) === input.agentId && String(thread.subject_type) === input.principal.type && String(thread.subject_id) === input.principal.id;
-    if (!sameSubject) throw errors.notFound("会话不存在");
-  } else {
-    threadId = await repos.createThread({
-      agentId: input.agentId,
-      orgUnitId: input.principal.orgUnitId,
-      subjectType: input.principal.type,
-      subjectId: input.principal.id,
-      title: typeof input.input === "object" && input.input && "text" in input.input ? String((input.input as Record<string, unknown>).text).slice(0, 80) : "",
-    });
-  }
-  const runId = await repos.createRun({
-    threadId,
-    agentId: input.agentId,
-    agentVersionId: input.versionId,
-    appId: input.appId ?? null,
-    orgUnitId: input.principal.orgUnitId,
-    subjectType: input.principal.type,
-    subjectId: input.principal.id,
-    triggerType: input.triggerType ?? "manual",
-    triggerRef: input.triggerRef ?? null,
+  return repos.admitRun({
+    threadId: input.threadId?.trim() || null,
+    agentId: input.agentId, agentVersionId: input.versionId,
+    appId: input.appId ?? null, orgUnitId: input.principal.orgUnitId,
+    subjectType: input.principal.type, subjectId: input.principal.id,
+    triggerType: input.triggerType ?? "manual", triggerRef: input.triggerRef ?? null,
     input: input.input,
+    title: typeof input.input === "object" && input.input && "text" in input.input ? String((input.input as Record<string, unknown>).text).slice(0, 80) : "",
+    message: {text:userMessageText(input.input)},
   });
-  const text = userMessageText(input.input);
-  await repos.addMessage({
-    threadId,
-    runId,
-    seq: 1,
-    role: "user",
-    content: { text },
-  });
-  await emit(runId, "run.queued", { status: "queued" });
-  return runId;
 }
 
 /**

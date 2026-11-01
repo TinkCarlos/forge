@@ -86,7 +86,7 @@ class FakeES {
 }
 
 type Resp = { status: number; body?: unknown }
-const SESSION = { csrfToken: 'c', user: { name: 'A', role: 'platform_admin', dataScope: 'all' } }
+const SESSION = { permissions:['*'], csrfToken: 'c', user: { name: 'A', role: 'platform_admin', dataScope: 'all' } }
 const LIST = '/admin/api/approvals'
 const X = 'apr_01M5PK6G1GPZ3APBN3QNXR'
 const Y = 'apr_01M5PK6G1GPZ3APBN3QNXS'
@@ -114,7 +114,7 @@ function approvalsHarness(routes: Record<string, Resp | Resp[]>) {
     return { status: resp.status, ok: resp.status >= 200 && resp.status < 300, text: async () => (resp.body === undefined ? '' : JSON.stringify(resp.body)) }
   }
   const state: Record<string, unknown> = { session: SESSION, tab: 'approvals', approvals: [] }
-  const deps: Record<string, unknown> = {
+  const deps: Record<string, unknown> = { bindConfigurationFields: () => {},
     $: (sel: string) => els[sel] ?? null, document: { querySelectorAll: () => [] }, fetch, state,
     setTimeout: () => 0, clearTimeout: () => {},
     FormData: class { constructor(public f: El) {} get(k: string) { return this.f?._data?.[k] ?? null } },
@@ -122,7 +122,7 @@ function approvalsHarness(routes: Record<string, Resp | Resp[]>) {
     handleSessionExpired: () => {}, showLogin: () => {},
   }
   const names = Object.keys(deps)
-  const fns = ['esc', 'errorText', 'toast', 'api', 'statusPill', 'empty', 'textarea', 'openModal', 'renderApprovals', 'approvalReason', 'attemptText', 'approvalReasonHtml']
+  const fns = ['canPermission', 'esc', 'errorText', 'toast', 'api', 'statusPill', 'empty', 'textarea', 'openModal', 'renderApprovals', 'approvalReason', 'attemptText', 'approvalReasonHtml']
   const consts = ['APPROVAL_STALE_CODES', 'APPROVAL_STALE_TEXT', 'APPROVAL_RUN_FINISHED_TEXT', 'APPROVAL_RESOLVED_EXPIRED_TEXT', 'INTERRUPTED_BADGE_TEXT'].map(constLine).join('\n')
   const src = `${consts}\n${fns.map(fnSource).join('\n')}\n${resolvedSrc()}\nreturn { renderApprovals, onApprovalResolved, ${method('decideApproval')} };`
   const app = new Function(...names, src)(...names.map((n) => deps[n])) as {
@@ -148,8 +148,8 @@ function runHarness(approvals: unknown[], tab = 'approvals') {
   const toastEl = new El('toast hidden')
   const els: Record<string, El> = {}
   const calls: string[] = []
-  const state: Record<string, unknown> = { eventSource: null, runView: null, tab, approvals: [...approvals] }
-  const deps: Record<string, unknown> = {
+  const state: Record<string, unknown> = { session:{permissions:['*']}, eventSource: null, runView: null, tab, approvals: [...approvals] }
+  const deps: Record<string, unknown> = { bindConfigurationFields: () => {},
     state,
     $: (sel: string) => (sel === '#modal' ? modal : sel === '#content' ? content : sel === '#toast' ? toastEl : els[sel.replace(/^#/, '')] ?? null),
     document: { createElement: () => new El() },
@@ -166,7 +166,7 @@ function runHarness(approvals: unknown[], tab = 'approvals') {
   }
   const names = Object.keys(deps)
   const consts = ['RUN_TERMINAL_EVENTS', 'RUN_ACTIVE_STATUSES', 'STREAM_MAX_RETRIES', 'RUN_APPROVAL_EXPIRED_CODE', 'RUN_APPROVAL_EXPIRED_TEXT', 'APPROVAL_RESOLVED_EXPIRED_TEXT', 'INTERRUPTED_BADGE_TEXT'].map(constLine).join('\n')
-  const fns = ['toast', 'isEntityId', 'idSeg', 'esc', 'statusPill', 'empty', 'runMessagesHtml', 'runToolsHtml', 'runToolbarHtml', 'renderRunView', 'renderStreamStatus', 'listenRun', 'connectRunStream', 'syncRunFromRest', 'endRunStream', 'closeStream', 'runFailureText', 'toolInterruptedText', 'runEventText', 'renderApprovals', 'approvalReason', 'attemptText', 'approvalReasonHtml']
+  const fns = ['canPermission', 'toast', 'isEntityId', 'idSeg', 'esc', 'statusPill', 'empty', 'runMessagesHtml', 'runToolsHtml', 'runToolbarHtml', 'renderRunView', 'renderStreamStatus', 'listenRun', 'connectRunStream', 'syncRunFromRest', 'endRunStream', 'closeStream', 'runFailureText', 'toolInterruptedText', 'runEventText', 'renderApprovals', 'approvalReason', 'attemptText', 'approvalReasonHtml']
   const body = `${consts}\n${fns.map(fnSource).join('\n')}\n${resolvedSrc()}\nreturn { ${method('openRun')} };`
   const app = new Function(...names, body)(...names.map((n) => deps[n])) as { openRun(id: string): Promise<void> }
   return {

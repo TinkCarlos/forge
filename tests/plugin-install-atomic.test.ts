@@ -1,3 +1,4 @@
+import { configurationHeaders } from "./helpers/configuration-headers.js";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance } from "fastify";
@@ -40,7 +41,7 @@ afterAll(async () => {
   await app.close();
 });
 
-const install = (payload: unknown) => app.inject({ method: "POST", url: "/admin/api/plugins/install", headers, payload: payload as object });
+const install = async (payload: unknown) => app.inject({ method: "POST", url: "/admin/api/plugins/install", headers: await configurationHeaders("/admin/api/plugins/install", headers), payload: payload as object });
 
 async function residue(tag: string): Promise<Record<string, number>> {
   const like = `it-s29-${tag}%-${suffix}`;
@@ -50,7 +51,7 @@ async function residue(tag: string): Promise<Record<string, number>> {
 const NONE = { agents: 0, skills: 0, mcp: 0, providers: 0, plugins: 0 };
 
 async function audits(action: string): Promise<Array<{ details: unknown }>> {
-  const rows = await query<{ details_json: unknown }>("SELECT details_json FROM audit_logs WHERE actor_id = ? AND action = ? ORDER BY created_at", [session.principal.id, action]);
+  const rows = await query<{ details_json: unknown }>("SELECT details_json FROM audit_logs WHERE actor_id = ? AND action = ? AND outcome = ? ORDER BY created_at", [session.principal.id, action, action.endsWith(".failed") ? "failure" : "success"]);
   return rows.map((r) => ({ details: typeof r.details_json === "string" ? JSON.parse(r.details_json) : r.details_json }));
 }
 

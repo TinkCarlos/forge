@@ -78,7 +78,7 @@ function harness(initial: ReturnType<typeof run>) {
   let pending: ((v: unknown) => void)[] = []
   let deferred = false
   const modal = new El()
-  const state: Record<string, unknown> = { eventSource: null, runView: null }
+  const state: Record<string, unknown> = { session:{permissions:['*']}, eventSource: null, runView: null }
   const deps: Record<string, unknown> = {
     state,
     $: (sel: string) => (sel === '#modal' ? modal : els[sel.replace(/^#/, '')] ?? null),
@@ -104,7 +104,7 @@ function harness(initial: ReturnType<typeof run>) {
   }
   const names = Object.keys(deps)
   const consts = ['RUN_TERMINAL_EVENTS', 'RUN_ACTIVE_STATUSES', 'STREAM_MAX_RETRIES', 'RUN_APPROVAL_EXPIRED_CODE', 'RUN_APPROVAL_EXPIRED_TEXT'].map(constSource).join('\n')
-  const fns = ['isEntityId', 'idSeg', 'esc', 'runMessagesHtml', 'runToolsHtml', 'runFailureText', 'toolInterruptedText', 'runEventText', 'runToolbarHtml', 'renderRunView', 'renderStreamStatus', 'listenRun', 'connectRunStream', 'syncRunFromRest', 'endRunStream', 'closeStream', 'refreshRunStream'].map(fnSource).join('\n')
+  const fns = ['canPermission', 'isEntityId', 'idSeg', 'esc', 'runMessagesHtml', 'runToolsHtml', 'runFailureText', 'toolInterruptedText', 'runEventText', 'runToolbarHtml', 'renderRunView', 'renderStreamStatus', 'listenRun', 'connectRunStream', 'syncRunFromRest', 'endRunStream', 'closeStream', 'refreshRunStream'].map(fnSource).join('\n')
   const body = `${consts}\n${fns}\nreturn { ${method('openRun')}, closeStream, refreshRunStream };`
   const app = new Function(...names, body)(...names.map((n) => deps[n])) as { openRun(id: string): Promise<void>; closeStream(): void; refreshRunStream(): Promise<void> }
   return {

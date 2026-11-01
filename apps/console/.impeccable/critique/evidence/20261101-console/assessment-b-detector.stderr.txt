@@ -1,0 +1,1 @@
+impeccable detect: could not read linked stylesheet /assets/styles.css (resolved to /Users/libo/projects/forge/apps/console/public/assets/styles.css); color and custom-property rules will be incomplete

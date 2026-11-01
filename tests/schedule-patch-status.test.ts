@@ -1,3 +1,4 @@
+import { configurationHeaders } from "./helpers/configuration-headers.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance } from "fastify";
@@ -23,7 +24,7 @@ const schedules: string[] = [];
 
 const code = (res: { json: () => unknown }) => (res.json() as { error?: { code?: string; details?: { field?: string } } }).error;
 const row = (id: string) => one<{ status: string; next_run_at: Date | null; cron: string; name: string }>("SELECT status, next_run_at, cron, name FROM schedules WHERE id = ?", [id]);
-const updates = async (id: string) => (await query("SELECT id FROM audit_logs WHERE action = 'schedule.update' AND resource_id = ?", [id])).length;
+const updates = async (id: string) => (await query("SELECT id FROM audit_logs WHERE outcome = 'success' AND action = 'schedule.update' AND resource_id = ?", [id])).length;
 
 async function schedule(tag: string, status: "active" | "disabled", opts: { cron?: string; serviceAccountId?: string } = {}): Promise<string> {
   const account = opts.serviceAccountId ?? accountId;
@@ -34,7 +35,7 @@ async function schedule(tag: string, status: "active" | "disabled", opts: { cron
   schedules.push(id);
   return id;
 }
-const patch = (id: string, payload: Record<string, unknown>) => app.inject({ method: "PATCH", url: `/admin/api/schedules/${id}`, headers, payload });
+const patch = async (id: string, payload: Record<string, unknown>) => app.inject({ method: "PATCH", url: `/admin/api/schedules/${id}`, headers: await configurationHeaders(`/admin/api/schedules/${id}`, headers), payload });
 
 beforeAll(async () => {
   app = await buildApp({ logger: false });
@@ -42,11 +43,11 @@ beforeAll(async () => {
   const pa = await realSession({ name: "IT sps", role: "platform_admin", orgUnitId: ROOT, dataScope: "all" });
   headers = sessionHeaders(pa, sessionCookieValue(pa));
   agentId = await repos.createAgent({ key: `it-sps-${suffix}`, name: "IT sps", ownerOrgUnitId: ROOT, createdBy: ADMIN_ID });
-  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID });
-  await repos.publishAgentVersion(agentId, versionId);
+  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID }, { expectedRevision: "system" });
+  await repos.publishAgentVersion(agentId, versionId, { expectedRevision: "system" });
   accountId = await repos.createServiceAccount({ key: `it-sps-svc-${suffix}`, name: "IT sps svc", orgUnitId: ROOT, role: "operator", dataScope: "org", createdBy: ADMIN_ID });
   disabledAccountId = await repos.createServiceAccount({ key: `it-sps-off-${suffix}`, name: "IT sps off", orgUnitId: ROOT, role: "operator", dataScope: "org", createdBy: ADMIN_ID });
-  await repos.updateServiceAccount(disabledAccountId, { status: "disabled" });
+  await repos.updateServiceAccount(disabledAccountId, { status: "disabled" }, { expectedRevision: "system" });
 });
 
 afterAll(async () => {
@@ -69,7 +70,7 @@ describe("F3: PATCH cannot change a schedule's status", () => {
     const after = await row(id);
     expect([after!.status, after!.next_run_at]).toEqual(["disabled", null]);
     expect(await updates(id)).toBe(0);
-    const enable = await app.inject({ method: "POST", url: `/admin/api/schedules/${id}/enable`, headers });
+    const enable = await app.inject({ method: "POST", url: `/admin/api/schedules/${id}/enable`, headers: await configurationHeaders(`/admin/api/schedules/${id}/enable`, headers) });
     expect([enable.statusCode, code(enable)?.code]).toEqual([409, "SCD-4801"]);
   });
 
@@ -96,9 +97,9 @@ describe("F3: PATCH cannot change a schedule's status", () => {
     const id = await schedule("ok", "disabled");
     expect((await patch(id, { name: "renamed", cron: "0 10 * * *" })).statusCode).toBe(200);
     expect((await row(id))!.name).toBe("renamed");
-    expect((await app.inject({ method: "POST", url: `/admin/api/schedules/${id}/enable`, headers })).statusCode).toBe(200);
+    expect((await app.inject({ method: "POST", url: `/admin/api/schedules/${id}/enable`, headers: await configurationHeaders(`/admin/api/schedules/${id}/enable`, headers) })).statusCode).toBe(200);
     expect((await row(id))!.status).toBe("active");
-    expect((await app.inject({ method: "POST", url: `/admin/api/schedules/${id}/disable`, headers })).statusCode).toBe(200);
+    expect((await app.inject({ method: "POST", url: `/admin/api/schedules/${id}/disable`, headers: await configurationHeaders(`/admin/api/schedules/${id}/disable`, headers) })).statusCode).toBe(200);
     expect((await row(id))!.status).toBe("disabled");
   });
 });
@@ -128,7 +129,7 @@ describe("F2: one cron check for PATCH, create and enable", () => {
 
   it("enable with a stored 6-field cron -> 400, still disabled", async () => {
     const id = await schedule("f2-enable", "disabled", { cron: "*/5 * * * * *" });
-    const res = await app.inject({ method: "POST", url: `/admin/api/schedules/${id}/enable`, headers });
+    const res = await app.inject({ method: "POST", url: `/admin/api/schedules/${id}/enable`, headers: await configurationHeaders(`/admin/api/schedules/${id}/enable`, headers) });
     expect(res.statusCode).toBe(400);
     expect((await row(id))!.status).toBe("disabled");
   });

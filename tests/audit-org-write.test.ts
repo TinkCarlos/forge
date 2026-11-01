@@ -1,3 +1,4 @@
+import { configurationHeaders } from "./helpers/configuration-headers.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance } from "fastify";
@@ -29,7 +30,7 @@ async function headersFor(principal: Pick<Principal, "role" | "orgUnitId" | "dat
   return { headers: sessionHeaders(session, sessionCookieValue(session)), userId: session.principal.id };
 }
 async function visibleActions(headers: Record<string, string>): Promise<Array<{ id: string; action: string; resource_id: string | null; actor_type: string; actor_id: string | null }>> {
-  const res = await app.inject({ method: "GET", url: "/admin/api/audit?limit=500", headers });
+  const res = await app.inject({ method: "GET", url: "/admin/api/audit?limit=200", headers });
   expect(res.statusCode).toBe(200);
   return (res.json() as { items: Array<{ id: string; action: string; resource_id: string | null; actor_type: string; actor_id: string | null }> }).items;
 }
@@ -41,7 +42,7 @@ beforeAll(async () => {
   await execute("INSERT INTO org_units (id, parent_id, `key`, name, path) VALUES (?, ?, ?, ?, ?)", [B, ROOT, `it-aw-b-${suffix}`, "IT aw B", `/it-aw-b-${suffix}/`]);
   ids.agent = await repos.createAgent({ key: `it-aw-${suffix}`, name: "IT aw", ownerOrgUnitId: A, createdBy: ADMIN_ID });
   ids.globalAgent = await repos.createAgent({ key: `it-aw-g-${suffix}`, name: "IT aw g", ownerOrgUnitId: null, createdBy: ADMIN_ID });
-  ids.agent_version = await repos.createAgentVersion({ agentId: ids.agent, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID });
+  ids.agent_version = await repos.createAgentVersion({ agentId: ids.agent, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID }, { expectedRevision: "system" });
   ids.thread = await repos.createThread({ agentId: ids.agent, orgUnitId: A, subjectType: "user", subjectId: ADMIN_ID });
   ids.run = await repos.createRun({ threadId: ids.thread, agentId: ids.agent, agentVersionId: ids.agent_version, orgUnitId: A, subjectType: "user", subjectId: ADMIN_ID, input: { text: "x" }, status: "waiting_approval" });
   ids.toolCall = await repos.addToolCall({ runId: ids.run, toolKey: "echo", args: {}, risk: "high", status: "pending" });
@@ -129,16 +130,16 @@ describe("T-A..T-E: department transfer (ruling 2)", () => {
     expect(seenB).toContain(`it.${tag}.user.update`);
     expect(seenB).not.toContain(`it.${tag}.user.org_transfer_out`);
   });
-  it("T-D: PATCH that changes only the role writes one user.update and no transfer_out (orgUnitId is rejected)", async () => {
+  it("T-D: PATCH that changes only the role writes one user.update and no transfer_out when department is unchanged", async () => {
     const pa = await headersFor({ role: "platform_admin", orgUnitId: ROOT, dataScope: "all" });
     const before = await query<{ n: number }>("SELECT COUNT(*) AS n FROM audit_logs WHERE resource_id = ? AND action = 'user.org_transfer_out'", [ids.user]);
     // P1: the body schema is closed, so the no-op payloads carry only declared fields (displayName is not one).
-    for (const [payload, status] of [[{}, 200], [{ orgUnitId: A }, 400], [{}, 200]] as const) {
-      const res = await app.inject({ method: "PATCH", url: `/admin/api/users/${ids.user}`, headers: pa.headers, payload });
+    for (const [payload, status] of [[{}, 200], [{ orgUnitId: A }, 200], [{}, 200]] as const) {
+      const res = await app.inject({ method: "PATCH", url: `/admin/api/users/${ids.user}`, headers: await configurationHeaders(`/admin/api/users/${ids.user}`, pa.headers), payload });
       expect(res.statusCode).toBe(status);
     }
     const updates = await query<{ org_unit_id: string }>("SELECT org_unit_id FROM audit_logs WHERE resource_id = ? AND action = 'user.update'", [ids.user]);
-    expect(updates.map((r) => r.org_unit_id)).toEqual([A, A]);
+    expect(updates.map((r) => r.org_unit_id)).toEqual([A, A, A]);
     const after = await query<{ n: number }>("SELECT COUNT(*) AS n FROM audit_logs WHERE resource_id = ? AND action = 'user.org_transfer_out'", [ids.user]);
     expect(Number(after[0]!.n)).toBe(Number(before[0]!.n));
     await execute("DELETE FROM audit_logs WHERE resource_id = ? AND action = 'user.update'", [ids.user]);

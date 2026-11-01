@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { loadMasterKeyring } from "./secret-encryption.js";
 import { parseConfig, type Config } from "./config-schema";
 
 // The schema and parseConfig live in ./config-schema (pure: no dotenv, no process.env, no import side effects) so they
@@ -7,7 +8,9 @@ import { parseConfig, type Config } from "./config-schema";
 export * from "./config-schema";
 
 export function loadConfig(): Config {
-  return parseConfig(process.env);
+  const config = parseConfig(process.env);
+  loadMasterKeyring(config);
+  return config;
 }
 
 export const config = loadConfig();

@@ -155,7 +155,7 @@ describe("TK-08: migration 008 and resync", () => {
 
   it("TK-08: addToolCall stores the readOnly snapshot (default 0 = has side effects)", async () => {
     const agentId = await repos.createAgent({ key: `it-tk08-${suffix}`, name: "IT TK08", ownerOrgUnitId: ROOT, createdBy: ADMIN_ID });
-    const versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "p", model: "m" } }, status: "published", createdBy: ADMIN_ID });
+    const versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "p", model: "m" } }, status: "published", createdBy: ADMIN_ID }, { expectedRevision: "system" });
     const threadId = await repos.createThread({ agentId, orgUnitId: ROOT, subjectType: "user", subjectId: `tk08-${suffix}` });
     const runId = await repos.createRun({ threadId, agentId, agentVersionId: versionId, subjectType: "user", subjectId: `tk08-${suffix}`, input: {} });
     try {

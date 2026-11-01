@@ -1,0 +1,3 @@
+PASS mixed approval, awaited persistence barrier, canonical restore, no repeated completed tool, reject/expiry block side effects
+PASS failed assistant persistence prevents every side effect
+PASS fatal flag + abort stops follow-up model request

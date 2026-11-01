@@ -1,3 +1,4 @@
+import { configurationHeaders } from "./helpers/configuration-headers.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance } from "fastify";
@@ -32,7 +33,7 @@ async function snapshot(appId: string) {
   const [keys] = await query<{ n: number }>("SELECT COUNT(*) AS n FROM api_keys WHERE app_id = ?", [appId]);
   const dels = await query<Record<string, unknown>>("SELECT id, status, attempts, next_attempt_at, error_message FROM webhook_deliveries WHERE app_id = ? ORDER BY id", [appId]);
   const [audit] = await query<{ n: number }>(
-    "SELECT COUNT(*) AS n FROM audit_logs WHERE resource_id = ? OR resource_id IN (SELECT id FROM webhook_deliveries WHERE app_id = ?) OR JSON_UNQUOTE(JSON_EXTRACT(details_json, '$.appId')) = ?",
+    "SELECT COUNT(*) AS n FROM audit_logs WHERE outcome = 'success' AND (resource_id = ? OR resource_id IN (SELECT id FROM webhook_deliveries WHERE app_id = ?) OR JSON_UNQUOTE(JSON_EXTRACT(details_json, '$.appId')) = ?)",
     [appId, appId, appId],
   );
   return { row, keys: Number(keys!.n), dels, audit: Number(audit!.n) };
@@ -45,8 +46,8 @@ async function newApp(name: string, org: string | null): Promise<string> {
   return id;
 }
 const writes = {
-  patch: (id: string, h: Record<string, string>) => app.inject({ method: "PATCH", url: `/admin/api/apps/${id}`, headers: h, payload: { name: "renamed" } }),
-  issueKey: (id: string, h: Record<string, string>) => app.inject({ method: "POST", url: `/admin/api/apps/${id}/keys`, headers: h, payload: { name: "k" } }),
+  patch: async (id: string, h: Record<string, string>) => app.inject({ method: "PATCH", url: `/admin/api/apps/${id}`, headers: await configurationHeaders(`/admin/api/apps/${id}`, h), payload: { name: "renamed" } }),
+  issueKey: async (id: string, h: Record<string, string>) => app.inject({ method: "POST", url: `/admin/api/apps/${id}/keys`, headers: await configurationHeaders(`/admin/api/apps/${id}/keys`, h), payload: { name: "k" } }),
   replay: (_id: string, h: Record<string, string>, name: string) => app.inject({ method: "POST", url: `/admin/api/webhook-deliveries/${deliveries[name]}/replay`, headers: h }),
 };
 

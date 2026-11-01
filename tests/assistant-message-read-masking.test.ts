@@ -46,14 +46,15 @@ beforeAll(async () => {
   session = await createSession({ type: "user", id: ADMIN_ID, name: "IT Platform", role: "platform_admin", orgUnitId: ROOT, dataScope: "all" });
   headers = { cookie: `forge_session=${sessionCookieValue(session)}`, "x-csrf-token": session.csrfToken };
   agentId = await repos.createAgent({ key: `it-amsg-${suffix}`, name: "IT assistant mask", ownerOrgUnitId: ROOT, createdBy: ADMIN_ID });
-  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID });
+  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID }, { expectedRevision: "system" });
   appId = await repos.createApiApp({ key: `it-amsg-${suffix}`, name: "IT assistant mask", scopes: ["runs:read"] });
   openKey = `fsk_${randomBytes(32).toString("base64url")}`;
   await repos.createApiKey({ appId, name: "it-amsg", prefix: openKey.slice(0, 16), keyHash: hashApiKey(openKey, config.API_KEY_PEPPER), scopes: ["runs:read"] });
   const threadId = await repos.createThread({ agentId, orgUnitId: ROOT, subjectType: "user", subjectId: ADMIN_ID });
-  runId = await repos.createRun({ threadId, agentId, agentVersionId: versionId, appId, orgUnitId: ROOT, subjectType: "user", subjectId: ADMIN_ID, input: { text: "hi" }, status: "succeeded" });
+  runId = await repos.createRun({ threadId, agentId, agentVersionId: versionId, appId, orgUnitId: ROOT, subjectType: "user", subjectId: ADMIN_ID, input: { text: "hi" }, status: "running" });
   await execute("UPDATE runs SET output_json = ? WHERE id = ?", [JSON.stringify({ text: ASSISTANT_TEXT }), runId]);
   messageId = await repos.addMessage({ threadId, runId, seq: 1, role: "assistant", content: { text: ASSISTANT_TEXT } });
+  await repos.updateRun(runId,{status:"succeeded"});
   adminBody = (await app.inject({ method: "GET", url: `/admin/api/runs/${runId}`, headers })).body;
   for (const url of [`/open/v1/runs/${runId}`, `/open/v1/runs/${runId}/result`]) {
     openBodies[url] = (await app.inject({ method: "GET", url, headers: { authorization: `Bearer ${openKey}` } })).body;

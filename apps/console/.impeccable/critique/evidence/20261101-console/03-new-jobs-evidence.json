@@ -1,0 +1,324 @@
+{
+  "metrics": {
+    "url": "http://127.0.0.1:5175/next/jobs?status=&cursor=",
+    "viewport": {
+      "width": 1280,
+      "height": 800,
+      "dpr": 1
+    },
+    "scrollWidth": 1280,
+    "headings": [
+      {
+        "tag": "H1",
+        "text": "Job 管理",
+        "size": "28px"
+      },
+      {
+        "tag": "H2",
+        "text": "搜索页面或命令",
+        "size": "18px"
+      }
+    ],
+    "tableText": "暂无任务"
+  },
+  "snapshot": "[p3 \"Forge Console\" | space \"Forge console critique 20261101\"(33): 3 managed, 0 untracked — p1 \"Forge Console\", p2 \"Forge Console\", p3* \"Forge Console\"]\nroot\n  container\n    container\n      unordered_list\n        list_item\n          anchor [ref=44, url=http://127.0.0.1:5175/next/agents]\n            svg_root\n            container\n              text \"Forge\"\n              text \"Agent 控制台\"\n      container [ref=45]\n        container\n          text \"概览\"\n          unordered_list\n            list_item\n              anchor [ref=46, loc=href:/#dashboard, url=http://127.0.0.1:5175/#dashboard]\n                svg_root\n                text \"总览\"\n                svg_root\n        container\n          text \"构建\"\n          unordered_list\n            list_item\n              anchor [ref=47, url=http://127.0.0.1:5175/next/agents]\n                svg_root\n                text \"Agents\"\n            list_item\n              anchor [ref=48, loc=href:/#models, url=http://127.0.0.1:5175/#models]\n                svg_root\n                text \"模型\"\n                svg_root\n            list_item\n              anchor [ref=49, loc=href:/#mcp, url=http://127.0.0.1:5175/#mcp]\n                svg_root\n                text \"MCP 服务\"\n                svg_root\n            list_item\n              anchor [ref=50, loc=href:/#skills, url=http://127.0.0.1:5175/#skills]\n                svg_root\n                text \"Skills\"\n                svg_root\n            list_item\n              anchor [ref=51, loc=href:/#tools, url=http://127.0.0.1:5175/#tools]\n                svg_root\n                text \"工具源\"\n                svg_root\n            list_item\n              anchor [ref=52, loc=href:/#packages, url=http://127.0.0.1:5175/#packages]\n                svg_root\n                text \"能力包\"\n                svg_root\n        container\n          text \"运行\"\n          unordered_list\n            list_item\n              anchor [ref=53, loc=href:/next/jobs, url=http://127.0.0.1:5175/next/jobs]\n                svg_root\n                text \"Job 管理\"\n            list_item\n              anchor [ref=54, loc=href:/#runs, url=http://127.0.0.1:5175/#runs]\n                svg_root\n                text \"运行中心\"\n                svg_root\n            list_item\n              anchor [ref=55, loc=href:/next/approvals, url=http://127.0.0.1:5175/next/approvals]\n                svg_root\n                text \"审批中心\"\n            list_item\n              anchor [ref=56, loc=href:/#schedules, url=http://127.0.0.1:5175/#schedules]\n                svg_root\n                text \"定时任务\"\n                svg_root\n        container\n          text \"开放平台\"\n          unordered_list\n            list_item\n              anchor [ref=57, loc=href:/#apps, url=http://127.0.0.1:5175/#apps]\n                svg_root\n                text \"应用与密钥\"\n                svg_root\n        container\n          text \"治理\"\n          unordered_list\n            list_item\n              anchor [ref=58, loc=href:/#users, url=http://127.0.0.1:5175/#users]\n                svg_root\n                text \"账号与权限\"\n                svg_root\n            list_item\n              anchor [ref=59, loc=href:/#audit, url=http://127.0.0.1:5175/#audit]\n                svg_root\n                text \"操作日志\"\n                svg_root\n            list_item\n              anchor [ref=60, loc=href:/#secrets, url=http://127.0.0.1:5175/#secrets]\n                svg_root\n                text \"凭据\"\n                svg_root\n      unordered_list\n        list_item\n          button [ref=61]\n            text \"P\"\n            container\n              text \"Platform Admin\"\n              text \"platform_admin\"\n            svg_root\n      button \"Toggle Sidebar\" [ref=62, loc=css:button[aria-label=\"Toggle Sidebar\"]]\n    container\n      container\n        button [ref=63]\n          svg_root\n        button [ref=64]\n          svg_root\n          text \"搜索页面…\"\n          text \"⌘\"\n          text \"K\"\n        button [ref=65]\n          svg_root\n      container [ref=66]\n        container\n          heading [ref=67]\n            text \"Job 管理\"\n          button [ref=68]\n            svg_root\n            text \"创建任务\"\n        container\n          text \"状态\"\n          comboboxgrouping [ref=69]\n            text \"全部\"\n            svg_root\n          button \"刷新任务\" [ref=70, loc=css:button[aria-label=\"刷新任务\"]]\n            svg_root\n        table\n          table_row\n            table_cell\n              text \"名称\"\n            table_cell\n              text \"业务类型\"\n            table_cell\n              text \"状态\"\n            table_cell\n              text \"版本\"\n            table_cell\n              text \"操作\"\n          table_row\n            table_cell\n              text \"暂无任务\"\n        button [ref=71]\n          text \"下一页\"\n",
+  "status": {
+    "title": "[Human] Forge Console — B evidence",
+    "loaded": "true",
+    "annotations": [
+      "✦ nested cards",
+      "overused fontPrimary font: inter (98% of text)◉×"
+    ]
+  },
+  "events": [
+    {
+      "method": "Runtime.consoleAPICalled",
+      "params": {
+        "type": "startGroup",
+        "args": [
+          {
+            "type": "string",
+            "value": "%c[impeccable] 2 anti-patterns found"
+          },
+          {
+            "type": "string",
+            "value": "color: oklch(84% 0.19 80.46); font-weight: bold"
+          }
+        ],
+        "executionContextId": 8,
+        "timestamp": 1793510415933.202,
+        "stackTrace": {
+          "callFrames": [
+            {
+              "functionName": "printSummary",
+              "scriptId": "93",
+              "url": "http://localhost:8400/detect.js",
+              "lineNumber": 4215,
+              "columnNumber": 12
+            },
+            {
+              "functionName": "renderBrowserFindings",
+              "scriptId": "93",
+              "url": "http://localhost:8400/detect.js",
+              "lineNumber": 4439,
+              "columnNumber": 25
+            },
+            {
+              "functionName": "scan",
+              "scriptId": "93",
+              "url": "http://localhost:8400/detect.js",
+              "lineNumber": 4461,
+              "columnNumber": 24
+            },
+            {
+              "functionName": "runAutoScan",
+              "scriptId": "93",
+              "url": "http://localhost:8400/detect.js",
+              "lineNumber": 4534,
+              "columnNumber": 10
+            }
+          ]
+        }
+      },
+      "sessionId": "D64970A3A01F69535D95201F1A5DE553"
+    },
+    {
+      "method": "Runtime.consoleAPICalled",
+      "params": {
+        "type": "log",
+        "args": [
+          {
+            "type": "string",
+            "value": "%coverused-font%c Primary font: inter (98% of text)"
+          },
+          {
+            "type": "string",
+            "value": "color: oklch(84% 0.19 80.46); font-weight: bold"
+          },
+          {
+            "type": "string",
+            "value": "color: inherit"
+          },
+          {
+            "type": "object",
+            "subtype": "node",
+            "className": "HTMLBodyElement",
+            "description": "body",
+            "objectId": "4111773860988252929.8.20",
+            "preview": {
+              "type": "object",
+              "subtype": "node",
+              "description": "body",
+              "overflow": true,
+              "properties": [
+                {
+                  "name": "_reactListeningypsvkuqgvjf",
+                  "type": "boolean",
+                  "value": "true"
+                },
+                {
+                  "name": "text",
+                  "type": "string",
+                  "value": ""
+                },
+                {
+                  "name": "link",
+                  "type": "string",
+                  "value": ""
+                },
+                {
+                  "name": "vLink",
+                  "type": "string",
+                  "value": ""
+                },
+                {
+                  "name": "aLink",
+                  "type": "string",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        ],
+        "executionContextId": 8,
+        "timestamp": 1793510415933.249,
+        "stackTrace": {
+          "callFrames": [
+            {
+              "functionName": "printSummary",
+              "scriptId": "93",
+              "url": "http://localhost:8400/detect.js",
+              "lineNumber": 4221,
+              "columnNumber": 16
+            },
+            {
+              "functionName": "renderBrowserFindings",
+              "scriptId": "93",
+              "url": "http://localhost:8400/detect.js",
+              "lineNumber": 4439,
+              "columnNumber": 25
+            },
+            {
+              "functionName": "scan",
+              "scriptId": "93",
+              "url": "http://localhost:8400/detect.js",
+              "lineNumber": 4461,
+              "columnNumber": 24
+            },
+            {
+              "functionName": "runAutoScan",
+              "scriptId": "93",
+              "url": "http://localhost:8400/detect.js",
+              "lineNumber": 4534,
+              "columnNumber": 10
+            }
+          ]
+        }
+      },
+      "sessionId": "D64970A3A01F69535D95201F1A5DE553"
+    },
+    {
+      "method": "Runtime.consoleAPICalled",
+      "params": {
+        "type": "log",
+        "args": [
+          {
+            "type": "string",
+            "value": "%cnested-cards%c Card inside card"
+          },
+          {
+            "type": "string",
+            "value": "color: oklch(84% 0.19 80.46); font-weight: bold"
+          },
+          {
+            "type": "string",
+            "value": "color: inherit"
+          },
+          {
+            "type": "object",
+            "subtype": "node",
+            "className": "HTMLDivElement",
+            "description": "div.overflow-x-auto.rounded-md.border",
+            "objectId": "4111773860988252929.8.21",
+            "preview": {
+              "type": "object",
+              "subtype": "node",
+              "description": "div.overflow-x-auto.rounded-md.border",
+              "overflow": true,
+              "properties": [
+                {
+                  "name": "__reactFiber$kplswcodrh",
+                  "type": "object",
+                  "value": "FiberNode"
+                },
+                {
+                  "name": "__reactProps$kplswcodrh",
+                  "type": "object",
+                  "value": "Object"
+                },
+                {
+                  "name": "_impeccableOverlay",
+                  "type": "object",
+                  "value": "div.impeccable-overlay",
+                  "subtype": "node"
+                },
+                {
+                  "name": "align",
+                  "type": "string",
+                  "value": ""
+                },
+                {
+                  "name": "title",
+                  "type": "string",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        ],
+        "executionContextId": 8,
+        "timestamp": 1793510415933.301,
+        "stackTrace": {
+          "callFrames": [
+            {
+              "functionName": "printSummary",
+              "scriptId": "93",
+              "url": "http://localhost:8400/detect.js",
+              "lineNumber": 4221,
+              "columnNumber": 16
+            },
+            {
+              "functionName": "renderBrowserFindings",
+              "scriptId": "93",
+              "url": "http://localhost:8400/detect.js",
+              "lineNumber": 4439,
+              "columnNumber": 25
+            },
+            {
+              "functionName": "scan",
+              "scriptId": "93",
+              "url": "http://localhost:8400/detect.js",
+              "lineNumber": 4461,
+              "columnNumber": 24
+            },
+            {
+              "functionName": "runAutoScan",
+              "scriptId": "93",
+              "url": "http://localhost:8400/detect.js",
+              "lineNumber": 4534,
+              "columnNumber": 10
+            }
+          ]
+        }
+      },
+      "sessionId": "D64970A3A01F69535D95201F1A5DE553"
+    },
+    {
+      "method": "Runtime.consoleAPICalled",
+      "params": {
+        "type": "endGroup",
+        "args": [
+          {
+            "type": "string",
+            "value": "console.groupEnd"
+          }
+        ],
+        "executionContextId": 8,
+        "timestamp": 1793510415933.342,
+        "stackTrace": {
+          "callFrames": [
+            {
+              "functionName": "printSummary",
+              "scriptId": "93",
+              "url": "http://localhost:8400/detect.js",
+              "lineNumber": 4225,
+              "columnNumber": 12
+            },
+            {
+              "functionName": "renderBrowserFindings",
+              "scriptId": "93",
+              "url": "http://localhost:8400/detect.js",
+              "lineNumber": 4439,
+              "columnNumber": 25
+            },
+            {
+              "functionName": "scan",
+              "scriptId": "93",
+              "url": "http://localhost:8400/detect.js",
+              "lineNumber": 4461,
+              "columnNumber": 24
+            },
+            {
+              "functionName": "runAutoScan",
+              "scriptId": "93",
+              "url": "http://localhost:8400/detect.js",
+              "lineNumber": 4534,
+              "columnNumber": 10
+            }
+          ]
+        }
+      },
+      "sessionId": "D64970A3A01F69535D95201F1A5DE553"
+    }
+  ]
+}

@@ -3,11 +3,13 @@ import {
   asRecord,
   asString,
   config,
+  requireRevision,
+  revisionTag,
   errors,
   jsonShapeMatches,
   storedJsonValue,
   type JsonShape,
-  ROLE_PERMISSIONS,
+  permissionsFor,
   type Principal,
 } from "@forge/core";
 import { assertOrgWritable, assertPermission, maskArgsDeep, visibleAgentOrgIds } from "@forge/governance";
@@ -21,6 +23,7 @@ import {
   type AgentRow,
   type AgentVersionRow,
   type RunRow,
+  type ConfigurationWrite,
 } from "@forge/store";
 
 // Shared request/response helpers used by every route domain.
@@ -142,8 +145,13 @@ export function jsonObjectBody<T>(body: Record<string, unknown>, key: string, fa
 
 /** Session with the principal re-read from the database; null when missing/expired or the user is no longer usable. */
 export async function readSession(request: FastifyRequest): Promise<Session | null> {
-  return sessionWithPrincipal(await readStoredSession(request));
+  const session = await sessionWithPrincipal(await readStoredSession(request));
+  if (session) auditActors.set(request, session.principal);
+  return session;
 }
+
+const auditActors = new WeakMap<FastifyRequest, Principal>();
+export function auditActorForRequest(request: FastifyRequest): Principal | undefined { return auditActors.get(request); }
 
 // Session store: the auth_sessions lookup is done once per request (CSRF hook + handler share it). Request-scoped only:
 // the entry dies with the request object, nothing is cached across requests or instances.
@@ -170,16 +178,26 @@ export function setSessionCookie(reply: FastifyReply, session: Session): void {
   reply.setCookie("forge_session", sessionCookieValue(session), sessionCookieOptions(config));
 }
 
+export function configurationWrite(request: FastifyRequest, session: Session, action: string, resourceType: string, resourceId: string | null, details: unknown, orgUnitId: string | null): ConfigurationWrite {
+  assertDeleteAuditOrgUnit({ action, orgUnitId });
+  return { expectedRevision: requireRevision(request.headers["if-match"]), audit: { actorType: "user", actorId: session.principal.id, action, resourceType, resourceId, details: maskArgsDeep(details), orgUnitId } };
+}
+
+export function configurationResult(reply: FastifyReply, revision: number) {
+  reply.header("ETag", revisionTag(revision)).header("Cache-Control", "no-store");
+  return { ok: true, revision };
+}
+
 export async function writeAudit(
   session: Session,
   action: string,
   resourceType: string,
   resourceId: string | null,
   details?: unknown,
-  opts: { orgUnitId?: string | null } = {},
+  opts: { orgUnitId?: string | null; outcome?: "success" | "failure" | "denied" } = {},
 ): Promise<void> {
   // I-SCOPE plan A: the row records the resource's department (resolved in repos.audit unless opts.orgUnitId is given).
-  await repos.audit({ actorType: "user", actorId: session.principal.id, action, resourceType, resourceId, details, ...(opts.orgUnitId !== undefined ? { orgUnitId: opts.orgUnitId } : {}) });
+  await repos.audit({ actorType: "user", actorId: session.principal.id, action, resourceType, resourceId, details, outcome: opts.outcome, ...(opts.orgUnitId !== undefined ? { orgUnitId: opts.orgUnitId } : {}) });
 }
 
 /**
@@ -251,6 +269,7 @@ export function presentRun(run: RunRow) {
 export function presentAgent(agent: AgentRow, version?: AgentVersionRow | null) {
   return {
     id: agent.id,
+    revision: agent.revision,
     key: agent.key,
     name: agent.name,
     description: agent.description,
@@ -283,7 +302,7 @@ export function isStreamedEvent(type: string): boolean {
   return type !== "message.delta";
 }
 
-export async function streamRun(request: FastifyRequest, reply: FastifyReply, runId: string): Promise<void> {
+export async function streamRun(request: FastifyRequest, reply: FastifyReply, runId: string, authorize?: () => Promise<void>): Promise<void> {
   // r4 shutdown: no new stream once app.close() started (plugins/sse-shutdown.ts); 503 SYS-9003 + Retry-After: 1.
   if (isDraining(request.server)) throw sseShuttingDown();
   const header = request.headers["last-event-id"];
@@ -298,6 +317,7 @@ export async function streamRun(request: FastifyRequest, reply: FastifyReply, ru
   reply.raw.write(": forge stream\n\n");
   let closed = false;
   let heartbeat = 0;
+  let polling = false;
   /** Stops polling and finishes the response (run ended, read failed, or shutdown); nothing else is written. */
   const finish = (): void => {
     if (closed) return;
@@ -307,8 +327,11 @@ export async function streamRun(request: FastifyRequest, reply: FastifyReply, ru
     reply.raw.end();
   };
   const poll = async (): Promise<void> => {
-    if (closed) return;
+    if (closed || polling) return;
+    polling = true;
     try {
+      await authorize?.();
+      if (closed) return;
       const events = await repos.listEvents(runId, lastSeq);
       if (closed) return; // ended (shutdown / client gone) while reading: lastSeq stays, the reconnect resends
       for (const event of events) lastSeq = Math.max(lastSeq, Number(event.seq));
@@ -327,7 +350,7 @@ export async function streamRun(request: FastifyRequest, reply: FastifyReply, ru
       if (run && ["succeeded", "failed", "cancelled", "budget_exhausted"].includes(run.status) && events.length === 0) finish();
     } catch {
       finish(); // P3-06: no further polls after a failure
-    }
+    } finally { polling = false; }
     heartbeat += 1;
     if (!closed && heartbeat % 15 === 0) reply.raw.write(": heartbeat\n\n");
   };
@@ -344,13 +367,14 @@ export async function streamRun(request: FastifyRequest, reply: FastifyReply, ru
 export function sessionPayload(session: Session) {
   return {
     user: {
+      revision: session.principal.revision,
       id: session.principal.id,
       name: session.principal.name,
       role: session.principal.role,
       orgUnitId: session.principal.orgUnitId,
       dataScope: session.principal.dataScope,
     },
-    permissions: session.principal.role === "platform_admin" ? ["*"] : ROLE_PERMISSIONS[session.principal.role],
+    permissions: permissionsFor(session.principal),
     csrfToken: session.csrfToken,
     oidcConfigured: oidcConfigured(),
     localLogin: config.ALLOW_LOCAL_LOGIN,

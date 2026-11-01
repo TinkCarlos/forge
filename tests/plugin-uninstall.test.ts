@@ -1,3 +1,4 @@
+import { configurationHeaders } from "./helpers/configuration-headers.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
@@ -17,8 +18,8 @@ let orgAdminHeaders: Record<string, string> = {};
 let pluginId = "";
 
 const errorOf = (res: LightMyRequestResponse) => (res.json() as { error: { code: string; message: string } }).error;
-const uninstall = (id: string, headers: Record<string, string>) => app.inject({ method: "POST", url: `/admin/api/plugins/${id}/uninstall`, headers, payload: {} });
-const audits = async (id: string) => (await query<{ n: number }>("SELECT COUNT(*) AS n FROM audit_logs WHERE action = 'plugin.uninstall' AND resource_id = ?", [id]))[0]!.n;
+const uninstall = async (id: string, headers: Record<string, string>) => app.inject({ method: "POST", url: `/admin/api/plugins/${id}/uninstall`, headers: await configurationHeaders(`/admin/api/plugins/${id}/uninstall`, headers), payload: {} });
+const audits = async (id: string) => (await query<{ n: number }>("SELECT COUNT(*) AS n FROM audit_logs WHERE outcome = 'success' AND action = 'plugin.uninstall' AND resource_id = ?", [id]))[0]!.n;
 
 beforeAll(async () => {
   app = await buildApp({ logger: false });

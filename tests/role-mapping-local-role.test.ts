@@ -7,7 +7,7 @@ import { execute, query, repos } from "@forge/store";
 import { buildApp } from "../apps/api/src/app.js";
 import { cleanupRealSessions, realSession, sessionHeaders } from "./helpers/real-session.js";
 
-// P2 (architect 4:51, QA 714b3f3 §4): POST /admin/api/role-mappings only accepts a known local role (enum, 400
+// P2 (architect 4:51, QA 714b3f3 §4): POST /admin/api/role-mappings only accepts a known active local role key (400
 // CFG-8501, nothing written), and SSO role mapping ignores a stored mapping whose local_role is not a known role
 // (a legacy / hand-edited row). Before, an unknown role got priority index -1 and won over every valid mapping.
 const suffix = `${Date.now().toString(36)}${randomBytes(3).toString("hex")}`;
@@ -28,9 +28,9 @@ beforeAll(async () => {
   const pa = await realSession({ name: "IT rl", role: "platform_admin", orgUnitId: ROOT, dataScope: "all" });
   headers = sessionHeaders(pa, sessionCookieValue(pa));
   // Legacy rows written before the enum existed (bypass the API on purpose).
-  await repos.upsertRoleMapping(code("typo"), "", "platfrom_admin");
-  await repos.upsertRoleMapping(code("blank"), "", "");
-  await repos.upsertRoleMapping(code("ok"), "", "operator");
+  await execute("INSERT INTO oidc_role_mappings (id,agent_role_code,agent_role_name,local_role) VALUES (?,?,'','platfrom_admin')", ["orm_"+suffix.toUpperCase().padEnd(22,"0").slice(0,22),code("typo")]);
+  await execute("INSERT INTO oidc_role_mappings (id,agent_role_code,agent_role_name,local_role) VALUES (?,?,'','')", ["orm_"+suffix.toUpperCase().padEnd(21,"0").slice(0,21)+"1",code("blank")]);
+  await repos.upsertRoleMapping(code("ok"), "", "operator", { expectedRevision: "system" });
 });
 
 afterAll(async () => {
@@ -40,7 +40,7 @@ afterAll(async () => {
   await app?.close();
 });
 
-describe("P2 role-mappings localRole enum", () => {
+describe("P2 role-mappings known localRole", () => {
   for (const bad of ["platfrom_admin", "PLATFORM_ADMIN", "admin", "", " user", "root"]) {
     it(`localRole ${JSON.stringify(bad)} -> 400 CFG-8501, nothing written`, async () => {
       const c = code(`bad${randomBytes(2).toString("hex")}`);

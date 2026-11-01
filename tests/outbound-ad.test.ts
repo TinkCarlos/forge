@@ -1,3 +1,4 @@
+import { configurationHeaders } from "./helpers/configuration-headers.js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -196,12 +197,12 @@ describe("responses never echo the resolved IP (AD)", () => {
       const k = `it-ad-${randomBytes(3).toString("hex")}`;
       const mcpId = await repos.createMcpServer({ key: `${k}-mcp`, name: k, url, createdBy: ADMIN_ID });
       cleanup.push(() => execute("DELETE FROM mcp_servers WHERE id = ?", [mcpId]));
-      expectClean(await app.inject({ method: "POST", url: `/admin/api/mcp/${mcpId}/refresh`, headers, payload: {} }));
+      expectClean(await app.inject({ method: "POST", url: `/admin/api/mcp/${mcpId}/refresh`, headers: await configurationHeaders(`/admin/api/mcp/${mcpId}/refresh`, headers), payload: {} }));
       const providerId = await repos.createProvider({ key: `${k}-prv`, name: k, protocol: "openai-compatible", baseUrl: url, createdBy: ADMIN_ID });
       await repos.createModel({ providerId, key: "m1", displayName: "m1" });
       cleanup.push(() => execute("DELETE FROM llm_providers WHERE id = ?", [providerId]));
       cleanup.push(() => execute("DELETE FROM llm_models WHERE provider_id = ?", [providerId]));
-      expectClean(await app.inject({ method: "POST", url: `/admin/api/providers/${providerId}/test`, headers, payload: {} }));
+      expectClean(await app.inject({ method: "POST", url: `/admin/api/providers/${providerId}/test`, headers: await configurationHeaders(`/admin/api/providers/${providerId}/test`, headers), payload: {} }));
       const tool = await callMcpTool((await repos.getMcpServer(mcpId))!, "x", {});
       expect(JSON.stringify(tool)).not.toMatch(IP_RE);
       const fetched = await builtinTools().get("web_fetch")!.execute({ url });

@@ -1,0 +1,2678 @@
+{
+  "job_app_grants": {
+    "columns": [
+      {
+        "COLUMN_NAME": "id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "id"
+      },
+      {
+        "COLUMN_NAME": "job_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "job id"
+      },
+      {
+        "COLUMN_NAME": "app_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "app id"
+      },
+      {
+        "COLUMN_NAME": "actions_json",
+        "COLUMN_TYPE": "json",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "actions json"
+      },
+      {
+        "COLUMN_NAME": "status",
+        "COLUMN_TYPE": "varchar(16)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "active",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "status"
+      },
+      {
+        "COLUMN_NAME": "revision",
+        "COLUMN_TYPE": "int unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "1",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "revision"
+      },
+      {
+        "COLUMN_NAME": "created_by",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "created by"
+      },
+      {
+        "COLUMN_NAME": "created_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "CURRENT_TIMESTAMP(3)",
+        "EXTRA": "DEFAULT_GENERATED",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "created at"
+      },
+      {
+        "COLUMN_NAME": "updated_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "CURRENT_TIMESTAMP(3)",
+        "EXTRA": "DEFAULT_GENERATED on update CURRENT_TIMESTAMP(3)",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "updated at"
+      }
+    ],
+    "indexes": [
+      {
+        "INDEX_NAME": "idx_job_app_grants_app",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "app_id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_job_app_grants_app",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 2,
+        "COLUMN_NAME": "status",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_job_app_grants_app",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 3,
+        "COLUMN_NAME": "job_id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "PRIMARY",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "uk_job_app_grants",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "job_id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "uk_job_app_grants",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 2,
+        "COLUMN_NAME": "app_id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      }
+    ],
+    "foreignKeys": [
+      {
+        "CONSTRAINT_NAME": "fk_job_grants_app",
+        "COLUMN_NAME": "app_id",
+        "ORDINAL_POSITION": 1,
+        "SAME_SCHEMA": 1,
+        "REFERENCED_TABLE_NAME": "api_apps",
+        "REFERENCED_COLUMN_NAME": "id",
+        "DELETE_RULE": "RESTRICT",
+        "UPDATE_RULE": "NO ACTION"
+      },
+      {
+        "CONSTRAINT_NAME": "fk_job_grants_job",
+        "COLUMN_NAME": "job_id",
+        "ORDINAL_POSITION": 1,
+        "SAME_SCHEMA": 1,
+        "REFERENCED_TABLE_NAME": "job_definitions",
+        "REFERENCED_COLUMN_NAME": "id",
+        "DELETE_RULE": "RESTRICT",
+        "UPDATE_RULE": "NO ACTION"
+      }
+    ],
+    "checks": [
+      {
+        "CONSTRAINT_NAME": "ck_job_grant_status",
+        "ENFORCED": "YES",
+        "CHECK_CLAUSE": "(`status` in (_utf8mb4\\'active\\',_utf8mb4\\'disabled\\'))"
+      }
+    ],
+    "options": [
+      {
+        "ENGINE": "InnoDB",
+        "TABLE_COLLATION": "utf8mb4_0900_ai_ci",
+        "TABLE_COMMENT": "Explicit API app grants scoped to a Job"
+      }
+    ]
+  },
+  "job_definition_versions": {
+    "columns": [
+      {
+        "COLUMN_NAME": "id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "id"
+      },
+      {
+        "COLUMN_NAME": "job_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "job id"
+      },
+      {
+        "COLUMN_NAME": "version",
+        "COLUMN_TYPE": "int unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "version"
+      },
+      {
+        "COLUMN_NAME": "manifest_json",
+        "COLUMN_TYPE": "json",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "Immutable registered target and dependency manifest"
+      },
+      {
+        "COLUMN_NAME": "manifest_hash",
+        "COLUMN_TYPE": "char(64)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "manifest hash"
+      },
+      {
+        "COLUMN_NAME": "policy_json",
+        "COLUMN_TYPE": "json",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "policy json"
+      },
+      {
+        "COLUMN_NAME": "input_schema_json",
+        "COLUMN_TYPE": "json",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "input schema json"
+      },
+      {
+        "COLUMN_NAME": "output_schema_json",
+        "COLUMN_TYPE": "json",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "output schema json"
+      },
+      {
+        "COLUMN_NAME": "published_by",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "published by"
+      },
+      {
+        "COLUMN_NAME": "created_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "CURRENT_TIMESTAMP(3)",
+        "EXTRA": "DEFAULT_GENERATED",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "created at"
+      }
+    ],
+    "indexes": [
+      {
+        "INDEX_NAME": "PRIMARY",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "uk_job_definition_versions",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "job_id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "uk_job_definition_versions",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 2,
+        "COLUMN_NAME": "version",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      }
+    ],
+    "foreignKeys": [
+      {
+        "CONSTRAINT_NAME": "fk_job_versions_job",
+        "COLUMN_NAME": "job_id",
+        "ORDINAL_POSITION": 1,
+        "SAME_SCHEMA": 1,
+        "REFERENCED_TABLE_NAME": "job_definitions",
+        "REFERENCED_COLUMN_NAME": "id",
+        "DELETE_RULE": "RESTRICT",
+        "UPDATE_RULE": "NO ACTION"
+      }
+    ],
+    "checks": [
+      {
+        "CONSTRAINT_NAME": "ck_job_version_positive",
+        "ENFORCED": "YES",
+        "CHECK_CLAUSE": "(`version` > 0)"
+      }
+    ],
+    "options": [
+      {
+        "ENGINE": "InnoDB",
+        "TABLE_COLLATION": "utf8mb4_0900_ai_ci",
+        "TABLE_COMMENT": "Immutable published Job versions"
+      }
+    ]
+  },
+  "job_definitions": {
+    "columns": [
+      {
+        "COLUMN_NAME": "id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "id"
+      },
+      {
+        "COLUMN_NAME": "key",
+        "COLUMN_TYPE": "varchar(64)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "key"
+      },
+      {
+        "COLUMN_NAME": "name",
+        "COLUMN_TYPE": "varchar(128)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_ai_ci",
+        "COLUMN_COMMENT": "name"
+      },
+      {
+        "COLUMN_NAME": "description",
+        "COLUMN_TYPE": "varchar(1024)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_ai_ci",
+        "COLUMN_COMMENT": "description"
+      },
+      {
+        "COLUMN_NAME": "owner_org_unit_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "owner org unit id"
+      },
+      {
+        "COLUMN_NAME": "created_by",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "created by"
+      },
+      {
+        "COLUMN_NAME": "revision",
+        "COLUMN_TYPE": "int unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "1",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "revision"
+      },
+      {
+        "COLUMN_NAME": "status",
+        "COLUMN_TYPE": "varchar(16)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "disabled",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "status"
+      },
+      {
+        "COLUMN_NAME": "created_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "CURRENT_TIMESTAMP(3)",
+        "EXTRA": "DEFAULT_GENERATED",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "created at"
+      },
+      {
+        "COLUMN_NAME": "updated_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "CURRENT_TIMESTAMP(3)",
+        "EXTRA": "DEFAULT_GENERATED on update CURRENT_TIMESTAMP(3)",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "updated at"
+      },
+      {
+        "COLUMN_NAME": "business_type",
+        "COLUMN_TYPE": "varchar(64)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "business type"
+      },
+      {
+        "COLUMN_NAME": "responsible_user_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "responsible user id"
+      },
+      {
+        "COLUMN_NAME": "draft_json",
+        "COLUMN_TYPE": "json",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "draft json"
+      },
+      {
+        "COLUMN_NAME": "published_version_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "published version id"
+      },
+      {
+        "COLUMN_NAME": "next_version",
+        "COLUMN_TYPE": "int unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "1",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "next version"
+      }
+    ],
+    "indexes": [
+      {
+        "INDEX_NAME": "idx_job_definitions_org",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "owner_org_unit_id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_job_definitions_org",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 2,
+        "COLUMN_NAME": "status",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_job_definitions_org",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 3,
+        "COLUMN_NAME": "id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "PRIMARY",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "uk_job_definitions_key",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "key",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      }
+    ],
+    "foreignKeys": [],
+    "checks": [
+      {
+        "CONSTRAINT_NAME": "ck_job_definitions_revision",
+        "ENFORCED": "YES",
+        "CHECK_CLAUSE": "((`revision` > 0) and (`next_version` > 0))"
+      },
+      {
+        "CONSTRAINT_NAME": "ck_job_definitions_status",
+        "ENFORCED": "YES",
+        "CHECK_CLAUSE": "(`status` in (_utf8mb4\\'active\\',_utf8mb4\\'disabled\\',_utf8mb4\\'deleted\\'))"
+      }
+    ],
+    "options": [
+      {
+        "ENGINE": "InnoDB",
+        "TABLE_COLLATION": "utf8mb4_0900_ai_ci",
+        "TABLE_COMMENT": "Versioned Job definitions and editable drafts"
+      }
+    ]
+  },
+  "job_events": {
+    "columns": [
+      {
+        "COLUMN_NAME": "execution_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "execution id"
+      },
+      {
+        "COLUMN_NAME": "seq",
+        "COLUMN_TYPE": "bigint unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "seq"
+      },
+      {
+        "COLUMN_NAME": "event_id",
+        "COLUMN_TYPE": "varchar(64)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "event id"
+      },
+      {
+        "COLUMN_NAME": "generation",
+        "COLUMN_TYPE": "int unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "generation"
+      },
+      {
+        "COLUMN_NAME": "type",
+        "COLUMN_TYPE": "varchar(64)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "type"
+      },
+      {
+        "COLUMN_NAME": "data_json",
+        "COLUMN_TYPE": "json",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "data json"
+      },
+      {
+        "COLUMN_NAME": "created_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "CURRENT_TIMESTAMP(3)",
+        "EXTRA": "DEFAULT_GENERATED",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "created at"
+      }
+    ],
+    "indexes": [
+      {
+        "INDEX_NAME": "idx_job_events_created",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "created_at",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_job_events_created",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 2,
+        "COLUMN_NAME": "execution_id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_job_events_created",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 3,
+        "COLUMN_NAME": "seq",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "PRIMARY",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "execution_id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "PRIMARY",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 2,
+        "COLUMN_NAME": "seq",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "uk_job_event_id",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "event_id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      }
+    ],
+    "foreignKeys": [],
+    "checks": [],
+    "options": [
+      {
+        "ENGINE": "InnoDB",
+        "TABLE_COLLATION": "utf8mb4_0900_ai_ci",
+        "TABLE_COMMENT": "Append-only Job events with persistent sequence"
+      }
+    ]
+  },
+  "job_executions": {
+    "columns": [
+      {
+        "COLUMN_NAME": "id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "id"
+      },
+      {
+        "COLUMN_NAME": "job_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "job id"
+      },
+      {
+        "COLUMN_NAME": "job_version_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "job version id"
+      },
+      {
+        "COLUMN_NAME": "owner_org_unit_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "owner org unit id"
+      },
+      {
+        "COLUMN_NAME": "subject_type",
+        "COLUMN_TYPE": "varchar(16)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "subject type"
+      },
+      {
+        "COLUMN_NAME": "subject_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "subject id"
+      },
+      {
+        "COLUMN_NAME": "app_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "app id"
+      },
+      {
+        "COLUMN_NAME": "trigger_type",
+        "COLUMN_TYPE": "varchar(16)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "trigger type"
+      },
+      {
+        "COLUMN_NAME": "trigger_ref",
+        "COLUMN_TYPE": "varchar(128)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_ai_ci",
+        "COLUMN_COMMENT": "trigger ref"
+      },
+      {
+        "COLUMN_NAME": "trigger_actor_json",
+        "COLUMN_TYPE": "json",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "trigger actor json"
+      },
+      {
+        "COLUMN_NAME": "business_type",
+        "COLUMN_TYPE": "varchar(64)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "business type"
+      },
+      {
+        "COLUMN_NAME": "business_object_id",
+        "COLUMN_TYPE": "varchar(128)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_ai_ci",
+        "COLUMN_COMMENT": "business object id"
+      },
+      {
+        "COLUMN_NAME": "business_period",
+        "COLUMN_TYPE": "varchar(64)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "business period"
+      },
+      {
+        "COLUMN_NAME": "business_ref_json",
+        "COLUMN_TYPE": "json",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "business ref json"
+      },
+      {
+        "COLUMN_NAME": "business_key_hash",
+        "COLUMN_TYPE": "char(64)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "Trusted namespaced business key SHA256 retained for durable deduplication"
+      },
+      {
+        "COLUMN_NAME": "input_hash",
+        "COLUMN_TYPE": "char(64)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "input hash"
+      },
+      {
+        "COLUMN_NAME": "round",
+        "COLUMN_TYPE": "int unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "1",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "round"
+      },
+      {
+        "COLUMN_NAME": "retry_of_execution_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "retry of execution id"
+      },
+      {
+        "COLUMN_NAME": "runtime_engine",
+        "COLUMN_TYPE": "varchar(24)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "runtime engine"
+      },
+      {
+        "COLUMN_NAME": "snapshot_quality",
+        "COLUMN_TYPE": "varchar(16)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "snapshot quality"
+      },
+      {
+        "COLUMN_NAME": "generation",
+        "COLUMN_TYPE": "int unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "1",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "generation"
+      },
+      {
+        "COLUMN_NAME": "state_revision",
+        "COLUMN_TYPE": "int unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "1",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "state revision"
+      },
+      {
+        "COLUMN_NAME": "status",
+        "COLUMN_TYPE": "varchar(24)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "queued",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "status"
+      },
+      {
+        "COLUMN_NAME": "wait_reason",
+        "COLUMN_TYPE": "varchar(24)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "wait reason"
+      },
+      {
+        "COLUMN_NAME": "requested_action",
+        "COLUMN_TYPE": "varchar(16)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "requested action"
+      },
+      {
+        "COLUMN_NAME": "input_json",
+        "COLUMN_TYPE": "json",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "Frozen business input; may be purged only after safe retention"
+      },
+      {
+        "COLUMN_NAME": "snapshot_json",
+        "COLUMN_TYPE": "json",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "Frozen versions, authority ceiling and runtime policy; no secrets"
+      },
+      {
+        "COLUMN_NAME": "output_json",
+        "COLUMN_TYPE": "json",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "output json"
+      },
+      {
+        "COLUMN_NAME": "total_count",
+        "COLUMN_TYPE": "int unsigned",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "total count"
+      },
+      {
+        "COLUMN_NAME": "succeeded_count",
+        "COLUMN_TYPE": "int unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "0",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "succeeded count"
+      },
+      {
+        "COLUMN_NAME": "failed_count",
+        "COLUMN_TYPE": "int unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "0",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "failed count"
+      },
+      {
+        "COLUMN_NAME": "unknown_count",
+        "COLUMN_TYPE": "int unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "0",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "unknown count"
+      },
+      {
+        "COLUMN_NAME": "skipped_count",
+        "COLUMN_TYPE": "int unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "0",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "skipped count"
+      },
+      {
+        "COLUMN_NAME": "active_ms",
+        "COLUMN_TYPE": "bigint unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "0",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "active ms"
+      },
+      {
+        "COLUMN_NAME": "active_since",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "active since"
+      },
+      {
+        "COLUMN_NAME": "active_segment_count",
+        "COLUMN_TYPE": "int unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "0",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "Active compute segments; wall-clock union accounting"
+      },
+      {
+        "COLUMN_NAME": "active_budget_seconds",
+        "COLUMN_TYPE": "int unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "active budget seconds"
+      },
+      {
+        "COLUMN_NAME": "wait_deadline_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "wait deadline at"
+      },
+      {
+        "COLUMN_NAME": "next_wake_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "next wake at"
+      },
+      {
+        "COLUMN_NAME": "cost_usd",
+        "COLUMN_TYPE": "decimal(12,6)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "0.000000",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "cost usd"
+      },
+      {
+        "COLUMN_NAME": "reserved_cost_usd",
+        "COLUMN_TYPE": "decimal(12,6)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "0.000000",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "reserved cost usd"
+      },
+      {
+        "COLUMN_NAME": "cost_limit_usd",
+        "COLUMN_TYPE": "decimal(12,6)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "cost limit usd"
+      },
+      {
+        "COLUMN_NAME": "delivery_status",
+        "COLUMN_TYPE": "varchar(24)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "not_applicable",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "delivery status"
+      },
+      {
+        "COLUMN_NAME": "quality_status",
+        "COLUMN_TYPE": "varchar(16)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "not_checked",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "quality status"
+      },
+      {
+        "COLUMN_NAME": "delivery_revision",
+        "COLUMN_TYPE": "int unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "1",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "delivery revision"
+      },
+      {
+        "COLUMN_NAME": "delivery_evidence_json",
+        "COLUMN_TYPE": "json",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "delivery evidence json"
+      },
+      {
+        "COLUMN_NAME": "next_event_seq",
+        "COLUMN_TYPE": "bigint unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "1",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "Next event sequence allocated under the execution lock"
+      },
+      {
+        "COLUMN_NAME": "claimed_by",
+        "COLUMN_TYPE": "varchar(128)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "claimed by"
+      },
+      {
+        "COLUMN_NAME": "lease_expires_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "lease expires at"
+      },
+      {
+        "COLUMN_NAME": "fence_token",
+        "COLUMN_TYPE": "bigint unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "0",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "Monotonically increasing coordinator ownership fence"
+      },
+      {
+        "COLUMN_NAME": "error_code",
+        "COLUMN_TYPE": "varchar(16)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "error code"
+      },
+      {
+        "COLUMN_NAME": "error_message",
+        "COLUMN_TYPE": "varchar(512)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_ai_ci",
+        "COLUMN_COMMENT": "error message"
+      },
+      {
+        "COLUMN_NAME": "started_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "started at"
+      },
+      {
+        "COLUMN_NAME": "completed_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "completed at"
+      },
+      {
+        "COLUMN_NAME": "payload_purged_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "payload purged at"
+      },
+      {
+        "COLUMN_NAME": "created_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "CURRENT_TIMESTAMP(3)",
+        "EXTRA": "DEFAULT_GENERATED",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "created at"
+      },
+      {
+        "COLUMN_NAME": "updated_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "CURRENT_TIMESTAMP(3)",
+        "EXTRA": "DEFAULT_GENERATED on update CURRENT_TIMESTAMP(3)",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "updated at"
+      }
+    ],
+    "indexes": [
+      {
+        "INDEX_NAME": "fk_job_execution_version",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "job_version_id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_job_executions_app",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "app_id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_job_executions_app",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 2,
+        "COLUMN_NAME": "created_at",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_job_executions_app",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 3,
+        "COLUMN_NAME": "id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_job_executions_business",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "owner_org_unit_id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_job_executions_business",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 2,
+        "COLUMN_NAME": "business_type",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_job_executions_business",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 3,
+        "COLUMN_NAME": "business_object_id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_job_executions_business",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 4,
+        "COLUMN_NAME": "created_at",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_job_executions_business",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 5,
+        "COLUMN_NAME": "id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_job_executions_delivery",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "delivery_status",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_job_executions_delivery",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 2,
+        "COLUMN_NAME": "updated_at",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_job_executions_delivery",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 3,
+        "COLUMN_NAME": "id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_job_executions_due",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "status",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_job_executions_due",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 2,
+        "COLUMN_NAME": "next_wake_at",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_job_executions_due",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 3,
+        "COLUMN_NAME": "id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_job_executions_job",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "job_id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_job_executions_job",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 2,
+        "COLUMN_NAME": "created_at",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_job_executions_job",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 3,
+        "COLUMN_NAME": "id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_job_executions_lease",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "status",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_job_executions_lease",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 2,
+        "COLUMN_NAME": "lease_expires_at",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_job_executions_lease",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 3,
+        "COLUMN_NAME": "id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_job_executions_org",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "owner_org_unit_id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_job_executions_org",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 2,
+        "COLUMN_NAME": "created_at",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_job_executions_org",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 3,
+        "COLUMN_NAME": "id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_job_executions_subject",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "subject_type",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_job_executions_subject",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 2,
+        "COLUMN_NAME": "subject_id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_job_executions_subject",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 3,
+        "COLUMN_NAME": "created_at",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_job_executions_subject",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 4,
+        "COLUMN_NAME": "id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "PRIMARY",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "uk_job_execution_business",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "job_id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "uk_job_execution_business",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 2,
+        "COLUMN_NAME": "business_key_hash",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "uk_job_execution_business",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 3,
+        "COLUMN_NAME": "round",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      }
+    ],
+    "foreignKeys": [
+      {
+        "CONSTRAINT_NAME": "fk_job_execution_job",
+        "COLUMN_NAME": "job_id",
+        "ORDINAL_POSITION": 1,
+        "SAME_SCHEMA": 1,
+        "REFERENCED_TABLE_NAME": "job_definitions",
+        "REFERENCED_COLUMN_NAME": "id",
+        "DELETE_RULE": "RESTRICT",
+        "UPDATE_RULE": "NO ACTION"
+      },
+      {
+        "CONSTRAINT_NAME": "fk_job_execution_version",
+        "COLUMN_NAME": "job_version_id",
+        "ORDINAL_POSITION": 1,
+        "SAME_SCHEMA": 1,
+        "REFERENCED_TABLE_NAME": "job_definition_versions",
+        "REFERENCED_COLUMN_NAME": "id",
+        "DELETE_RULE": "RESTRICT",
+        "UPDATE_RULE": "NO ACTION"
+      }
+    ],
+    "checks": [
+      {
+        "CONSTRAINT_NAME": "ck_job_execution_action",
+        "ENFORCED": "YES",
+        "CHECK_CLAUSE": "((`requested_action` is null) or (`requested_action` in (_utf8mb4\\'pause\\',_utf8mb4\\'cancel\\')))"
+      },
+      {
+        "CONSTRAINT_NAME": "ck_job_execution_counts",
+        "ENFORCED": "YES",
+        "CHECK_CLAUSE": "((`generation` between 1 and 4) and (`round` > 0) and (`state_revision` > 0) and (`cost_usd` >= 0) and (`reserved_cost_usd` >= 0) and (`cost_limit_usd` > 0))"
+      },
+      {
+        "CONSTRAINT_NAME": "ck_job_execution_delivery",
+        "ENFORCED": "YES",
+        "CHECK_CLAUSE": "(`delivery_status` in (_utf8mb4\\'not_applicable\\',_utf8mb4\\'pending\\',_utf8mb4\\'delivered\\',_utf8mb4\\'blocked\\',_utf8mb4\\'waived\\'))"
+      },
+      {
+        "CONSTRAINT_NAME": "ck_job_execution_engine",
+        "ENFORCED": "YES",
+        "CHECK_CLAUSE": "(((`runtime_engine` = _utf8mb4\\'mysql-agent-bridge\\') and (`snapshot_quality` = _utf8mb4\\'legacy\\')) or ((`runtime_engine` = _utf8mb4\\'temporal-job-v1\\') and (`snapshot_quality` = _utf8mb4\\'frozen\\')))"
+      },
+      {
+        "CONSTRAINT_NAME": "ck_job_execution_payload",
+        "ENFORCED": "YES",
+        "CHECK_CLAUSE": "(((`input_json` is not null) and (`snapshot_json` is not null)) or ((`payload_purged_at` is not null) and (`status` in (_utf8mb4\\'succeeded\\',_utf8mb4\\'partial\\',_utf8mb4\\'failed\\',_utf8mb4\\'cancelled\\',_utf8mb4\\'skipped\\'))))"
+      },
+      {
+        "CONSTRAINT_NAME": "ck_job_execution_quality",
+        "ENFORCED": "YES",
+        "CHECK_CLAUSE": "(`quality_status` in (_utf8mb4\\'not_checked\\',_utf8mb4\\'pass\\',_utf8mb4\\'fail\\',_utf8mb4\\'review\\'))"
+      },
+      {
+        "CONSTRAINT_NAME": "ck_job_execution_status",
+        "ENFORCED": "YES",
+        "CHECK_CLAUSE": "(`status` in (_utf8mb4\\'queued\\',_utf8mb4\\'running\\',_utf8mb4\\'waiting\\',_utf8mb4\\'pausing\\',_utf8mb4\\'paused\\',_utf8mb4\\'cancelling\\',_utf8mb4\\'succeeded\\',_utf8mb4\\'partial\\',_utf8mb4\\'failed\\',_utf8mb4\\'cancelled\\',_utf8mb4\\'skipped\\'))"
+      },
+      {
+        "CONSTRAINT_NAME": "ck_job_execution_subject",
+        "ENFORCED": "YES",
+        "CHECK_CLAUSE": "((`subject_type` in (_utf8mb4\\'user\\',_utf8mb4\\'service\\',_utf8mb4\\'app\\')) and ((`subject_type` <> _utf8mb4\\'app\\') or ((`app_id` is not null) and (`app_id` = `subject_id`))))"
+      },
+      {
+        "CONSTRAINT_NAME": "ck_job_execution_trigger",
+        "ENFORCED": "YES",
+        "CHECK_CLAUSE": "(`trigger_type` in (_utf8mb4\\'manual\\',_utf8mb4\\'schedule\\',_utf8mb4\\'api\\',_utf8mb4\\'evaluation\\'))"
+      },
+      {
+        "CONSTRAINT_NAME": "ck_job_execution_wait",
+        "ENFORCED": "YES",
+        "CHECK_CLAUSE": "(((`status` <> _utf8mb4\\'waiting\\') or (`wait_reason` is not null)) and ((`wait_reason` is null) or (`wait_reason` in (_utf8mb4\\'approval\\',_utf8mb4\\'human\\',_utf8mb4\\'external\\',_utf8mb4\\'reconcile\\',_utf8mb4\\'resource\\',_utf8mb4\\'budget\\',_utf8mb4\\'previous_execution\\'))))"
+      }
+    ],
+    "options": [
+      {
+        "ENGINE": "InnoDB",
+        "TABLE_COLLATION": "utf8mb4_0900_ai_ci",
+        "TABLE_COMMENT": "Business executions with frozen input and dependency snapshots"
+      }
+    ]
+  },
+  "job_step_attempts": {
+    "columns": [
+      {
+        "COLUMN_NAME": "id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "id"
+      },
+      {
+        "COLUMN_NAME": "step_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "step id"
+      },
+      {
+        "COLUMN_NAME": "attempt_no",
+        "COLUMN_TYPE": "int unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "attempt no"
+      },
+      {
+        "COLUMN_NAME": "generation",
+        "COLUMN_TYPE": "int unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "generation"
+      },
+      {
+        "COLUMN_NAME": "dispatch_key",
+        "COLUMN_TYPE": "char(64)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "Stable attempt dispatch SHA256 for idempotent recovery"
+      },
+      {
+        "COLUMN_NAME": "status",
+        "COLUMN_TYPE": "varchar(24)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "prepared",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "status"
+      },
+      {
+        "COLUMN_NAME": "side_effect_state",
+        "COLUMN_TYPE": "varchar(16)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "not_submitted",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "External action submission and confirmation facts"
+      },
+      {
+        "COLUMN_NAME": "fence_token",
+        "COLUMN_TYPE": "bigint unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "Monotonically increasing coordinator ownership fence"
+      },
+      {
+        "COLUMN_NAME": "claimed_by",
+        "COLUMN_TYPE": "varchar(128)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "claimed by"
+      },
+      {
+        "COLUMN_NAME": "lease_expires_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "lease expires at"
+      },
+      {
+        "COLUMN_NAME": "run_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "run id"
+      },
+      {
+        "COLUMN_NAME": "code_execution_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "code execution id"
+      },
+      {
+        "COLUMN_NAME": "external_operation_id",
+        "COLUMN_TYPE": "varchar(128)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_ai_ci",
+        "COLUMN_COMMENT": "external operation id"
+      },
+      {
+        "COLUMN_NAME": "request_hash",
+        "COLUMN_TYPE": "char(64)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "request hash"
+      },
+      {
+        "COLUMN_NAME": "result_hash",
+        "COLUMN_TYPE": "char(64)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "result hash"
+      },
+      {
+        "COLUMN_NAME": "last_result_message_id",
+        "COLUMN_TYPE": "varchar(64)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "last result message id"
+      },
+      {
+        "COLUMN_NAME": "input_file_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "input file id"
+      },
+      {
+        "COLUMN_NAME": "result_json",
+        "COLUMN_TYPE": "json",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "result json"
+      },
+      {
+        "COLUMN_NAME": "result_file_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "result file id"
+      },
+      {
+        "COLUMN_NAME": "error_code",
+        "COLUMN_TYPE": "varchar(16)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "error code"
+      },
+      {
+        "COLUMN_NAME": "error_message",
+        "COLUMN_TYPE": "varchar(512)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_ai_ci",
+        "COLUMN_COMMENT": "error message"
+      },
+      {
+        "COLUMN_NAME": "submitted_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "submitted at"
+      },
+      {
+        "COLUMN_NAME": "confirmed_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "confirmed at"
+      },
+      {
+        "COLUMN_NAME": "completed_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "completed at"
+      },
+      {
+        "COLUMN_NAME": "created_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "CURRENT_TIMESTAMP(3)",
+        "EXTRA": "DEFAULT_GENERATED",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "created at"
+      },
+      {
+        "COLUMN_NAME": "updated_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "CURRENT_TIMESTAMP(3)",
+        "EXTRA": "DEFAULT_GENERATED on update CURRENT_TIMESTAMP(3)",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "updated at"
+      }
+    ],
+    "indexes": [
+      {
+        "INDEX_NAME": "idx_job_step_attempts_external",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "external_operation_id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_job_step_attempts_lease",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "status",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_job_step_attempts_lease",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 2,
+        "COLUMN_NAME": "lease_expires_at",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_job_step_attempts_lease",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 3,
+        "COLUMN_NAME": "id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_job_step_attempts_run",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "run_id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "PRIMARY",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "uk_job_dispatch_key",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "dispatch_key",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "uk_job_step_attempt",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "step_id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "uk_job_step_attempt",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 2,
+        "COLUMN_NAME": "attempt_no",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      }
+    ],
+    "foreignKeys": [
+      {
+        "CONSTRAINT_NAME": "fk_job_attempt_step",
+        "COLUMN_NAME": "step_id",
+        "ORDINAL_POSITION": 1,
+        "SAME_SCHEMA": 1,
+        "REFERENCED_TABLE_NAME": "job_steps",
+        "REFERENCED_COLUMN_NAME": "id",
+        "DELETE_RULE": "RESTRICT",
+        "UPDATE_RULE": "NO ACTION"
+      }
+    ],
+    "checks": [
+      {
+        "CONSTRAINT_NAME": "ck_job_attempt_effect",
+        "ENFORCED": "YES",
+        "CHECK_CLAUSE": "(`side_effect_state` in (_utf8mb4\\'not_submitted\\',_utf8mb4\\'submitted\\',_utf8mb4\\'confirmed\\',_utf8mb4\\'unknown\\'))"
+      },
+      {
+        "CONSTRAINT_NAME": "ck_job_attempt_number",
+        "ENFORCED": "YES",
+        "CHECK_CLAUSE": "((`attempt_no` > 0) and (`generation` between 1 and 4))"
+      },
+      {
+        "CONSTRAINT_NAME": "ck_job_attempt_status",
+        "ENFORCED": "YES",
+        "CHECK_CLAUSE": "(`status` in (_utf8mb4\\'prepared\\',_utf8mb4\\'submitted\\',_utf8mb4\\'running\\',_utf8mb4\\'succeeded\\',_utf8mb4\\'failed\\',_utf8mb4\\'unknown\\',_utf8mb4\\'cancelled\\'))"
+      }
+    ],
+    "options": [
+      {
+        "ENGINE": "InnoDB",
+        "TABLE_COLLATION": "utf8mb4_0900_ai_ci",
+        "TABLE_COMMENT": "Append-only attempt facts for a logical Job step"
+      }
+    ]
+  },
+  "job_steps": {
+    "columns": [
+      {
+        "COLUMN_NAME": "id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "id"
+      },
+      {
+        "COLUMN_NAME": "execution_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "execution id"
+      },
+      {
+        "COLUMN_NAME": "step_key",
+        "COLUMN_TYPE": "varchar(64)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "step key"
+      },
+      {
+        "COLUMN_NAME": "item_key",
+        "COLUMN_TYPE": "varchar(128)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_ai_ci",
+        "COLUMN_COMMENT": "item key"
+      },
+      {
+        "COLUMN_NAME": "item_hash",
+        "COLUMN_TYPE": "char(64)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "item hash"
+      },
+      {
+        "COLUMN_NAME": "iteration",
+        "COLUMN_TYPE": "int unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "0",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "iteration"
+      },
+      {
+        "COLUMN_NAME": "kind",
+        "COLUMN_TYPE": "varchar(24)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "kind"
+      },
+      {
+        "COLUMN_NAME": "generation",
+        "COLUMN_TYPE": "int unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "1",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "generation"
+      },
+      {
+        "COLUMN_NAME": "state_revision",
+        "COLUMN_TYPE": "int unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "1",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "state revision"
+      },
+      {
+        "COLUMN_NAME": "status",
+        "COLUMN_TYPE": "varchar(24)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "blocked",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "status"
+      },
+      {
+        "COLUMN_NAME": "wait_reason",
+        "COLUMN_TYPE": "varchar(24)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "wait reason"
+      },
+      {
+        "COLUMN_NAME": "error_code",
+        "COLUMN_TYPE": "varchar(16)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "error code"
+      },
+      {
+        "COLUMN_NAME": "error_message",
+        "COLUMN_TYPE": "varchar(512)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_ai_ci",
+        "COLUMN_COMMENT": "error message"
+      },
+      {
+        "COLUMN_NAME": "depends_on_json",
+        "COLUMN_TYPE": "json",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "depends on json"
+      },
+      {
+        "COLUMN_NAME": "input_hash",
+        "COLUMN_TYPE": "char(64)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "input hash"
+      },
+      {
+        "COLUMN_NAME": "input_json",
+        "COLUMN_TYPE": "json",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "Frozen business input; may be purged only after safe retention"
+      },
+      {
+        "COLUMN_NAME": "result_json",
+        "COLUMN_TYPE": "json",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "result json"
+      },
+      {
+        "COLUMN_NAME": "result_file_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "result file id"
+      },
+      {
+        "COLUMN_NAME": "read_only",
+        "COLUMN_TYPE": "tinyint",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "read only"
+      },
+      {
+        "COLUMN_NAME": "side_effect_state",
+        "COLUMN_TYPE": "varchar(16)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "not_submitted",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "External action submission and confirmation facts"
+      },
+      {
+        "COLUMN_NAME": "current_attempt_no",
+        "COLUMN_TYPE": "int unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "0",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "current attempt no"
+      },
+      {
+        "COLUMN_NAME": "successful_attempt_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "Successful attempt retained across failed-item recovery"
+      },
+      {
+        "COLUMN_NAME": "available_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "available at"
+      },
+      {
+        "COLUMN_NAME": "started_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "started at"
+      },
+      {
+        "COLUMN_NAME": "completed_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "completed at"
+      },
+      {
+        "COLUMN_NAME": "created_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "CURRENT_TIMESTAMP(3)",
+        "EXTRA": "DEFAULT_GENERATED",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "created at"
+      },
+      {
+        "COLUMN_NAME": "updated_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "CURRENT_TIMESTAMP(3)",
+        "EXTRA": "DEFAULT_GENERATED on update CURRENT_TIMESTAMP(3)",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "updated at"
+      }
+    ],
+    "indexes": [
+      {
+        "INDEX_NAME": "idx_job_steps_ready",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "execution_id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_job_steps_ready",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 2,
+        "COLUMN_NAME": "status",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_job_steps_ready",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 3,
+        "COLUMN_NAME": "available_at",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_job_steps_ready",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 4,
+        "COLUMN_NAME": "id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_job_steps_result",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "result_file_id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "PRIMARY",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "uk_job_steps",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "execution_id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "uk_job_steps",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 2,
+        "COLUMN_NAME": "step_key",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "uk_job_steps",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 3,
+        "COLUMN_NAME": "item_hash",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "uk_job_steps",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 4,
+        "COLUMN_NAME": "iteration",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      }
+    ],
+    "foreignKeys": [
+      {
+        "CONSTRAINT_NAME": "fk_job_step_execution",
+        "COLUMN_NAME": "execution_id",
+        "ORDINAL_POSITION": 1,
+        "SAME_SCHEMA": 1,
+        "REFERENCED_TABLE_NAME": "job_executions",
+        "REFERENCED_COLUMN_NAME": "id",
+        "DELETE_RULE": "RESTRICT",
+        "UPDATE_RULE": "NO ACTION"
+      }
+    ],
+    "checks": [
+      {
+        "CONSTRAINT_NAME": "ck_job_step_effect",
+        "ENFORCED": "YES",
+        "CHECK_CLAUSE": "(`side_effect_state` in (_utf8mb4\\'not_submitted\\',_utf8mb4\\'submitted\\',_utf8mb4\\'confirmed\\',_utf8mb4\\'unknown\\'))"
+      },
+      {
+        "CONSTRAINT_NAME": "ck_job_step_kind",
+        "ENFORCED": "YES",
+        "CHECK_CLAUSE": "(`kind` in (_utf8mb4\\'agent\\',_utf8mb4\\'domain\\',_utf8mb4\\'script\\',_utf8mb4\\'browser\\',_utf8mb4\\'external\\',_utf8mb4\\'human\\',_utf8mb4\\'gate\\',_utf8mb4\\'condition\\',_utf8mb4\\'map\\',_utf8mb4\\'join\\'))"
+      },
+      {
+        "CONSTRAINT_NAME": "ck_job_step_status",
+        "ENFORCED": "YES",
+        "CHECK_CLAUSE": "(`status` in (_utf8mb4\\'blocked\\',_utf8mb4\\'ready\\',_utf8mb4\\'dispatched\\',_utf8mb4\\'running\\',_utf8mb4\\'waiting\\',_utf8mb4\\'succeeded\\',_utf8mb4\\'failed\\',_utf8mb4\\'cancelled\\',_utf8mb4\\'skipped\\'))"
+      }
+    ],
+    "options": [
+      {
+        "ENGINE": "InnoDB",
+        "TABLE_COLLATION": "utf8mb4_0900_ai_ci",
+        "TABLE_COMMENT": "Logical Job steps and current outcome projections"
+      }
+    ]
+  },
+  "outbox_events": {
+    "columns": [
+      {
+        "COLUMN_NAME": "id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "id"
+      },
+      {
+        "COLUMN_NAME": "topic",
+        "COLUMN_TYPE": "varchar(64)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "topic"
+      },
+      {
+        "COLUMN_NAME": "event_id",
+        "COLUMN_TYPE": "varchar(64)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "event id"
+      },
+      {
+        "COLUMN_NAME": "source_type",
+        "COLUMN_TYPE": "varchar(32)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "source type"
+      },
+      {
+        "COLUMN_NAME": "source_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "source id"
+      },
+      {
+        "COLUMN_NAME": "source_seq",
+        "COLUMN_TYPE": "bigint unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "source seq"
+      },
+      {
+        "COLUMN_NAME": "owner_org_unit_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "owner org unit id"
+      },
+      {
+        "COLUMN_NAME": "policy_json",
+        "COLUMN_TYPE": "json",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "policy json"
+      },
+      {
+        "COLUMN_NAME": "targets_json",
+        "COLUMN_TYPE": "json",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "targets json"
+      },
+      {
+        "COLUMN_NAME": "payload_json",
+        "COLUMN_TYPE": "json",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "Dispatch references and redacted summaries only"
+      },
+      {
+        "COLUMN_NAME": "status",
+        "COLUMN_TYPE": "varchar(16)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "pending",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "status"
+      },
+      {
+        "COLUMN_NAME": "attempts",
+        "COLUMN_TYPE": "int unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "0",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "attempts"
+      },
+      {
+        "COLUMN_NAME": "available_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "available at"
+      },
+      {
+        "COLUMN_NAME": "claimed_by",
+        "COLUMN_TYPE": "varchar(128)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "claimed by"
+      },
+      {
+        "COLUMN_NAME": "lease_expires_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "lease expires at"
+      },
+      {
+        "COLUMN_NAME": "fence_token",
+        "COLUMN_TYPE": "bigint unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "0",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "Monotonically increasing coordinator ownership fence"
+      },
+      {
+        "COLUMN_NAME": "error_code",
+        "COLUMN_TYPE": "varchar(16)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "error code"
+      },
+      {
+        "COLUMN_NAME": "processed_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "processed at"
+      },
+      {
+        "COLUMN_NAME": "created_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "CURRENT_TIMESTAMP(3)",
+        "EXTRA": "DEFAULT_GENERATED",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "created at"
+      }
+    ],
+    "indexes": [
+      {
+        "INDEX_NAME": "idx_outbox_due",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "status",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_outbox_due",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 2,
+        "COLUMN_NAME": "available_at",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_outbox_due",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 3,
+        "COLUMN_NAME": "id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_outbox_lease",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "status",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_outbox_lease",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 2,
+        "COLUMN_NAME": "lease_expires_at",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_outbox_lease",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 3,
+        "COLUMN_NAME": "id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_outbox_source",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "source_type",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_outbox_source",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 2,
+        "COLUMN_NAME": "source_id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_outbox_source",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 3,
+        "COLUMN_NAME": "source_seq",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "PRIMARY",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "uk_outbox_event",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "topic",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "uk_outbox_event",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 2,
+        "COLUMN_NAME": "event_id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      }
+    ],
+    "foreignKeys": [],
+    "checks": [
+      {
+        "CONSTRAINT_NAME": "ck_outbox_status",
+        "ENFORCED": "YES",
+        "CHECK_CLAUSE": "(`status` in (_utf8mb4\\'pending\\',_utf8mb4\\'claimed\\',_utf8mb4\\'processed\\',_utf8mb4\\'failed\\'))"
+      },
+      {
+        "CONSTRAINT_NAME": "ck_outbox_topic",
+        "ENFORCED": "YES",
+        "CHECK_CLAUSE": "(`topic` in (_utf8mb4\\'job.start\\',_utf8mb4\\'job.wake\\',_utf8mb4\\'run.start\\',_utf8mb4\\'message.fanout\\'))"
+      }
+    ],
+    "options": [
+      {
+        "ENGINE": "InnoDB",
+        "TABLE_COLLATION": "utf8mb4_0900_ai_ci",
+        "TABLE_COMMENT": "Transactional durable dispatch intents"
+      }
+    ]
+  }
+}

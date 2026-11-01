@@ -1,3 +1,4 @@
+import { configurationHeaders } from "./helpers/configuration-headers.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance } from "fastify";
@@ -76,7 +77,7 @@ describe("S-61 config writes refuse env: with 400 CFG-8504", () => {
   it("PATCH /admin/api/mcp/:id headers", async () => {
     const id = await repos.createMcpServer({ key: key("mcp-patch"), name: "it", url: "https://mcp.example.com/mcp", headers: { A: "b" } });
     mcpIds.push(id);
-    expectRefused(await app.inject({ method: "PATCH", url: `/admin/api/mcp/${id}`, headers: h, payload: { headers: { "X-Leak": "env:FORGE_MASTER_KEY" } } }));
+    expectRefused(await app.inject({ method: "PATCH", url: `/admin/api/mcp/${id}`, headers: await configurationHeaders(`/admin/api/mcp/${id}`, h), payload: { headers: { "X-Leak": "env:FORGE_MASTER_KEY" } } }));
     expect(JSON.stringify((await repos.getMcpServer(id))?.headers_json)).not.toContain("env:");
   });
 
@@ -95,8 +96,8 @@ describe("S-61 config writes refuse env: with 400 CFG-8504", () => {
   it("PATCH /admin/api/providers/:id: headers and apiKey", async () => {
     const id = await repos.createProvider({ key: key("p-patch"), name: "it", protocol: "openai-compatible", baseUrl: "https://llm.example.com/v1" });
     providerIds.push(id);
-    expectRefused(await app.inject({ method: "PATCH", url: `/admin/api/providers/${id}`, headers: h, payload: { apiKey: "ENV:FORGE_MASTER_KEY" } }));
-    expectRefused(await app.inject({ method: "PATCH", url: `/admin/api/providers/${id}`, headers: h, payload: { headers: { A: "env:SESSION_SECRET" } } }));
+    expectRefused(await app.inject({ method: "PATCH", url: `/admin/api/providers/${id}`, headers: await configurationHeaders(`/admin/api/providers/${id}`, h), payload: { apiKey: "ENV:FORGE_MASTER_KEY" } }));
+    expectRefused(await app.inject({ method: "PATCH", url: `/admin/api/providers/${id}`, headers: await configurationHeaders(`/admin/api/providers/${id}`, h), payload: { headers: { A: "env:SESSION_SECRET" } } }));
     expect((await repos.getProviderById(id))?.api_key_encrypted ?? null).toBeNull();
   });
 
@@ -104,7 +105,7 @@ describe("S-61 config writes refuse env: with 400 CFG-8504", () => {
     const res = await app.inject({
       method: "POST",
       url: "/admin/api/plugins/install",
-      headers: h,
+      headers: await configurationHeaders("/admin/api/plugins/install", h),
       payload: {
         key: key("plg"),
         resources: {
@@ -127,9 +128,11 @@ describe("S-61 runtime: a stored env: value is never sent", () => {
   });
 
   it("provider test with a stored env: apiKey -> 400 CFG-8504, no upstream call", async () => {
-    const id = await repos.createProvider({ key: key("p-run"), name: "it", protocol: "openai-compatible", baseUrl: "https://llm.example.com/v1", apiKeyEncrypted: encryptSecret("env:FORGE_MASTER_KEY", config.FORGE_MASTER_KEY) });
+    const id = await repos.createProvider({ key: key("p-run"), name: "it", protocol: "openai-compatible", baseUrl: "https://llm.example.com/v1", apiKeyEncrypted: undefined });
+    // Fault injection models pre-vault persisted data; normal repository writes now reject env references.
+    await execute("UPDATE llm_providers SET api_key_encrypted = ? WHERE id = ?", [encryptSecret("env:FORGE_MASTER_KEY", config.FORGE_MASTER_KEY), id]);
     providerIds.push(id);
     await repos.createModel({ providerId: id, key: "it-model", displayName: "it" });
-    expectRefused(await app.inject({ method: "POST", url: `/admin/api/providers/${id}/test`, headers: h }));
+    expectRefused(await app.inject({ method: "POST", url: `/admin/api/providers/${id}/test`, headers: await configurationHeaders(`/admin/api/providers/${id}/test`, h) }));
   });
 });

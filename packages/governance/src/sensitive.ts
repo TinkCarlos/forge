@@ -72,10 +72,13 @@ const PROSE_BEARER = /\b(bearer\s+)(?:(?=[A-Za-z0-9._~+/=-]*\d)[A-Za-z0-9._~+/=-
 // Basic: base64-looking (a digit, + / =, or an inner lower->upper switch), so "Basic Authentication" stays readable.
 const PROSE_BASIC = /\b(Basic\s+)(?=[A-Za-z0-9+/=]*(?:[0-9+/=]|[a-z][A-Z]))[A-Za-z0-9+/]{8,}={0,2}/g;
 const PROSE_SK = /(^|[^\w-])sk-[A-Za-z0-9_-]{16,}/g;
+const PROSE_FORGE_KEY = /(^|[^\w-])fsk_[A-Za-z0-9_-]{16,}/g;
 const PROSE_GITHUB = /(^|[^\w-])(?:gh[opsu]_|github_pat_)[A-Za-z0-9_]{16,}/g;
 const PROSE_SLACK = /(^|[^\w-])xox[abprs]-[A-Za-z0-9-]{8,}/g;
 const PROSE_AWS_KEY_ID = /(^|[^\w-])(?:AKIA|ASIA)[A-Z0-9]{16}(?![A-Za-z0-9])/g;
 const PROSE_JWT = new RegExp(`(^|[^${B64URL}.])eyJ[${B64URL}]*\\.eyJ[${B64URL}]*\\.[${B64URL}]+`, "g");
+const PROSE_URL_USERINFO = /([a-z][a-z0-9+.-]*:\/\/)[^\s/]*@/gi;
+const PROSE_JSON_VALUE = /("((?:[^"\\]|\\.)*)"\s*:\s*")(?:[^"\\]|\\.)*"/g;
 // Keyword key-value: the whole key in front of `:` / `=` / `：` must be exactly one keyword (case-insensitive). The lead
 // `(^|[^\w-])` and "keyword, optional spaces, then the separator" make it a whole-key match, so `max_tokens=`,
 // `token 用量:`, `tokenizer=`, `secretary:` and a `secret` without a separator do not match. The value is masked whole,
@@ -86,10 +89,16 @@ const PROSE_KEY_VALUE =
 /** Masks prose-style credentials inside free text; returns the input unchanged when there are none. */
 export function maskProseSecrets(value: string): string {
   return value
+    .replace(PROSE_URL_USERINFO, `$1${MASK}@`)
+    .replace(PROSE_JSON_VALUE, (match, lead: string, key: string) => {
+      try { return isSensitiveKey(JSON.parse(`"${key}"`) as string) ? `${lead}${MASK}"` : match; }
+      catch { return `${lead}${MASK}"`; }
+    })
     .replace(PROSE_KEY_VALUE, (_m, lead: string, key: string) => `${lead}${key}${MASK}`)
     .replace(PROSE_BEARER, `$1${MASK}`)
     .replace(PROSE_BASIC, `$1${MASK}`)
     .replace(PROSE_SK, `$1${MASK}`)
+    .replace(PROSE_FORGE_KEY, `$1${MASK}`)
     .replace(PROSE_GITHUB, `$1${MASK}`)
     .replace(PROSE_SLACK, `$1${MASK}`)
     .replace(PROSE_AWS_KEY_ID, `$1${MASK}`)

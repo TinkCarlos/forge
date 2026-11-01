@@ -1,0 +1,1068 @@
+--- before/apps/console/public/app.js
++++ after/apps/console/public/app.js
+@@ -321,7 +321,7 @@
+   selected?.scrollIntoView({ block: "nearest", inline: "nearest" });
+ }
+ 
+-// K-33：hash 形如 `tab` 或 `agents/<encodeURIComponent(id)>`；只有 Agents 页认 id，渲染完列表后打开该 Agent 详情。
++// 对象深链接保留目标 ID，避免从审批跳转后重新在列表里寻找。
+ function parseRoute(route) {
+   const raw = String(route ?? "").replace(/^#/, "");
+   const slash = raw.indexOf("/");
+@@ -347,7 +347,7 @@
+   let { tab, id } = parseRoute(route);
+   if (!tabMeta[tab]) tab = "dashboard";
+   if (tab === "users") id = id === "roles" || (!canPermission("user.view") && canPermission("role.view")) ? "roles" : "";
+-  else if (tab !== "agents" || !isEntityId(id)) id = "";
++  else if (!((tab === "agents" && id === "new") || (["agents", "runs"].includes(tab) && isEntityId(id)))) id = "";
+   state.accountSection = id === "roles" ? "roles" : "accounts";
+   state.tab = tab;
+   state.route = id ? `${tab}/${encodeURIComponent(id)}` : tab;
+@@ -359,7 +359,10 @@
+   try {
+     await renderCurrent();
+     if (navigation !== state.navigation) return;
+-    if (tab === "agents" && id) await app.openAgentDetail(id, navigation);
++    if (tab === "agents" && id === "new") {
++      if (canPermission("agent.manage")) app.openAgentCreate();
++    } else if (tab === "agents" && id) await app.openAgentDetail(id, navigation);
++    else if (tab === "runs" && id) await app.openRun(id, navigation);
+   } catch (error) {
+     if (navigation === state.navigation) $("#content").innerHTML = errorCard(error);
+   }
+@@ -403,13 +406,14 @@
+   return `<div class="empty"><strong>${esc(title)}</strong><span>${esc(text)}</span>${action ? `<div style="margin-top:14px">${action}</div>` : ""}</div>`;
+ }
+ 
+-function statusPill(status, label = status) {
++function statusPill(status, label) {
+   const map = {
+     active: "ok", succeeded: "ok", approved: "ok",
+     queued: "info", running: "info", waiting_approval: "warn", pending: "warn", disabled: "warn",
+     failed: "bad", rejected: "bad", cancelled: "bad", expired: "bad", budget_exhausted: "bad",
+   };
+-  return `<span class="pill ${map[status] ?? ""}">${esc(label)}</span>`;
++  const labels = { active: "启用", succeeded: "成功", approved: "已批准", queued: "排队中", running: "运行中", waiting_approval: "待审批", pending: "待处理", disabled: "停用", failed: "失败", rejected: "已驳回", cancelled: "已取消", expired: "已过期", budget_exhausted: "预算耗尽", draft: "草稿", published: "已发布" };
++  return `<span class="pill ${map[status] ?? ""}">${esc(label ?? labels[status] ?? status)}</span>`;
+ }
+ 
+ async function renderDashboard() {
+@@ -463,18 +467,20 @@
+       <div class="card-head"><div><h3>Agents</h3><p class="muted">发布版本、开启开放 API、试运行</p></div>
+         <div class="actions">${canPermission("package.view") && canPermission("plugin.install") ? `<button class="btn ghost" onclick="app.switchTab('packages')">安装能力包</button>` : ""}${canPermission("agent.manage") ? `<button class="btn primary" onclick="app.openAgentCreate()">新建 Agent</button>` : ""}</div>
+       </div>
+-      ${state.agents.length ? `<div class="table-wrap"><table><thead><tr><th>Key</th><th>名称</th><th>版本</th><th>开放 API</th><th>状态</th><th>操作</th></tr></thead><tbody>
++      ${state.agents.length ? `<div class="table-wrap"><table class="agent-table"><thead><tr><th>Key</th><th>名称</th><th>版本</th><th>开放 API</th><th>状态</th><th>操作</th></tr></thead><tbody>
+         ${state.agents.map((agent) => `<tr>
+-          <td class="mono">${esc(agent.key)}</td><td><strong>${esc(agent.name)}</strong><div class="muted">${esc(agent.description)}</div></td>
++          <td class="mono">${esc(agent.key)}</td><td><strong><a href="#agents/${esc(encodeURIComponent(agent.id))}" data-action="agent-detail" data-agent-id="${esc(agent.id)}">${esc(agent.name)}</a></strong><div class="muted">${esc(agent.description)}</div></td>
+           <td>${esc(agent.publishedVersion ?? "未发布")}</td>
+           <td>${agent.apiEnabled ? `<span class="pill ok">已开放</span>` : `<span class="pill">未开放</span>`}</td>
+           <td>${statusPill(agent.status)}</td>
+           <td><div class="actions">
+             ${canPermission("agent.run") ? `<button class="btn ghost small" type="button" data-action="agent-run" data-agent-id="${esc(agent.id)}">试运行</button>` : ""}
+-            ${canPermission("agent.publish") ? `<button class="btn ghost small" type="button" data-action="agent-new-version" data-agent-id="${esc(agent.id)}">新版本</button>` : ""}
++            <details class="row-menu"><summary class="btn ghost small">更多</summary><div class="row-menu-actions">
++            ${canPermission("agent.publish") ? `<button class="btn ghost small" type="button" data-action="agent-new-version" data-agent-id="${esc(agent.id)}">新版本草稿</button>` : ""}
+             ${agent.draft ? `${canPermission("agent.publish") ? `<button class="btn ghost small" onclick="app.publishAgent('${esc(agent.id)}')">发布草稿 ${esc(vLabel(agent.draft.version))}</button>` : ""}` : ""}
+             ${canPermission("agent.manage") ? `<button class="btn ghost small" onclick="app.toggleAgentApi('${esc(agent.id)}',${agent.apiEnabled ? "false" : "true"})">${agent.apiEnabled ? "关闭 API" : "开放 API"}</button>` : ""}
+-            <button class="btn ghost small" onclick="app.openAgentDetail('${esc(agent.id)}')">详情</button>
++            <button class="btn ghost small" onclick="app.openAgentDetail('${esc(agent.id)}')">配置详情</button>
++            </div></details>
+           </div></td>
+         </tr>`).join("")}
+       </tbody></table></div>` : empty("还没有 Agent", "新建一个 Agent，默认使用离线 Mock 模型即可运行。", `${canPermission("agent.manage") ? `<button class="btn primary" onclick="app.openAgentCreate()">新建 Agent</button>` : ""}`)}
+@@ -489,7 +495,7 @@
+ function secretScopeText(scope) {
+   if (scope.type === "platform") return "平台";
+   if (scope.type === "org") return `组织 · ${scope.id}`;
+-  return `${scope.resourceType} · ${scope.id}`;
++  return `${secretResourceDirectories()[scope.resourceType]?.[0] ?? scope.resourceType} · ${scope.id}`;
+ }
+ 
+ async function renderSecrets(cursor = "") {
+@@ -627,7 +633,10 @@
+ }
+ 
+ async function renderRuns() {
++  const navigation = state.navigation, ticket = (state.runsRequest ?? 0) + 1;
++  state.runsRequest = ticket;
+   const data = await api("/admin/api/runs?limit=100");
++  if (navigation !== state.navigation || state.tab !== "runs" || ticket !== state.runsRequest) return;
+   state.runs = data.items ?? [];
+   $("#content").innerHTML = `
+     <div class="card">
+@@ -918,6 +927,7 @@
+     const id = button.dataset.agentId;
+     if (button.dataset.action === "agent-run") app.openAgentRun(id);
+     else if (button.dataset.action === "agent-new-version") app.openAgentNewVersion(id);
++    else if (button.dataset.action === "agent-detail") { event.preventDefault(); app.switchTab(`agents/${encodeURIComponent(id)}`); }
+   });
+ }
+ 
+@@ -1052,6 +1062,133 @@
+   }
+ }
+ 
++function agentSpecFields(spec) {
++  const fields = [["模型 Provider Key", "model.provider", "text", "required list=agent-providers"], ["模型名称", "model.model", "text", "required list=agent-models"], ["温度（可选）", "model.temperature", "number", 'min="0" max="2" step="0.1"'], ["最多执行步数（可选）", "limits.maxSteps", "number", 'min="1" step="1"'], ["成本上限（美元，可选）", "limits.maxCostUsd", "number", 'min="0" step="0.000001"']];
++  return fields.map(([label,path,type,extra]) => { const [group,key] = path.split("."); return field(label, path, spec[group]?.[key] ?? "", type, `data-spec-path="${path}" ${extra}`); }).join("") + `
++    <datalist id="agent-providers"></datalist><datalist id="agent-models"></datalist>
++    <div class="full" data-agent-capabilities><p class="hint">正在加载有权读取的模型、Skill 和工具目录…</p></div>
++    <details class="full advanced-config"><summary>高级配置 JSON（与上方字段同步）</summary>${textarea("完整 Agent 配置", "spec", JSON.stringify(spec, null, 2), 10)}<p class="hint" id="agent-spec-error" role="alert" hidden></p></details>`;
++}
++
++function agentReadableConfig(spec) {
++  const unsupported = "请查看高级配置";
++  const strings = value => Array.isArray(value) && value.every(item => typeof item === "string") ? value.join("、") || "无" : value == null ? "无" : unsupported;
++  const model = spec.model && typeof spec.model.provider === "string" && typeof spec.model.model === "string" ? `${spec.model.provider} / ${spec.model.model}` : spec.model == null ? "未配置" : unsupported;
++  const skills = strings(spec.skills);
++  const tools = Array.isArray(spec.toolsets) ? spec.toolsets.map(group => {
++    if (!group || typeof group !== "object") return unsupported;
++    if (group.builtin !== undefined) return strings(group.builtin);
++    const key = group.mcp ?? group.openapi ?? group.connector;
++    return typeof key === "string" ? key : unsupported;
++  }).join("；") || "无" : spec.toolsets == null ? "无" : unsupported;
++  const steps = spec.limits?.maxSteps, cost = spec.limits?.maxCostUsd;
++  const budget = [steps,cost].every(value => value == null || typeof value === "number") ? `最多 ${steps ?? "默认"} 步，成本上限 ${cost ?? "默认"} 美元` : unsupported;
++  return { model, skills, tools, budget };
++}
++
++function editAgentSpec(spec, path, value) {
++  if (!["model.provider", "model.model", "model.temperature", "limits.maxSteps", "limits.maxCostUsd"].includes(path)) throw new Error("未知配置字段");
++  const next = structuredClone(spec), [group,key] = path.split(".");
++  next[group] = next[group] && typeof next[group] === "object" && !Array.isArray(next[group]) ? { ...next[group] } : {};
++  if (path === "model.provider" || path === "model.model") next[group][key] = value;
++  else if (value === "") delete next[group][key];
++  else {
++    const number = Number(value);
++    if (!Number.isFinite(number)) throw new Error("请输入有效数值");
++    next[group][key] = number;
++  }
++  return next;
++}
++
++function chooseAgentCapability(spec, kind, key, checked, previous = []) {
++  const next = structuredClone(spec);
++  if (kind === "skills") {
++    next.skills = (next.skills ?? []).filter(value => value !== key);
++    if (checked) next.skills.push(key);
++  } else if (kind === "builtin") {
++    next.toolsets = (next.toolsets ?? []).map(group => group.builtin ? { ...group, builtin: group.builtin.filter(value => value !== key) } : group).filter(group => !group.builtin || group.builtin.length);
++    if (checked) next.toolsets.push({ builtin: [key] });
++  } else if (kind === "mcp" || kind === "openapi") {
++    const existing = (next.toolsets ?? []).filter(group => group?.[kind] === key);
++    next.toolsets = (next.toolsets ?? []).filter(group => group[kind] !== key);
++    if (checked) next.toolsets.push(...(existing.length ? existing : previous.length ? structuredClone(previous) : [{ [kind]: key }]));
++  } else throw new Error("未知能力类型");
++  return next;
++}
++
++function bindAgentSpecEditor() {
++  const body = $("#modal-body"), raw = body.querySelector('[name="spec"]');
++  const controls = [...body.querySelectorAll("[data-spec-path]")];
++  const retainedCapabilities = new Map();
++  const read = () => { const spec = JSON.parse(raw.value); if (!spec || typeof spec !== "object" || Array.isArray(spec)) throw new Error("配置必须是 JSON 对象"); return spec; };
++  const report = error => { raw.setCustomValidity(error ? "请修正高级配置 JSON" : ""); const hint = body.querySelector("#agent-spec-error"); hint.hidden = !error; hint.textContent = error ? error.message : ""; if (error) raw.closest("details").open = true; };
++  const sync = () => {
++    try {
++      const spec = read(); report(null);
++      for (const control of controls) { const [group,key] = control.dataset.specPath.split("."); control.value = spec[group]?.[key] ?? ""; }
++      for (const control of body.querySelectorAll("[data-capability]")) { const { capability: kind, key } = control.dataset; control.checked = kind === "skills" ? Array.isArray(spec.skills) && spec.skills.includes(key) : Array.isArray(spec.toolsets) && spec.toolsets.some(group => kind === "builtin" ? Array.isArray(group?.builtin) && group.builtin.includes(key) : group?.[kind] === key); }
++    } catch (error) { report(error); }
++  };
++  const change = update => { try { raw.value = JSON.stringify(update(read()), null, 2); report(null); } catch (error) { report(error); } };
++  for (const control of controls) control.addEventListener("input", () => change(spec => editAgentSpec(spec, control.dataset.specPath, control.value)));
++  raw.addEventListener("input", sync);
++  const directories = [["model.view", "/admin/api/providers", "models", "模型"], ["skill.view", "/admin/api/skills", "skills", "Skills"], ["mcp.view", "/admin/api/mcp", "mcp", "MCP 服务"], ["tool.view", "/admin/api/tool-sources", "openapi", "OpenAPI 工具源"]].filter(([permission]) => canPermission(permission));
++  Promise.allSettled(directories.map(([,path]) => api(path))).then(results => {
++    if (!raw.isConnected) return;
++    const groups = [{ kind: "builtin", label: "内置工具", items: [{ key: "current_time", name: "当前时间" }, { key: "echo", name: "回显" }] }];
++    const errors = [];
++    results.forEach((result,index) => {
++      const [, , kind, label] = directories[index];
++      if (result.status === "rejected") { errors.push(`${label}目录加载失败，可重开表单重试或使用高级配置。`); return; }
++      const items = result.value.items ?? [];
++      if (kind === "models") {
++        body.querySelector("#agent-providers").innerHTML = items.map(item => `<option value="${esc(item.key)}">${esc(item.name)}</option>`).join("");
++        body.querySelector("#agent-models").innerHTML = items.flatMap(item => item.models ?? []).map(item => `<option value="${esc(item.key)}">${esc(item.displayName ?? item.key)}</option>`).join("");
++      } else groups.push({ kind, label, items });
++    });
++    body.querySelector("[data-agent-capabilities]").innerHTML = `<p class="hint">模型可按 Key 输入或从目录选择；原有工具白名单与高级配置会保留，新绑定的 MCP / OpenAPI 工具源默认使用其全部工具。</p>${groups.map(group => `<fieldset class="capability-group"><legend>${esc(group.label)}</legend>${group.items.length ? group.items.map(item => `<label class="capability-choice"><input type="checkbox" data-capability="${group.kind}" data-key="${esc(item.key)}" />${esc(item.name ?? item.key)} <span class="muted">${esc(item.key)}</span></label>`).join("") : '<p class="hint">当前没有可选资源</p>'}</fieldset>`).join("")}${errors.map(message => `<p class="hint" role="status">${esc(message)}</p>`).join("")}`;
++    for (const control of body.querySelectorAll("[data-capability]")) control.addEventListener("change", () => change(spec => {
++      const { capability: kind, key } = control.dataset, identity = `${kind}:${key}`;
++      if (!control.checked && (kind === "mcp" || kind === "openapi")) retainedCapabilities.set(identity, (spec.toolsets ?? []).filter(group => group?.[kind] === key));
++      return chooseAgentCapability(spec, kind, key, control.checked, retainedCapabilities.get(identity));
++    }));
++    sync();
++  }).catch(error => { if (raw.isConnected) report(error); });
++}
++
++function secretResourceDirectories() {
++  return { agent: ["Agent", "agent.view", "/admin/api/agents"], llm_provider: ["模型 Provider", "model.view", "/admin/api/providers"], mcp_server: ["MCP 服务", "mcp.view", "/admin/api/mcp"], tool_source: ["OpenAPI 工具源", "tool.view", "/admin/api/tool-sources"], api_app: ["API 应用", "apikey.view", "/admin/api/apps"], message_channel: ["消息渠道", "message.view", "/admin/api/message-channels"] };
++}
++
++function bindSecretScopePicker() {
++  const body = $("#modal-body"), type = body.querySelector("[name=scopeType]"), resource = body.querySelector("[name=resourceType]");
++  const select = body.querySelector("[name=scopeId]"), query = body.querySelector("[name=scopeQuery]"), manual = body.querySelector("[name=scopeManualId]"), hint = body.querySelector("[data-scope-hint]");
++  let generation = 0, items = [];
++  const filter = () => { const selected = select.value, text = query.value.toLowerCase(); select.innerHTML = '<option value="">请选择对象</option>' + items.filter(item => `${item.name} ${item.key ?? ""} ${item.id}`.toLowerCase().includes(text)).map(item => `<option value="${esc(item.id)}">${esc(item.name ?? item.key ?? item.id)}${item.key ? ` · ${esc(item.key)}` : ""}</option>`).join(""); select.value = selected; hint.textContent = select.value ? `选定对象 ID：${select.value}` : "按名称或 Key 查找并选择对象。"; };
++  select.onchange = () => { hint.textContent = select.value ? `选定对象 ID：${select.value}` : "按名称或 Key 查找并选择对象。"; if (select.value) manual.value = ""; };
++  query.oninput = filter;
++  const update = async () => {
++    const request = ++generation, platform = type.value === "platform";
++    body.querySelector("[data-secret-resource]").hidden = type.value !== "resource";
++    body.querySelector("[data-secret-target]").hidden = platform;
++    select.value = ""; manual.value = ""; query.value = ""; items = []; filter();
++    select.disabled = true; query.disabled = true; manual.disabled = platform;
++    if (platform) return;
++    const directory = type.value === "org" ? ["组织", "org.view", "/admin/api/org-units"] : secretResourceDirectories()[resource.value];
++    hint.textContent = "正在加载目录…";
++    try {
++      if (!directory || !canPermission(directory[1])) throw new Error("没有读取此目录的权限，可联系管理员或使用高级 ID 输入。");
++      const result = await api(directory[2]);
++      if (request !== generation || !select.isConnected) return;
++      items = result.items ?? []; filter(); select.disabled = false; query.disabled = false;
++      hint.textContent = items.length ? "按名称或 Key 查找并选择对象。" : "目录中没有可选对象，可先创建资源或使用高级 ID 输入。";
++    } catch (error) { if (request === generation && select.isConnected) hint.textContent = `目录未加载：${errorText(error)}`; }
++  };
++  type.onchange = update; resource.onchange = update;
++  body.querySelector("[data-scope-retry]").onclick = update;
++  update();
++}
++
+ // ---------- actions ----------
+ 
+ const app = {
+@@ -1060,15 +1197,14 @@
+   renderCurrent: refreshCurrent,
+ 
+   openAgentCreate() {
+-    const publish = canPermission("agent.publish");
+     const spec = JSON.stringify({ model: { provider: "mock", model: "mock-1", temperature: 0.2 }, toolsets: [{ builtin: ["current_time", "echo"] }], limits: { maxSteps: 4, maxCostUsd: 1 } }, null, 2);
+     openModal("新建 Agent", `
+       <div class="form-grid">
+         ${field("Key", "key", "my-agent")}
+         ${field("名称", "name", "我的 Agent")}
+         <div class="full">${field("描述", "description", "")}</div>
+-        <div class="full">${textarea("Instructions", "instructions", "你是一个简洁、可靠的助手。")}</div>
+-        <div class="full">${textarea("Spec JSON", "spec", spec, 8)}</div>
++        <div class="full">${textarea("指令", "instructions", "你是一个简洁、可靠的助手。")}</div>
++        ${agentSpecFields(JSON.parse(spec))}
+       </div>`, async (data) => {
+       const body = {
+         key: data.get("key"),
+@@ -1076,12 +1212,13 @@
+         description: data.get("description"),
+         instructions: data.get("instructions"),
+         spec: parseJsonField(data, "spec", {}),
+-        publish,
++        publish: false,
+       };
+       await api("/admin/api/agents", { method: "POST", body });
+-      toast(publish ? "Agent 已创建并发布" : "Agent 草稿已创建");
++      toast("Agent 草稿已保存，可先试运行，再单独发布");
+       await renderAgents();
+-    }, publish ? "创建并发布" : "创建草稿");
++    }, "保存草稿");
++    bindAgentSpecEditor();
+   },
+ 
+   async openAgentNewVersion(id) {
+@@ -1093,13 +1230,14 @@
+       openModal(`新建版本 · ${name}`, `
+         <div class="form-grid">
+           ${field("版本号", "version", "1.1.0")}
+-          <div class="full">${textarea("Instructions", "instructions", latest.instructions ?? "")}</div>
+-          <div class="full">${textarea("Spec JSON", "spec", JSON.stringify(latest.spec_json ?? {}, null, 2), 10)}</div>
++          <div class="full">${textarea("指令", "instructions", latest.instructions ?? "")}</div>
++          ${agentSpecFields(latest.spec_json ?? {})}
+         </div>`, async (data) => {
+-        await api(`/admin/api/agents/${idSeg(id)}/versions`, { method: "POST", headers: revisionHeaders(detail), body: { version: data.get("version"), instructions: data.get("instructions"), spec: parseJsonField(data, "spec", {}), publish: true } });
+-        toast("新版本已创建并发布");
++        await api(`/admin/api/agents/${idSeg(id)}/versions`, { method: "POST", headers: revisionHeaders(detail), body: { version: data.get("version"), instructions: data.get("instructions"), spec: parseJsonField(data, "spec", {}), publish: false } });
++        toast("新版本草稿已保存，线上版本保持不变");
+         await renderAgents();
+-      }, "创建并发布");
++      }, "保存草稿");
++      bindAgentSpecEditor();
+     } catch (error) {
+       toast(errorText(error), "error");
+     }
+@@ -1114,21 +1252,18 @@
+       ${field("名称", "name", "", "text", 'required maxlength="128"')}
+       <div class="full">${textarea("描述", "description", "", 2, 'maxlength="1024"')}</div>
+       ${select("作用域", "scopeType", [{value:"platform",label:"平台"},{value:"org",label:"组织"},{value:"resource",label:"指定资源"}], "platform")}
+-      <div data-secret-resource hidden>${select("资源类型", "resourceType", ["agent","llm_provider","mcp_server","tool_source","api_app","message_channel"].map(value => ({value,label:value})))}</div>
+-      <div data-secret-scope-id hidden>${field("组织 / 资源 ID", "scopeId", "", "text", 'minlength="26" maxlength="26"')}</div>
++      <div data-secret-resource hidden>${select("资源类型", "resourceType", Object.entries(secretResourceDirectories()).map(([value,[label]]) => ({value,label})))}</div>
++      <div class="full" data-secret-target hidden>${field("搜索组织 / 资源名称或 Key", "scopeQuery", "", "search")}${select("选择组织 / 资源", "scopeId", [{value:"",label:"请选择对象"}])}<p class="hint" data-scope-hint role="status"></p><button type="button" class="btn ghost small" data-scope-retry>重新加载目录</button><details class="advanced-config"><summary>高级：直接输入对象 ID</summary>${field("组织 / 资源 ID", "scopeManualId", "", "text", 'minlength="26" maxlength="26"')}<p class="hint">仅在明确知道目标 ID 时使用，保存仍执行服务端作用域校验。</p></details></div>
+       <div class="full">${textarea("凭据值", "value", "", 5, 'required autocomplete="off" spellcheck="false" data-credential-input')}</div>
+     </div>`, async data => {
+-      const type = data.get("scopeType"), scope = type === "platform" ? {type} : type === "org" ? {type,id:data.get("scopeId")} : {type,resourceType:data.get("resourceType"),id:data.get("scopeId")};
++      const type = data.get("scopeType"), selected = data.get("scopeId"), manual = data.get("scopeManualId");
++      if (type !== "platform" && !selected && !manual) throw new Error("请选择组织或资源，或在高级区填写目标 ID");
++      if (selected && manual && selected !== manual) throw new Error("目录选择和高级 ID 不一致，请只保留一个目标");
++      const id = selected || manual, scope = type === "platform" ? {type} : type === "org" ? {type,id} : {type,resourceType:data.get("resourceType"),id};
+       await api("/admin/api/secrets", {method:"POST",body:{key:data.get("key"),name:data.get("name"),description:data.get("description"),scope,value:data.get("value")}});
+       toast("凭据已创建"); await renderSecrets();
+     });
+-    const update = () => {
+-      const type = $("#modal-body [name=scopeType]").value;
+-      $("#modal-body [data-secret-resource]").hidden = type !== "resource";
+-      $("#modal-body [data-secret-scope-id]").hidden = type === "platform";
+-      $("#modal-body [name=scopeId]").required = type !== "platform";
+-    };
+-    $("#modal-body [name=scopeType]").onchange = update; update();
++    bindSecretScopePicker();
+   },
+ 
+   async openSecretDetail(id) {
+@@ -1283,23 +1418,34 @@
+     });
+   },
+ 
+-  openAgentRun(id) {
++  async openAgentRun(id) {
++    try {
++    const navigation = state.navigation;
++    const detail = await api(`/admin/api/agents/${idSeg(id)}`);
++    if (navigation !== state.navigation) return;
++    const versions = detail.versions ?? [];
++    if (!versions.length) { toast("没有可用版本，请先保存一个草稿", "error"); return; }
++    const selected = versions.find(version => version.status === "draft") ?? versions.find(version => version.id === detail.publishedVersionId) ?? versions[0];
+     const name = agentNameById(id);
+     const errorId = "agent-run-text-error";
+-    openModal(`试运行 ${name}`, `${textarea("输入", "text", "你好，介绍一下 Forge。", 5, `aria-required="true" aria-describedby="${errorId}"`)}<p class="hint" id="${errorId}" role="alert" hidden></p>`, async (data) => {
++    openModal(`试运行 ${name}`, `${select("本次试运行版本", "versionId", versions.map(version => ({ value: version.id, label: `${vLabel(version.version)} · ${version.status === "draft" ? "草稿" : "已发布"}` })), selected.id)}<p class="hint">试运行仅使用选定版本，不会发布或切换线上版本。</p>${textarea("输入", "text", "你好，介绍一下 Forge。", 5, `aria-required="true" aria-describedby="${errorId}"`)}<p class="hint" id="${errorId}" role="alert" hidden></p>`, async (data) => {
+       // P3：输入必填。空或只有空白时不发请求；有内容时 text 原样发送（不 trim）。
+       const text = data.get("text");
+       if (typeof text !== "string" || !text.trim()) {
+         showFieldError("text", errorId, "请输入内容");
+         return false;
+       }
+-      const result = await api(`/admin/api/agents/${idSeg(id)}/run`, { method: "POST", body: { input: { text } } });
++      const versionId = data.get("versionId");
++      if (!versions.some(version => version.id === versionId)) throw new Error("请选择有效的试运行版本");
++      const result = await api(`/admin/api/agents/${idSeg(id)}/run`, { method: "POST", body: { versionId, input: { text } } });
+       toast(`Run 已创建：${result.runId}`);
+       if (canPermission("run.view")) {
+         await switchTab("runs");
+-        setTimeout(() => app.openRun(result.runId), 300);
++        const navigation = state.navigation;
++        setTimeout(() => { if (navigation === state.navigation) app.openRun(result.runId, navigation); }, 0);
+       }
+     }, "运行");
++    } catch (error) { toast(errorText(error), "error"); }
+   },
+ 
+   async publishAgent(id) {
+@@ -1337,7 +1483,15 @@
+     try {
+       const agent = await api(`/admin/api/agents/${idSeg(id)}`);
+       if (navigation !== state.navigation) return;
+-      openModal(`Agent ${agent.name}`, `<div class="code-block">${json(agent)}</div>`, async () => {}, "关闭");
++      const latest = agent.versions?.find(version => version.status === "draft") ?? agent.versions?.[0];
++      const spec = latest?.spec_json ?? {};
++      const readable = agentReadableConfig(spec);
++      const summary = [["名称 / Key", `${agent.name} / ${agent.key}`], ["当前配置", latest ? `${vLabel(latest.version)} · ${latest.status === "draft" ? "草稿" : "已发布"}` : "暂无版本"], ["线上版本", agent.publishedVersion ?? "未发布"], ["开放 API", agent.apiEnabled ? "已开放" : "未开放"], ["模型", readable.model], ["指令", latest?.instructions ?? "—"], ["Skills", readable.skills], ["工具", readable.tools], ["预算", readable.budget]];
++      openModal(`Agent · ${agent.name}`, `<dl class="config-summary">${summary.map(([label,value]) => `<dt>${esc(label)}</dt><dd>${esc(value)}</dd>`).join("")}</dl>
++        <div class="actions">${canPermission("agent.publish") ? `<button type="button" class="btn ghost" id="agent-detail-version">新版本草稿</button>` : ""}${canPermission("agent.run") ? `<button type="button" class="btn primary" id="agent-detail-run">选择版本试运行</button>` : ""}${canPermission("agent.publish") && agent.versions?.some(version => version.status === "draft") ? `<button type="button" class="btn ghost" id="agent-detail-publish">发布草稿</button>` : ""}</div>
++        <details class="advanced-config"><summary>高级：原始配置与版本记录</summary><pre class="code-block">${json(agent)}</pre></details>`, async () => {}, "关闭");
++      const actions = { "agent-detail-version": () => app.openAgentNewVersion(id), "agent-detail-run": () => app.openAgentRun(id), "agent-detail-publish": () => app.publishAgent(id) };
++      for (const [name, action] of Object.entries(actions)) { const button = $(`#${name}`); if (button) button.onclick = action; }
+     } catch (error) {
+       if (navigation === state.navigation) toast(errorText(error), "error");
+     }
+@@ -1480,20 +1634,23 @@
+     }
+   },
+ 
+-  async openRun(id) {
++  async openRun(id, navigation = state.navigation) {
+     closeStream();
+     try {
+       const run = await api(`/admin/api/runs/${idSeg(id)}`);
++      if (navigation !== state.navigation) return;
+       openModal(`Run ${run.id}`, `
+         <div id="run-toolbar" class="toolbar">${runToolbarHtml(run)}</div>
+         <div id="run-stream" class="muted"></div>
+-        <div class="split">
++        <div class="run-detail">
++          <dl class="config-summary"><dt>固定版本 ID</dt><dd>${esc(run.agentVersionId ?? "—")}</dd><dt>原始请求</dt><dd>${esc(run.input?.text ?? JSON.stringify(run.input ?? {}))}</dd></dl>
+           <div><h4>消息</h4><div id="run-messages">${runMessagesHtml(run.messages)}</div></div>
+-          <div><h4>工具调用</h4><div id="run-tools">${runToolsHtml(run.toolCalls)}</div><h4 style="margin-top:16px">实时事件</h4><div id="event-log" class="event-log"></div></div>
++          <details class="run-diagnostics"><summary>工具调用与实时事件</summary><h4>工具调用</h4><div id="run-tools">${runToolsHtml(run.toolCalls)}</div><h4>实时事件</h4><div id="event-log" class="event-log"></div></details>
+         </div>`, async () => {}, "关闭");
+       // 弹窗关闭（关闭按钮 / Esc / 取消 Run）一律关流；同一个函数引用重复 addEventListener 不会叠加。
+       $("#modal").addEventListener("close", closeStream);
+       listenRun(run.id, run.status);
++      if (!RUN_ACTIVE_STATUSES.includes(run.status) && state.tab === "runs") await renderRuns();
+     } catch (error) {
+       toast(errorText(error), "error");
+     }
+@@ -1516,7 +1673,8 @@
+   async decideApproval(id, decision) {
+     const approval = (state.approvals ?? []).find((item) => item.id === id);
+     const hint = decision === "approved" && approvalReason(approval) === "interrupted" ? `<p class="muted">这次调用${esc(INTERRUPTED_BADGE_TEXT)}，批准会再执行一次。</p>` : "";
+-    openModal(decision === "approved" ? "批准工具调用" : "驳回工具调用", `${hint}${textarea("备注", "comment", "")}`, async (data) => {
++    const context = approval ? `<dl class="config-summary"><dt>Agent</dt><dd>${esc(approval.agent_name)}</dd><dt>工具</dt><dd>${esc(approval.tool_name ?? "未知工具")}</dd><dt>审批原因</dt><dd>${approvalReason(approval) === "interrupted" ? "执行中断，结果不确定，需要人工确认" : `按工具风险策略暂停（${esc(approval.risk_level)}）`}</dd><dt>到期时间</dt><dd>${esc(fmt(approval.expires_at))}</dd><dt>调用参数（已脱敏）</dt><dd>${esc(approval.args_preview || "无参数")}</dd></dl>${canPermission("run.view") ? `<a href="/#runs/${esc(encodeURIComponent(approval.run_id))}" target="_blank" rel="noopener noreferrer">在新标签页查看原始请求与执行记录</a>` : ""}<p class="hint">${decision === "approved" ? "批准后将继续执行工具调用" : "驳回后不执行本次工具调用"}，决定后不能撤回。</p>` : '<p class="hint">审批上下文已不可用，请刷新列表后重试。</p>';
++    openModal(decision === "approved" ? "批准工具调用" : "驳回工具调用", `${context}${hint}${textarea("备注", "comment", "")}`, async (data) => {
+       try {
+         await api(`/admin/api/approvals/${idSeg(id)}/decide`, { method: "POST", body: { decision, comment: data.get("comment") } });
+       } catch (error) {
+@@ -1947,6 +2105,7 @@
+       endRunStream(view);
+     }
+     renderStreamStatus(view);
++    if (view.finished && state.tab === "runs") await renderRuns();
+   } catch (error) {
+     if (notify && state.runView === view) toast(errorText(error), "error");
+   }
+--- before/apps/console/public/styles.css
++++ after/apps/console/public/styles.css
+@@ -102,6 +102,29 @@
+ tr:last-child td { border-bottom: 0; }
+ tr:hover td { background: #fbfcfe; }
+ .actions { display: flex; gap: 6px; flex-wrap: wrap; }
++.agent-table { min-width: 760px; }
++.agent-table td:nth-child(3), .agent-table td:nth-child(4), .agent-table td:nth-child(5), .pill { white-space: nowrap; }
++.agent-table td:last-child { width: 190px; }
++.row-menu { position: relative; }
++.row-menu > summary { list-style: none; }
++.row-menu > summary::-webkit-details-marker { display: none; }
++.row-menu-actions { display: grid; gap: 6px; margin-top: 8px; }
++.config-summary { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 8px 16px; margin: 0; }
++.config-summary dt { color: var(--muted); }
++.config-summary dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
++.advanced-config > summary, .run-diagnostics > summary { cursor: pointer; padding: 8px 0; font-weight: 600; }
++.advanced-config textarea { margin-top: 8px; }
++.capability-group { min-inline-size: 0; border: 1px solid var(--border); border-radius: var(--radius); margin: 8px 0; padding: 12px; }
++.capability-group legend { padding: 0 4px; font-weight: 600; font-size: 13px; }
++.capability-choice { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 4px 0; overflow-wrap: anywhere; }
++.capability-choice input { width: 16px; height: 16px; margin: 0; box-shadow: none; }
++.run-detail, .run-detail > *, #run-messages, #run-tools { min-width: 0; }
++#run-messages, #run-tools { overflow-wrap: anywhere; }
++.run-detail { display: grid; gap: 20px; }
++.run-diagnostics { border-top: 1px solid var(--border); }
++.run-diagnostics .event-log { margin-top: 12px; }
++.run-diagnostics .event-row { grid-template-columns: 28px minmax(0, 132px) minmax(0, 1fr); }
++.run-diagnostics .event-row > * { min-width: 0; overflow-wrap: anywhere; }
+ .list-pagination { padding: 12px 16px; justify-content: flex-end; }
+ #user-filters { align-items: flex-end; }
+ .account-table { min-width: 760px; }
+--- before/apps/console/src/lib/legacy-link.ts
++++ after/apps/console/src/lib/legacy-link.ts
+@@ -15,3 +15,7 @@
+ export function legacyAgentHref(id: string) {
+   return isEntityId(id) ? `/#agents/${encodeURIComponent(id)}` : '/#agents'
+ }
++
++export function legacyRunHref(id: string) {
++  return isEntityId(id) ? `/#runs/${encodeURIComponent(id)}` : '/#runs'
++}
+--- before/apps/console/src/lib/legacy-link.test.ts
++++ after/apps/console/src/lib/legacy-link.test.ts
+@@ -1,6 +1,6 @@
+ import { readFileSync } from 'node:fs'
+ import { describe, expect, it, vi } from 'vitest'
+-import { LEGACY_LINK_ATTRS, LEGACY_LINK_HINT, openLegacy } from './legacy-link'
++import { LEGACY_LINK_ATTRS, LEGACY_LINK_HINT, openLegacy, legacyRunHref } from './legacy-link'
+ 
+ const src = (p: string) => readFileSync(new URL(p, import.meta.url), 'utf8')
+ 
+@@ -28,7 +28,7 @@
+ 
+   it('列表、空态和账号菜单的旧版入口也保留当前标签页', () => {
+     for (const file of ['../features/agents/index.tsx', '../features/approvals/index.tsx', '../components/layout/nav-user.tsx']) {
+-      const links = src(file).match(/<a\b[^>]*href=(?:'\/(?:#[^']*)?'|\{legacyAgentHref\(a\.id\)\})[^>]*>/g) ?? []
++      const links = src(file).match(/<a\b[^>]*href=(?:'\/(?:#[^']*)?'|\{legacyAgentHref\(a\.id\)\}|\{legacyRunHref\([^)]*\)\})[^>]*>/g) ?? []
+       expect(links.length).toBeGreaterThan(0)
+       for (const link of links) {
+         expect(link, file).toContain('{...LEGACY_LINK_ATTRS}')
+@@ -39,6 +39,11 @@
+ })
+ 
+ describe('K-33 新版 Agent 行跳旧版详情', () => {
++  it('审批跳到具体Run；非法ID不能进入详情路径', () => {
++    expect(legacyRunHref('01J00000000000000000000006')).toBe('/#runs/01J00000000000000000000006')
++    expect(legacyRunHref('../users')).toBe('/#runs')
++    expect(src('../features/approvals/index.tsx')).toContain('href={legacyRunHref(a.run_id)}')
++  })
+   it('legacyAgentHref 生成 /#agents/<id>，id 不合法时只到列表', async () => {
+     const mod = (await import('./legacy-link')) as Record<string, unknown>
+     expect(mod.legacyAgentHref).toBeTypeOf('function')
+--- before/apps/console/src/features/agents/index.tsx
++++ after/apps/console/src/features/agents/index.tsx
+@@ -78,6 +78,7 @@
+   // K-29：开放/关闭 API 走 PATCH（agent.manage），发布要 agent.publish；没有权限的入口不显示
+   const canManage = useCan('agent.manage')
+   const canPublish = useCan('agent.publish')
++  const canRun = useCan('agent.run')
+ 
+   const rows = useMemo(
+     () => (data ?? []).filter((a) => (tab === 'draft' ? !!a.draftVersion : tab === 'api' ? a.apiEnabled : true)),
+@@ -130,7 +131,7 @@
+         accessorFn: (a) => `${a.name} ${a.key}`,
+         cell: ({ row: { original: a } }) => (
+           <div className='min-w-0'>
+-            <div className='truncate font-medium lg:max-w-[184px]' title={a.name}>{a.name}</div>
++            <a href={legacyAgentHref(a.id)} {...LEGACY_LINK_ATTRS} title={LEGACY_LINK_HINT} className='block truncate rounded-sm font-medium underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-ring lg:max-w-[184px]'><span title={a.name}>{a.name}</span></a>
+             <div className='truncate font-mono text-xs text-muted-foreground lg:max-w-[184px]' title={a.key}>{a.key}</div>
+           </div>
+         ),
+@@ -165,7 +166,10 @@
+         id: 'actions',
+         header: () => <span className='sr-only'>操作</span>,
+         cell: ({ row: { original: a } }) => (
+-          <div className='flex items-center justify-end gap-1'>
++          <div className='flex flex-wrap items-center justify-end gap-1'>
++            <Button size='sm' variant='outline' asChild>
++              <a href={legacyAgentHref(a.id)} {...LEGACY_LINK_ATTRS} title={LEGACY_LINK_HINT}>{canManage ? canRun ? '配置 / 调试' : '配置' : canRun ? '查看 / 调试' : '查看详情'}</a>
++            </Button>
+             {canPublish && a.draftVersion && (
+               <Button size='sm' variant='outline' onClick={() => askPublish(a)}>
+                 <Rocket /> 发布 {versionLabel(a.draftVersion.version)}
+@@ -202,7 +206,7 @@
+       },
+     ],
+     // eslint-disable-next-line react-hooks/exhaustive-deps
+-    [setApi.isPending, setApi.variables, canManage, canPublish]
++    [setApi.isPending, setApi.variables, canManage, canPublish, canRun]
+   )
+ 
+   const table = useReactTable({
+@@ -227,7 +231,7 @@
+       actions={
+         canManage ? (
+           <Button asChild>
+-            <a href='/#agents' {...LEGACY_LINK_ATTRS} title={LEGACY_LINK_HINT}>
++            <a href='/#agents/new' {...LEGACY_LINK_ATTRS} title={LEGACY_LINK_HINT}>
+               <Plus /> 去旧版新建
+             </a>
+           </Button>
+@@ -255,7 +259,7 @@
+             {table.getHeaderGroups().map((hg) => (
+               <TableRow key={hg.id} className='hover:bg-transparent'>
+                 {hg.headers.map((h) => (
+-                  <TableHead key={h.id} className={h.id === 'actions' ? 'w-56' : h.id === 'name' ? 'w-[200px] max-w-[200px]' /* K-19：列宽含 2×8px 内边距共 200px，内容 184px */ : undefined}>
++                  <TableHead key={h.id} className={h.id === 'actions' ? 'w-72' : h.id === 'name' ? 'w-[200px] max-w-[200px]' /* K-19：列宽含 2×8px 内边距共 200px，内容 184px */ : undefined}>
+                     {flexRender(h.column.columnDef.header, h.getContext())}
+                   </TableHead>
+                 ))}
+--- before/apps/console/src/features/approvals/index.tsx
++++ after/apps/console/src/features/approvals/index.tsx
+@@ -10,7 +10,7 @@
+ import { useRefreshOnVisible } from '@/hooks/use-refresh-on-visible'
+ import { shortTime } from '@/lib/format'
+ import { clampPage, pageCount, showPager } from '@/lib/pagination'
+-import { LEGACY_LINK_ATTRS, LEGACY_LINK_HINT } from '@/lib/legacy-link'
++import { LEGACY_LINK_ATTRS, LEGACY_LINK_HINT, legacyRunHref } from '@/lib/legacy-link'
+ import { Button } from '@/components/ui/button'
+ import {
+   DropdownMenu,
+@@ -194,7 +194,7 @@
+                               </>
+                             )}
+                             {canViewRun && <DropdownMenuItem asChild>
+-                              <a href='/#runs' {...LEGACY_LINK_ATTRS} title={LEGACY_LINK_HINT}><ExternalLink /> 在旧版中查看 Run</a>
++                              <a href={legacyRunHref(a.run_id)} {...LEGACY_LINK_ATTRS} title={LEGACY_LINK_HINT}><ExternalLink /> 查看本次 Run</a>
+                             </DropdownMenuItem>}
+                           </DropdownMenuContent>
+                         </DropdownMenu>}
+@@ -238,6 +238,9 @@
+         {pending && (
+           <div className='grid gap-4'>
+             <div className='rounded-md border bg-muted/40 p-3 text-sm'>
++              <p className='mb-2'>审批原因：{approvalTakeover(pending.approval) ? '工具执行中断，结果不确定，需要人工确认是否再次执行。' : `工具风险等级为「${pending.approval.risk_level}」，按策略暂停等待确认。`}</p>
++              <p className='mb-2 text-muted-foreground'>到期时间：{pending.approval.expires_at ? shortTime(pending.approval.expires_at).title : '未设置'}</p>
++              {canViewRun && <a className='mb-3 inline-flex items-center gap-1 underline underline-offset-4' href={legacyRunHref(pending.approval.run_id)} {...LEGACY_LINK_ATTRS} title={LEGACY_LINK_HINT}><ExternalLink className='size-4' />查看原始请求、消息与工具记录</a>}
+               <div className='mb-1 text-xs text-muted-foreground'>调用参数（已脱敏）</div>
+               {pending.approval.args_preview ? (
+                 <code className='font-mono text-xs break-all'>{pending.approval.args_preview}</code>
+--- before/apps/console/src/components/layout/nav-group.tsx
++++ after/apps/console/src/components/layout/nav-group.tsx
+@@ -40,7 +40,7 @@
+   return (
+     <SidebarGroup>
+       <SidebarGroupLabel>{title}</SidebarGroupLabel>
+-      <SidebarMenu>
++      <SidebarMenu className='gap-0'>
+         {items.map((item) => {
+           const key = `${item.title}-${item.url}`
+ 
+--- before/apps/console/src/legacy/app-agent-deeplink.test.ts
++++ after/apps/console/src/legacy/app-agent-deeplink.test.ts
+@@ -29,8 +29,9 @@
+     $: (sel: string) => (els[sel] ??= el()),
+     renderNav: () => {},
+     renderCurrent: async () => { events.push(`render:${state.tab}`) },
++    canPermission: () => true,
+     errorCard: () => 'error',
+-    app: { openAgentDetail: async (id: string) => { events.push(`detail:${id}`) } },
++    app: { openAgentDetail: async (id: string) => { events.push(`detail:${id}`) }, openRun: async (id: string) => { events.push(`run:${id}`) }, openAgentCreate: () => { events.push('create') } },
+   }
+   const fns = ['isEntityId', 'parseRoute', 'switchTab', 'onHashChange'].map(fnSource).filter(Boolean).join('\n')
+   const names = Object.keys(deps)
+@@ -41,6 +42,22 @@
+ }
+ 
+ describe('K-33 旧版 #agents/<id> 深链', () => {
++  it('clicking the same name after closing details explicitly navigates again', () => {
++    const calls: string[] = []
++    let click: (event: { target: unknown; preventDefault(): void }) => void = () => {}
++    class Anchor {
++      dataset = { action: 'agent-detail', agentId: A1 }
++      closest() { return this }
++    }
++    const anchor = new Anchor()
++    const content = { contains: (node: unknown) => node === anchor, addEventListener: (_type: string, listener: typeof click) => { click = listener } }
++    new Function('Element', '$', 'app', `let agentActionsBound = false; ${fnSource('bindAgentActions')}\nbindAgentActions();`)(Anchor, () => content, { switchTab: (route: string) => calls.push(route) })
++    let prevented = 0
++    click({ target: anchor, preventDefault: () => { prevented++ } })
++    click({ target: anchor, preventDefault: () => { prevented++ } })
++    expect(calls).toEqual([`agents/${A1}`, `agents/${A1}`])
++    expect(prevented).toBe(2)
++  })
+   it('switchTab("agents/<id>") 渲染 Agents 页后打开该 Agent 详情，hash 保留 id', async () => {
+     const h = harness()
+     await h.switchTab(`agents/${A1}`)
+@@ -53,6 +70,19 @@
+     const h = harness()
+     await h.switchTab(`agents/${A2}`)
+     expect(h.events).toEqual(['render:agents', `detail:${A2}`])
++  })
++
++  it('审批深链接直接读取指定 Run，不依赖它是否出现在最近运行列表', async () => {
++    const h = harness()
++    await h.switchTab(`runs/${A2}`)
++    expect(h.events).toEqual(['render:runs', `run:${A2}`])
++    expect(h.location.hash).toBe(`runs/${A2}`)
++  })
++
++  it('新建入口直接打开草稿表单', async () => {
++    const h = harness()
++    await h.switchTab('agents/new')
++    expect(h.events).toEqual(['render:agents', 'create'])
+   })
+ 
+   it.each([
+--- before/apps/console/src/legacy/app-agent-run-required.test.ts
++++ after/apps/console/src/legacy/app-agent-run-required.test.ts
+@@ -66,12 +66,16 @@
+     if (sel.startsWith('#') && body.innerHTML.includes(`id="${id}"`)) return (els[sel] = Object.assign(new El(), { id, hidden: /id="[^"]+"[^>]*\shidden/.test(body.innerHTML.match(new RegExp(`<[^>]*id="${id}"[^>]*>`))?.[0] ?? '') }))
+     return null
+   }
+-  class FD { get(k: string) { return k === 'text' ? textareaEl.value : null } }
++  let versionId = '01J00000000000000000000022'
++  class FD { get(k: string) { return k === 'text' ? textareaEl.value : k === 'versionId' ? versionId : null } }
+   const deps: Record<string, unknown> = {
+     $,
+     FormData: FD,
+     state: { session:{permissions:['*']}, agents: [{ id: 'agt_1', name: 'A' }], tab: 'agents' },
+-    api: async (path: string, opts: unknown) => { calls.push({ path, opts }); return { runId: 'run_1' } },
++    api: async (path: string, opts: unknown) => {
++      if (!opts) return { versions: [{ id: '01J00000000000000000000022', version: '1.1.0', status: 'draft' }, { id: '01J00000000000000000000021', version: '1.0.0', status: 'published' }] }
++      calls.push({ path, opts }); return { runId: 'run_1' }
++    },
+     toast: (m: string) => { toasts.push(m) },
+     errorText: (e: Error) => e.message,
+     agentNameById: () => 'A',
+@@ -82,11 +86,11 @@
+   }
+   const names = Object.keys(deps)
+   const optional = ['showFieldError'].filter((n) => new RegExp(`^function ${n}\\(`, 'm').test(APP)).map(fnSource).join('\n')
+-  const fns = ['canPermission', 'esc', 'textarea', 'openModal'].map(fnSource).join('\n')
++  const fns = ['canPermission', 'esc', 'textarea', 'select', 'vLabel', 'openModal'].map(fnSource).join('\n')
+   const src = `${fns}\n${optional}\nreturn { openModal, ${method('openAgentRun')} };`
+-  const api = new Function(...names, src)(...names.map((n) => deps[n])) as { openModal: (...a: unknown[]) => void; openAgentRun(id: string): void }
++  const api = new Function(...names, src)(...names.map((n) => deps[n])) as { openModal: (...a: unknown[]) => void; openAgentRun(id: string): Promise<void> }
+   const submit = async () => { await form.onsubmit!({ preventDefault() {} }) }
+-  return { api, calls, toasts, body, textareaEl, $, submit, closed: () => closed }
++  return { api, calls, toasts, body, textareaEl, $, submit, setVersion: (id: string) => { versionId = id }, closed: () => closed }
+ }
+ 
+ const errorEl = (h: ReturnType<typeof harness>) => {
+@@ -98,7 +102,7 @@
+   for (const [label, value] of [['空字符串', ''], ['只有空格/换行/制表', '  \n\t  '], ['全角空格', '\u3000\u3000']] as const) {
+     it(`${label}：不发请求、不关弹窗、显示「请输入内容」并聚焦输入框`, async () => {
+       const h = harness()
+-      h.api.openAgentRun('agt_1')
++      await h.api.openAgentRun('agt_1')
+       h.textareaEl.value = value
+       await h.submit()
+       expect(h.calls).toEqual([])
+@@ -115,17 +119,17 @@
+ 
+   it('有内容时 text 原样发送（不 trim），弹窗关闭，行为不变', async () => {
+     const h = harness()
+-    h.api.openAgentRun('agt_1')
++    await h.api.openAgentRun('agt_1')
+     h.textareaEl.value = '  你好 \n'
+     await h.submit()
+-    expect(h.calls).toEqual([{ path: '/admin/api/agents/agt_1/run', opts: { method: 'POST', body: { input: { text: '  你好 \n' } } } }])
++    expect(h.calls).toEqual([{ path: '/admin/api/agents/agt_1/run', opts: { method: 'POST', body: { versionId: '01J00000000000000000000022', input: { text: '  你好 \n' } } } }])
+     expect(h.closed()).toBe(1)
+     expect(h.toasts).toEqual(['Run 已创建：run_1'])
+   })
+ 
+   it('先空提交出提示，修改输入后提示消失，再提交正常发送', async () => {
+     const h = harness()
+-    h.api.openAgentRun('agt_1')
++    await h.api.openAgentRun('agt_1')
+     h.textareaEl.value = ' '
+     await h.submit()
+     const err = errorEl(h)!
+@@ -139,9 +143,9 @@
+     expect(h.closed()).toBe(1)
+   })
+ 
+-  it('表单标记：提示元素 role=alert 且默认 hidden，输入框 aria-required 并关联提示；无内联 style= / on*=', () => {
++  it('表单标记：提示元素 role=alert 且默认 hidden，输入框 aria-required 并关联提示；无内联 style= / on*=', async () => {
+     const h = harness()
+-    h.api.openAgentRun('agt_1')
++    await h.api.openAgentRun('agt_1')
+     const html = h.body.innerHTML
+     const errTag = html.match(/<[^>]*role="alert"[^>]*>/)?.[0] ?? ''
+     expect(errTag).toMatch(/\shidden/)
+@@ -152,6 +156,26 @@
+     expect(ta).toContain(`aria-describedby="${errId}"`)
+     expect(html).not.toMatch(/\sstyle=|\son[a-z]+=/i)
+     expect(method('openAgentRun')).not.toMatch(/\sstyle=|\son[a-z]+=/i)
++  })
++
++  it('explicitly selected published version is sent without falling back to the draft', async () => {
++    const h = harness()
++    await h.api.openAgentRun('agt_1')
++    h.setVersion('01J00000000000000000000021')
++    h.textareaEl.value = 'check live'
++    await h.submit()
++    expect(h.calls[0]).toMatchObject({ opts: { body: { versionId: '01J00000000000000000000021' } } })
++  })
++
++  it('a stale or invalid version cannot create a Run', async () => {
++    const h = harness()
++    await h.api.openAgentRun('agt_1')
++    h.setVersion('missing')
++    h.textareaEl.value = 'check'
++    await h.submit()
++    expect(h.calls).toEqual([])
++    expect(h.closed()).toBe(0)
++    expect(h.toasts).toContain('请选择有效的试运行版本')
+   })
+ 
+   it('openModal：onSubmit 返回 false 保持打开；返回 undefined 照旧关闭', async () => {
+--- before/apps/console/src/legacy/app-cancel-requested.test.ts
++++ after/apps/console/src/legacy/app-cancel-requested.test.ts
+@@ -67,7 +67,7 @@
+     return { status: resp.status, ok: resp.status >= 200 && resp.status < 300, text: async () => (resp.body === undefined ? '' : JSON.stringify(resp.body)) }
+   }
+   const view = modalRunId ? { runId: modalRunId, source: null, attempts: 0, link: 'live', finished: false, sync: 0 } : null
+-  const state: Record<string, unknown> = { session: { permissions:['*'], csrfToken: 'c' }, runs: [], runView: view, eventSource: null }
++  const state: Record<string, unknown> = { session: { permissions:['*'], csrfToken: 'c' }, tab: 'runs', runs: [], runView: view, eventSource: null }
+   const deps: Record<string, unknown> = {
+     $: (sel: string) => els[sel] ?? null, fetch, state,
+     setTimeout: () => 0, clearTimeout: () => {},
+@@ -119,14 +119,14 @@
+     expect(h.calls).toContain(`GET ${DETAIL}`)
+     expect(h.calls).toContain(`GET ${LIST}`)
+     expect(h.calls[0]).toBe(`POST ${CANCEL}`)
+-    expect(h.els['#run-toolbar'].innerHTML).toContain('running')
++    expect(h.els['#run-toolbar'].innerHTML).toContain('运行中')
+   })
+ 
+   it('Run 弹窗里刷新到已取消：状态栏显示 cancelled，不再有「取消 Run」按钮', async () => {
+     const h = harness({ [CANCEL]: { status: 200, body: {} }, [DETAIL]: { status: 200, body: runBody('cancelled') }, [LIST]: LIST_OK }, { modalRunId: RUN_ID })
+     await h.app.cancelRun(RUN_ID)
+     expect(h.modal.open).toBe(true)
+-    expect(h.els['#run-toolbar'].innerHTML).toContain('cancelled')
++    expect(h.els['#run-toolbar'].innerHTML).toContain('已取消')
+     expect(h.els['#run-toolbar'].innerHTML).not.toContain('取消 Run')
+   })
+ })
+--- before/apps/console/src/legacy/agent-draft-workflow.test.ts
++++ after/apps/console/src/legacy/agent-draft-workflow.test.ts
+@@ -0,0 +1,79 @@
++import { readFileSync } from 'node:fs'
++import { describe, expect, it } from 'vitest'
++
++const source = readFileSync(new URL('../../public/app.js', import.meta.url), 'utf8')
++const method = (name: string) => {
++  const match = source.match(new RegExp(`^  (?:async )?${name}\\([^)]*\\) \\{[\\s\\S]*?^  \\},?$`, 'm'))
++  if (!match) throw new Error(`missing ${name}`)
++  return match[0].replace(/,$/, '')
++}
++const readable = source.match(/^function agentReadableConfig\([\s\S]*?^\}/m)?.[0] ?? ''
++type Form = { get(name: string): string | null }
++type Modal = { title: string; body: string; submit(data: Form): Promise<unknown>; label: string }
++
++function harness(spec: Record<string, unknown> = { model: { provider: 'mock', model: 'mock-1' } }) {
++  const modals: Modal[] = []
++  const writes: Array<{ path: string; body: Record<string, unknown> }> = []
++  const detail = { name: 'Live Agent', revision: 2, versions: [{ id: 'version-1', version: '1.0.0', status: 'published', instructions: 'Original', spec_json: spec }] }
++  const deps = {
++    state: { navigation: 1 },
++    canPermission: () => true,
++    field: () => '', textarea: () => '',
++    agentSpecFields: () => '', bindAgentSpecEditor: () => {},
++    openModal: (title: string, body: string, submit: Modal['submit'], label: string) => modals.push({ title, body, submit, label }),
++    parseJsonField: (data: Form, key: string) => JSON.parse(data.get(key) ?? '{}') as unknown,
++    api: async (path: string, opts?: { body: Record<string, unknown> }) => {
++      if (opts) writes.push({ path, body: opts.body })
++      return detail
++    },
++    toast: () => {}, errorText: (error: Error) => error.message,
++    $: () => null, esc: (value: unknown) => String(value ?? ''), json: (value: unknown) => JSON.stringify(value), vLabel: (value: string) => `v${value}`,
++    renderAgents: async () => {}, idSeg: (id: string) => id,
++    agentNameById: () => 'Live Agent', revisionHeaders: () => ({ 'If-Match': '"2"' }),
++  }
++  const actions = new Function(...Object.keys(deps), `${readable}\nreturn {${method('openAgentCreate')},${method('openAgentNewVersion')},${method('openAgentDetail')}}`)(...Object.values(deps)) as {
++    openAgentCreate(): void
++    openAgentNewVersion(id: string): Promise<void>
++    openAgentDetail(id: string): Promise<void>
++  }
++  const values: Record<string, string> = { key: 'draft-agent', name: 'Draft Agent', description: '', instructions: 'Draft', version: '1.1.0', spec: '{"model":{"provider":"mock","model":"mock-1"}}' }
++  const data: Form = { get: (key) => values[key] ?? null }
++  return { actions, modals, writes, data }
++}
++
++describe('Agent configuration is saved before publishing', () => {
++  it('an administrator creates a draft without publishing', async () => {
++    const h = harness()
++    h.actions.openAgentCreate()
++    await h.modals[0]!.submit(h.data)
++    expect(h.modals[0]!.label).toBe('保存草稿')
++    expect(h.writes[0]!.body.publish).toBe(false)
++  })
++
++  it('a new version preserves the live version until a separate publish', async () => {
++    const h = harness()
++    await h.actions.openAgentNewVersion('agent-1')
++    await h.modals[0]!.submit(h.data)
++    expect(h.modals[0]!.label).toBe('保存草稿')
++    expect(h.writes[0]!.body.publish).toBe(false)
++  })
++  it('an unsupported legacy Spec still opens readable details and the original JSON', async () => {
++    const h = harness({ skills: {}, toolsets: [null, { builtin: 'old-format' }] })
++    await h.actions.openAgentDetail('agent-1')
++    expect(h.modals).toHaveLength(1)
++    expect(h.modals[0]!.body).toContain('请查看高级配置')
++    expect(h.modals[0]!.body).toContain('old-format')
++  })
++  it.each([
++    { skills: [{ toString: null }] },
++    { toolsets: [{ builtin: [{ toString: null }] }] },
++    { toolsets: [{ mcp: { toString: null } }] },
++    { model: { provider: { toString: null }, model: 'm1' } },
++    { limits: { maxCostUsd: { toString: null } } },
++  ])('object-valued advanced fields do not prevent opening details: %j', async (spec) => {
++    const h = harness(spec)
++    await h.actions.openAgentDetail('agent-1')
++    expect(h.modals).toHaveLength(1)
++    expect(h.modals[0]!.body).toContain('请查看高级配置')
++  })
++})
+--- before/apps/console/src/legacy/agent-spec-editor.test.ts
++++ after/apps/console/src/legacy/agent-spec-editor.test.ts
+@@ -0,0 +1,48 @@
++import { readFileSync } from 'node:fs'
++import { describe, expect, it } from 'vitest'
++
++const source = readFileSync(new URL('../../public/app.js', import.meta.url), 'utf8')
++const fn = (name: string) => {
++  const match = source.match(new RegExp(`^function ${name}\\([\\s\\S]*?^\\}`, 'm'))
++  if (!match) throw new Error(`missing ${name}`)
++  return match[0]
++}
++type Spec = { model: { provider: string; model: string; temperature?: number; maxTokens?: number }; limits: { maxSteps: number; maxCostUsd: number }; skills: string[]; toolsets: Array<{ builtin?: string[]; mcp?: string; openapi?: string; allow?: string[] }>; output: { schema: { type: string } } }
++const { editAgentSpec, chooseAgentCapability } = new Function(`${fn('editAgentSpec')}\n${fn('chooseAgentCapability')}\nreturn {editAgentSpec,chooseAgentCapability}`)() as {
++  editAgentSpec(spec: Spec, field: string, value: string): Spec
++  chooseAgentCapability(spec: Spec, kind: string, key: string, checked: boolean, previous?: Spec['toolsets']): Spec
++}
++const original: Spec = { model: { provider: 'private', model: 'm1', maxTokens: 4096 }, limits: { maxSteps: 7, maxCostUsd: 2 }, skills: ['hidden-skill'], toolsets: [{ mcp: 'erp', allow: ['read'] }, { builtin: ['echo', 'other-tool'] }], output: { schema: { type: 'object' } } }
++
++describe('basic Agent configuration preserves advanced settings', () => {
++  it('changes a basic field without dropping output, tool or provider settings', () => {
++    const result = editAgentSpec(original, 'model.model', 'm2')
++    expect(result.model).toEqual({ provider: 'private', model: 'm2', maxTokens: 4096 })
++    expect(result.output).toEqual(original.output)
++    expect(result.toolsets).toEqual(original.toolsets)
++    expect(original.model.model).toBe('m1')
++  })
++  it('converts numbers, clears an optional override, and rejects unknown fields', () => {
++    expect(editAgentSpec(original, 'model.temperature', '0.3').model.temperature).toBe(0.3)
++    expect(editAgentSpec(original, 'model.temperature', '').model).not.toHaveProperty('temperature')
++    expect(() => editAgentSpec(original, '__proto__.admin', 'true')).toThrow('未知配置字段')
++  })
++  it('toggling one builtin retains unlisted tools and restricted MCP permissions', () => {
++    const result = chooseAgentCapability(original, 'builtin', 'echo', false)
++    expect(result.toolsets).toEqual([{ mcp: 'erp', allow: ['read'] }, { builtin: ['other-tool'] }])
++    expect(chooseAgentCapability(original, 'mcp', 'erp', true).toolsets).toContainEqual({ mcp: 'erp', allow: ['read'] })
++  })
++  it('a new skill does not erase skills outside the visible directory', () => {
++    expect(chooseAgentCapability(original, 'skills', 'visible-skill', true).skills).toEqual(['hidden-skill', 'visible-skill'])
++    expect(chooseAgentCapability(original, 'skills', 'visible-skill', false).skills).toEqual(['hidden-skill'])
++  })
++  it.each(['mcp', 'openapi'])('uncheck then restore %s never broadens the original allow list', (kind) => {
++    const group = { [kind]: 'erp', allow: ['read'] }
++    const spec = { ...original, toolsets: [group] }
++    const removed = chooseAgentCapability(spec, kind, 'erp', false)
++    expect(removed.toolsets).toEqual([])
++    const restored = chooseAgentCapability(removed, kind, 'erp', true, [group])
++    expect(restored.toolsets).toEqual([group])
++    expect(restored.toolsets[0]!.allow).toEqual(['read'])
++  })
++})
+--- before/apps/console/DESIGN.md
++++ after/apps/console/DESIGN.md
+@@ -77,3 +77,11 @@
+ - 旧版桌面导航压缩分组留白，窄屏保留横向导航；切换时当前项可见，键盘操作后保留焦点。表头使用 12px；手机页头操作换行，四列及以上表格保留最小阅读宽度并局部横滚。
+ - 旧版弹窗进入为 180ms 的透明度与 6px 位移过渡；正文单独滚动，头部与操作区保持可达。系统开启减少动态效果时，动画和过渡压到 1ms，并取消按钮按下位移。
+ - 本地截图、逐页检查范围与未验证项见 [本轮体验检查](../../.design-evidence/2026-11-01-frontend/design-review.md)。截图用于核实实现，不代表用户已认可新稿或生产验收。
++
++## 2026-11-01 评审问题修复
++
++- Agent 创建和新版本使用「保存草稿」；试运行必须明确版本；发布独立确认。详情先呈现可读配置与任务入口，原始 JSON 折叠。
++- Run 消息使用完整内容宽度；工具和事件折叠展开，不得挤压消息。审批关联 Run 使用对象深链接。
++- 凭据作用域目录按当前权限读取，支持名称/Key查找并回显ID，目录失败显示原因与高级输入。
++- 新版导航组内不额外叠加行间距，仍保留32px导航行和触屏44px目标，容纳新增Job导航；次要行操作收纳，短状态不拆字。
++- 本轮修复、截图和本地验收边界见[控制台修复记录](../../.design-evidence/2026-11-01-console-fixes/verification.md)。
+--- before/docs/02-architecture/admin-console.md
++++ after/docs/02-architecture/admin-console.md
+@@ -1,4 +1,13 @@
+ # Forge 管理控制台设计
++
++## 2026-11-01 控制台体验修复（FR-AG-01/02/05、FR-UI-03/08/09/12/16）
++
++- 新建 Agent 和新版本先保存草稿，发布作为独立确认动作；试运行明确选择草稿或已发布版本，并传递选定 versionId。
++- Agent 名称与行内主入口直达可读详情，详情提供按权限显示的配置、调试和发布动作；原始 JSON 保留在高级区，基础配置不要求记忆内部结构。
++- 新旧审批入口直接定位具体 Run；审批决定前显示风险原因、脱敏参数、到期时间及执行证据入口。无 run.view 时不读取执行数据或显示受限入口。
++- Run 详情以完整宽度的消息为主，工具与事件渐进展开，诊断内容只在自身容器内换行或滚动。
++- 凭据作用域优先从有权读取的组织或资源目录按名称/Key选择，回显真实ID；目录不可读时明确说明，保留经服务端校验的高级ID输入，不扩大目录权限或凭据使用范围。
++- 1280×800桌面完整导航可见，较矮窗口继续滚动；旧版短状态不拆字，次要行操作收纳。保留现有视觉、接口和服务端授权边界。
+ 
+ ## 2026-11-01 Job与消息管理增量（设计定稿，未实现）
+ 
+--- before/apps/console/src/components/layout/app-sidebar.tsx
++++ after/apps/console/src/components/layout/app-sidebar.tsx
+@@ -43,7 +43,7 @@
+       <SidebarHeader>
+         <SidebarMenu>
+           <SidebarMenuItem>
+-            <SidebarMenuButton size='lg' asChild>
++            <SidebarMenuButton size='lg' className='h-10 py-1 [@media(pointer:coarse)]:min-h-11' asChild>
+               <Link to='/agents'>
+                 <div className='flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground'>
+                   <Hammer className='size-4' />
+@@ -57,7 +57,7 @@
+           </SidebarMenuItem>
+         </SidebarMenu>
+       </SidebarHeader>
+-      <SidebarContent>
++      <SidebarContent className='gap-0'>
+         {groups.map((props) => (
+           <NavGroup key={props.title} {...props} />
+         ))}
+--- before/apps/console/src/legacy/app-takeover-approvals.test.ts
++++ after/apps/console/src/legacy/app-takeover-approvals.test.ts
+@@ -118,6 +118,19 @@
+ const list = (...items: unknown[]): Resp => ({ status: 200, body: { items } })
+ 
+ describe('R9 审批列表：中断徽标与尝试次数', () => {
++  it('policy decision shows escaped tool context, expiry and the exact Run evidence link', async () => {
++    const item = approval({ tool_name: '<img src=x>', args_preview: '<script>bad</script>' })
++    const h = harness({ [LIST]: list(item) })
++    await h.app.renderApprovals()
++    await h.app.decideApproval(APR_ID, 'approved')
++    const body = h.els['#modal-body'].innerHTML
++    expect(body).toContain('按工具风险策略暂停')
++    expect(body).toContain('调用参数（已脱敏）')
++    expect(body).toContain('到期时间')
++    expect(body).toContain(`/#runs/${RUN_ID}`)
++    expect(body).toContain('&lt;img')
++    expect(body).not.toContain('<script>')
++  })
+   it('reason=interrupted、attempt=3：显示徽标和「第 3 次执行被中断」', async () => {
+     const h = harness({ [LIST]: list(approval({ reason: 'interrupted', attempt: 3 })) })
+     await h.app.renderApprovals()
+--- before/apps/console/src/legacy/roles-forms.test.ts
++++ after/apps/console/src/legacy/roles-forms.test.ts
+@@ -52,7 +52,7 @@
+ it('view-only capability pages hide writes while preserving visible rows',async()=>{
+   const cases=[['renderAgents','agent.view',['试运行','新版本','新建 Agent','开放 API']],['renderModels','model.view',['添加 Provider','添加模型','编辑 Provider','测试连接']],['renderMcp','mcp.view',['添加 MCP','刷新工具','>编辑<']],['renderSkills','skill.view',['新建 Skill','>编辑<']],['renderTools','tool.view',['导入 OpenAPI</button>']],['renderPackages','package.view',['安装能力包','>卸载<']],['renderRuns','run.view',['>取消<']]] as const
+   for(const [name,permission,hidden] of cases){
+-    const content={innerHTML:''};const deps={state:{session:{permissions:[permission]}},$:()=>content,api:async()=>({items:[{id:'fixture',key:'fixture',name:'fixture',status:'running',description:'',models:[],version:'1.0.0',type:'mixed',draftVersion:{version:'2.0.0'},costUsd:0}]}),bindAgentActions:()=>{},fmt:()=>'',vLabel:()=>''}
++    const content={innerHTML:''};const deps={state:{tab:name==='renderRuns'?'runs':'agents',session:{permissions:[permission]}},$:()=>content,api:async()=>({items:[{id:'fixture',key:'fixture',name:'fixture',status:'running',description:'',models:[],version:'1.0.0',type:'mixed',draftVersion:{version:'2.0.0'},costUsd:0}]}),bindAgentActions:()=>{},fmt:()=>'',vLabel:()=>''}
+     const render=new Function(...Object.keys(deps),[fn('esc'),fn('empty'),fn('statusPill'),fn('canPermission'),fn(name),`return ${name}`].join('\n'))(...Object.values(deps)) as ()=>Promise<void>
+     await render();expect(content.innerHTML).toContain('fixture');const buttons=content.innerHTML.match(/<button\b[^>]*>[\s\S]*?<\/button>/g)?.join('')??'';for(const text of hidden)expect(buttons,`${name}: ${text}`).not.toContain(text)
+   }
+--- before/apps/console/src/legacy/run-list-sync.test.ts
++++ after/apps/console/src/legacy/run-list-sync.test.ts
+@@ -0,0 +1,67 @@
++import { readFileSync } from 'node:fs'
++import { describe, expect, it } from 'vitest'
++
++const source = readFileSync(new URL('../../public/app.js', import.meta.url), 'utf8')
++const fn = (name: string) => {
++  const match = source.match(new RegExp(`^(?:async )?function ${name}\\([\\s\\S]*?^\\}`, 'm'))
++  if (!match) throw new Error(`missing ${name}`)
++  return match[0]
++}
++const id = '01J00000000000000000000006'
++const row = (status: string) => ({ id, status, agentName: 'Agent', triggerType: 'manual', costUsd: 0, createdAt: '2026-11-01' })
++type Run = ReturnType<typeof row>
++
++function harness(status = 'succeeded', tab = 'runs') {
++  const view = { runId: id, sync: 0, finished: false }
++  const state = { navigation: 1, tab, runView: view, runs: [row('queued')] }
++  const content = { innerHTML: 'queued; cancel' }
++  const calls: string[] = []
++  let list: () => Promise<{ items: Run[] }> = async () => ({ items: [row(status)] })
++  const deps = {
++    state, RUN_ACTIVE_STATUSES: ['queued', 'running', 'waiting_approval'], idSeg: String,
++    api: async (path: string) => { calls.push(path); return path.includes('?') ? list() : row(status) },
++    renderRunView: () => {}, endRunStream: () => {}, renderStreamStatus: () => {},
++    toast: () => {}, errorText: String, $: () => content, esc: String, statusPill: String, fmt: String,
++    canPermission: () => true, empty: () => '',
++  }
++  const actions = new Function(...Object.keys(deps), `${fn('renderRuns')}\n${fn('syncRunFromRest')}\nreturn {renderRuns,syncRunFromRest}`)(...Object.values(deps)) as {
++    renderRuns(): Promise<void>
++    syncRunFromRest(value: typeof view): Promise<void>
++  }
++  return { actions, view, state, content, calls, setList: (value: typeof list) => { list = value } }
++}
++
++describe('Run terminal state and list stay consistent', () => {
++  it.each(['succeeded', 'failed', 'cancelled', 'budget_exhausted'])('%s updates the list and removes the cancel action', async (status) => {
++    const h = harness(status)
++    await h.actions.syncRunFromRest(h.view)
++    expect(h.state.runs[0]!.status).toBe(status)
++    expect(h.content.innerHTML).not.toContain('>取消</')
++  })
++  it('does not replace another page with the Run list', async () => {
++    const h = harness('succeeded', 'approvals')
++    await h.actions.syncRunFromRest(h.view)
++    expect(h.calls).toHaveLength(1)
++  })
++  it('ignores a list response arriving after navigation', async () => {
++    const h = harness()
++    let resolve: (value: { items: Run[] }) => void = () => {}
++    h.setList(() => new Promise((done) => { resolve = done }))
++    const pending = h.actions.renderRuns()
++    h.state.navigation++; h.state.tab = 'agents'; h.content.innerHTML = 'Agent page'
++    resolve({ items: [row('succeeded')] })
++    await pending
++    expect(h.content.innerHTML).toBe('Agent page')
++  })
++  it('an older running response cannot overwrite a newer terminal response', async () => {
++    const h = harness()
++    let resolve: (value: { items: Run[] }) => void = () => {}
++    h.setList(() => new Promise((done) => { resolve = done }))
++    const old = h.actions.renderRuns()
++    h.setList(async () => ({ items: [row('succeeded')] }))
++    await h.actions.renderRuns()
++    resolve({ items: [row('running')] })
++    await old
++    expect(h.state.runs[0]!.status).toBe('succeeded')
++  })
++})

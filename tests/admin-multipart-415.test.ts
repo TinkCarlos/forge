@@ -1,3 +1,4 @@
+import { configurationHeaders } from "./helpers/configuration-headers.js";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance, RouteOptions } from "fastify";
@@ -84,7 +85,7 @@ describe("item 8: multipart on admin write routes -> 415", () => {
   });
 
   it("PATCH /users/{id} and POST /agents with multipart write nothing", async () => {
-    const patch = await app.inject({ method: "PATCH", url: `/admin/api/users/${userId}`, headers: multipartHeaders(), payload: multipart({ role: "auditor", status: "disabled" }) });
+    const patch = await app.inject({ method: "PATCH", url: `/admin/api/users/${userId}`, headers: await configurationHeaders(`/admin/api/users/${userId}`, multipartHeaders()), payload: multipart({ role: "auditor", status: "disabled" }) });
     expect(patch.statusCode).toBe(415);
     const row = (await query<{ role: string; status: string }>("SELECT role, status FROM users WHERE id = ?", [userId]))[0]!;
     expect(row).toEqual({ role: "user", status: "active" });
@@ -96,7 +97,7 @@ describe("item 8: multipart on admin write routes -> 415", () => {
   it("a route that declares config.multipartUpload still accepts multipart; JSON writes are unaffected", async () => {
     const upload = await app.inject({ method: "POST", url: UPLOAD_ROUTE, headers: multipartHeaders(), payload: multipart({ purpose: "input" }) });
     expect(upload.statusCode, upload.body).toBe(200);
-    const json = await app.inject({ method: "PATCH", url: `/admin/api/users/${userId}`, headers, payload: { role: "user" } });
+    const json = await app.inject({ method: "PATCH", url: `/admin/api/users/${userId}`, headers: await configurationHeaders(`/admin/api/users/${userId}`, headers), payload: { role: "user" } });
     expect(json.statusCode, json.body).toBe(200);
   });
 });

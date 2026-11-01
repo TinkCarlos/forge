@@ -60,7 +60,7 @@ describe("Run with a stored invalid spec_json", () => {
   });
 
   it("spec is treated as {}: one warning naming the version id, stored text never logged", async () => {
-    const versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: SECRET_TEXT, status: "published", createdBy: ADMIN_ID });
+    const versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: SECRET_TEXT, status: "published", createdBy: ADMIN_ID }, { expectedRevision: "system" });
     const threadId = await repos.createThread({ agentId, orgUnitId: ROOT, subjectType: "user", subjectId: ADMIN_ID });
     const runId = await repos.createRun({ threadId, agentId, agentVersionId: versionId, orgUnitId: ROOT, subjectType: "user", subjectId: ADMIN_ID, input: { text: "hi" } });
     await repos.addMessage({ threadId, runId, seq: 1, role: "user", content: { text: "hi" } });

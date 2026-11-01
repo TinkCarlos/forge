@@ -1,0 +1,220 @@
+{
+  "url": "http://127.0.0.1:3100/next/agents",
+  "sidebar1280": {
+    "viewport": {
+      "width": 1280,
+      "height": 800,
+      "dpr": 1
+    },
+    "scroll": {
+      "top": 0,
+      "height": 692,
+      "client": 656
+    },
+    "clip": {
+      "top": 72,
+      "bottom": 728
+    },
+    "links": [
+      {
+        "text": "总览（在新标签页打开旧版控制台）",
+        "href": "/#dashboard",
+        "top": 96,
+        "bottom": 128,
+        "fullyVisible": true
+      },
+      {
+        "text": "Agents",
+        "href": "/next/agents",
+        "top": 156,
+        "bottom": 188,
+        "fullyVisible": true
+      },
+      {
+        "text": "模型（在新标签页打开旧版控制台）",
+        "href": "/#models",
+        "top": 192,
+        "bottom": 224,
+        "fullyVisible": true
+      },
+      {
+        "text": "MCP 服务（在新标签页打开旧版控制台）",
+        "href": "/#mcp",
+        "top": 228,
+        "bottom": 260,
+        "fullyVisible": true
+      },
+      {
+        "text": "Skills（在新标签页打开旧版控制台）",
+        "href": "/#skills",
+        "top": 264,
+        "bottom": 296,
+        "fullyVisible": true
+      },
+      {
+        "text": "工具源（在新标签页打开旧版控制台）",
+        "href": "/#tools",
+        "top": 300,
+        "bottom": 332,
+        "fullyVisible": true
+      },
+      {
+        "text": "能力包（在新标签页打开旧版控制台）",
+        "href": "/#packages",
+        "top": 336,
+        "bottom": 368,
+        "fullyVisible": true
+      },
+      {
+        "text": "Job 管理",
+        "href": "/next/jobs",
+        "top": 396,
+        "bottom": 428,
+        "fullyVisible": true
+      },
+      {
+        "text": "运行中心（在新标签页打开旧版控制台）",
+        "href": "/#runs",
+        "top": 432,
+        "bottom": 464,
+        "fullyVisible": true
+      },
+      {
+        "text": "审批中心",
+        "href": "/next/approvals",
+        "top": 468,
+        "bottom": 500,
+        "fullyVisible": true
+      },
+      {
+        "text": "定时任务（在新标签页打开旧版控制台）",
+        "href": "/#schedules",
+        "top": 504,
+        "bottom": 536,
+        "fullyVisible": true
+      },
+      {
+        "text": "应用与密钥（在新标签页打开旧版控制台）",
+        "href": "/#apps",
+        "top": 564,
+        "bottom": 596,
+        "fullyVisible": true
+      },
+      {
+        "text": "账号与权限（在新标签页打开旧版控制台）",
+        "href": "/#users",
+        "top": 624,
+        "bottom": 656,
+        "fullyVisible": true
+      },
+      {
+        "text": "操作日志（在新标签页打开旧版控制台）",
+        "href": "/#audit",
+        "top": 660,
+        "bottom": 692,
+        "fullyVisible": true
+      },
+      {
+        "text": "凭据（在新标签页打开旧版控制台）",
+        "href": "/#secrets",
+        "top": 696,
+        "bottom": 728,
+        "fullyVisible": true
+      },
+      {
+        "text": "SSO / Connector（在新标签页打开旧版控制台）",
+        "href": "/#sso",
+        "top": 732,
+        "bottom": 764,
+        "fullyVisible": false
+      }
+    ]
+  },
+  "preflight": {
+    "titleMutable": true,
+    "scriptAppended": true,
+    "scriptExecuted": false
+  },
+  "injected": {
+    "failed": "true",
+    "annotations": []
+  },
+  "events": [
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "security",
+          "level": "error",
+          "text": "Executing inline script violates the following Content Security Policy directive 'script-src 'self''. Either the 'unsafe-inline' keyword, a hash ('sha256-IUvvCzsWijdoR/QVAmWfzc/FCJZUuEKi6VXIl1MrCpI='), or a nonce ('nonce-...') is required to enable inline execution. The action has been blocked.",
+          "timestamp": 1793510449635.394,
+          "lineNumber": 1,
+          "stackTrace": {
+            "callFrames": [
+              {
+                "functionName": "",
+                "scriptId": "523",
+                "url": "",
+                "lineNumber": 1,
+                "columnNumber": 242
+              },
+              {
+                "functionName": "__egoPageEvaluate",
+                "scriptId": "523",
+                "url": "",
+                "lineNumber": 1,
+                "columnNumber": 462
+              },
+              {
+                "functionName": "",
+                "scriptId": "523",
+                "url": "",
+                "lineNumber": 2,
+                "columnNumber": 8
+              }
+            ]
+          }
+        }
+      },
+      "sessionId": "E6CD165EC5CF3DA4818DF8654F3FFFD9"
+    },
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "security",
+          "level": "error",
+          "text": "Loading the script 'http://localhost:8400/detect.js' violates the following Content Security Policy directive: \"script-src 'self'\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The action has been blocked.",
+          "timestamp": 1793510449638.171,
+          "lineNumber": 1,
+          "stackTrace": {
+            "callFrames": [
+              {
+                "functionName": "",
+                "scriptId": "524",
+                "url": "",
+                "lineNumber": 1,
+                "columnNumber": 247
+              },
+              {
+                "functionName": "__egoPageEvaluate",
+                "scriptId": "524",
+                "url": "",
+                "lineNumber": 1,
+                "columnNumber": 263
+              },
+              {
+                "functionName": "",
+                "scriptId": "524",
+                "url": "",
+                "lineNumber": 2,
+                "columnNumber": 8
+              }
+            ]
+          }
+        }
+      },
+      "sessionId": "E6CD165EC5CF3DA4818DF8654F3FFFD9"
+    }
+  ]
+}

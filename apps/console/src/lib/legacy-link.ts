@@ -15,3 +15,7 @@ export function openLegacy(url: string) {
 export function legacyAgentHref(id: string) {
   return isEntityId(id) ? `/#agents/${encodeURIComponent(id)}` : '/#agents'
 }
+
+export function legacyRunHref(id: string) {
+  return isEntityId(id) ? `/#runs/${encodeURIComponent(id)}` : '/#runs'
+}

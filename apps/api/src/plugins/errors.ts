@@ -1,47 +1,43 @@
 import { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
-import { ForgeError } from "@forge/core";
+import { ERROR_CODES, ForgeError, type ErrorCode } from "@forge/core";
+import type { ApiErrorResponse } from "@forge/contracts";
+import { maskArgsDeep, maskProseSecrets } from "@forge/governance";
 import { logSafeError } from "@forge/runtime";
 import { reqId } from "./http-helpers.js";
+import { auditRequestFailure } from "./failure-audit.js";
 
 // Installed directly on the root instance (not via register) so every route context inherits it.
 export function installErrorHandler(app: FastifyInstance): void {
-  app.setErrorHandler((error, request, reply) => {
-    if (error instanceof ForgeError) {
-      if (error.headers) reply.headers(error.headers);
-      reply.status(error.httpStatus).send({
-        error: {
-          code: error.code,
-          message: error.message,
-          requestId: reqId(request),
-          details: error.details ?? null,
-          retryable: error.retryable,
-        },
-      });
-      return;
-    }
-    // Body parsing failures are client errors (K-09 / I-CSRF-06), not 500. Parsing still runs before the CSRF preHandler.
+  app.setErrorHandler(async (error, request, reply) => {
     const parse = bodyParseError(error);
-    if (parse) {
-      reply.status(parse.status).send({
-        error: { code: parse.code, message: parse.message, requestId: reqId(request), details: null, retryable: false },
-      });
-      return;
-    }
-    // P1-10 / S-25: a unique-key collision is a client conflict. The driver error (code, index, value, SQL) goes
-    // to the log only; the response says nothing about tables, indexes or values.
+    await auditRequestFailure(request, error instanceof ForgeError ? error.code : parse?.code ?? (isDuplicateKey(error) ? "CFG-8503" : "SYS-9001"), error instanceof ForgeError ? error.httpStatus : parse?.status ?? (isDuplicateKey(error) ? 409 : 500));
+    if (error instanceof ForgeError) return sendError(error, request, reply);
+    if (parse) return sendError(new ForgeError(parse.code, { message: parse.message, httpStatus: parse.status }), request, reply);
     if (isDuplicateKey(error)) {
-      request.log.warn({ err: logSafeError(error), dbCode: "ER_DUP_ENTRY" }, "unique key conflict -> 409");
-      reply.status(409).send({
-        error: { code: "CFG-8503", message: "资源已存在（唯一字段重复）", requestId: reqId(request), details: null, retryable: false },
-      });
-      return;
+      request.log.warn({ dbCode: "ER_DUP_ENTRY" }, "unique key conflict -> 409");
+      return sendError(new ForgeError("CFG-8503", { message: "资源已存在（唯一字段重复）" }), request, reply, false);
     }
-    // P2 (QA 714b3f3): log type/code and the redacted message and stack, never the raw error object.
     request.log.error({ err: logSafeError(error) }, "unhandled error");
-    reply.status(500).send({
-      error: { code: "SYS-9001", message: "内部错误", requestId: reqId(request), retryable: false },
-    });
+    return sendError(new ForgeError("SYS-9001", {}, error), request, reply, false);
   });
+}
+
+function sendError(error: ForgeError, request: FastifyRequest, reply: FastifyReply, log = true): void {
+  if (log) {
+    const fields = { code: error.code, err: logSafeError(error) };
+    if (error.httpStatus >= 500) request.log.error(fields, "request failed");
+    else request.log.warn(fields, "request rejected");
+  }
+  if (error.headers) reply.headers(error.headers);
+  const body: ApiErrorResponse = { error: {
+    code: error.code,
+    message: error.httpStatus >= 500 || error.code === "SYS-9001" ? ERROR_CODES[error.code].userMessage : maskProseSecrets(error.message),
+    requestId: reqId(request),
+    details: error.httpStatus >= 500 ? null : maskArgsDeep(error.details ?? null),
+    retryable: error.retryable,
+    remedy: error.remedy,
+  } };
+  reply.status(error.httpStatus).send(body);
 }
 
 /**
@@ -51,20 +47,14 @@ export function installErrorHandler(app: FastifyInstance): void {
  * cannot exist: 404 RUN-7001 like any unknown id (was 500). Anything else raised there is a server error (no details).
  */
 export function frameworkErrorHandler(error: { code?: string }, request: FastifyRequest, reply: FastifyReply): void {
-  if (error.code === "FST_ERR_BAD_URL") {
-    reply.status(400).send({ error: { code: "CFG-8501", message: "请求地址无法解析", requestId: reqId(request), details: null, retryable: false } });
-    return;
-  }
-  if (error.code === "FST_ERR_MAX_PARAM_LENGTH") {
-    reply.status(404).send({ error: { code: "RUN-7001", message: "资源不存在", requestId: reqId(request), details: null, retryable: false } });
-    return;
-  }
+  if (error.code === "FST_ERR_BAD_URL") return sendError(new ForgeError("CFG-8501", { message: "请求地址无法解析" }), request, reply);
+  if (error.code === "FST_ERR_MAX_PARAM_LENGTH") return sendError(new ForgeError("RUN-7001"), request, reply);
   request.log.error({ code: error.code }, "framework error");
-  reply.status(500).send({ error: { code: "SYS-9001", message: "内部错误", requestId: reqId(request), retryable: false } });
+  sendError(new ForgeError("SYS-9001", {}, error), request, reply, false);
 }
 
 /** Maps Fastify content-type parser / body errors to 413 OPN-4504, 415 OPN-4505 or 400 CFG-8501. */
-function bodyParseError(error: unknown): { status: number; code: string; message: string } | null {
+function bodyParseError(error: unknown): { status: number; code: ErrorCode; message: string } | null {
   const e = error as { code?: string; statusCode?: number; name?: string };
   switch (e.code) {
     case "FST_ERR_CTP_BODY_TOO_LARGE":

@@ -1,0 +1,16 @@
+{
+  "apps/console/src/features/jobs/index.tsx": "9e07020c782ba319b95ae57979e09df4d38d8700c23ea4502ba7a64eb9baa621",
+  "apps/console/src/features/jobs/job-form.ts": "aef0b436328c945abb63de5c34c028044c1be9bafe89c5c16d89484dc0933e6a",
+  "apps/console/src/features/jobs/job-form.test.ts": "79cb449d97dcd1a4b1b2e9cf7f20f76af237322fe0fa9719ede912ba4f6978cb",
+  "apps/console/src/components/config-value.ts": "d3537c99ae58ae8a5a202c6d5b4b10e40e489fba0398540fa9165c4a4e1ead89",
+  "apps/console/src/components/structured-value-editor.tsx": "550e3170767700aadc6a0e63d2d224f21b7ea095282bd3d7385fb4a7508ca49f",
+  "apps/console/src/features/messages/channels.tsx": "d47426f1d3ebd4eec1043afc917591895c885ad47c5b9c863ac62fe0cb90d331",
+  "apps/console/src/features/messages/configuration-fields.tsx": "dc184fd0002044156aa0b946518dac2f8ebc20cf0da4cbac935d7951fb5cef2c",
+  "apps/console/src/features/messages/configuration-values.ts": "93c0a9c4e045a4ec1c1ae0d289c8c489d83aaff3c879066883b885593bc56b6b",
+  "apps/console/src/features/messages/templates.tsx": "a19c41e6fc516b53b01999d772c7a03734e6f25cc62f9d18fc6ab6393e32ea5a",
+  "apps/console/src/features/messages/rules.tsx": "5b3dd9cf2630b58997383babe0c8532f8ee72db6e518af3f1338e5ba853fe84a",
+  "apps/console/src/features/messages/hooks.ts": "63cbdd0c3fc4408c78de41832ab9ba0818fcdb45d69e8a939a42bfb8a0043115",
+  "apps/console/public/app.js": "f95a8ed33cd1bb74803058abf2926362c668e7c2110fdb1c45c57b07d18f2da9",
+  "apps/console/public/styles.css": "e1126cfef5421f537777e733eea4d377f53adb54f87dc508e2b6397f164f3849",
+  "apps/console/src/legacy/configuration-fields.test.ts": "585cb3f7e6b362fc7c6b8f177ced060f990d0787f51b3deb5d2100f530eee787"
+}

@@ -7,6 +7,7 @@ import { leaseTiming } from "./lease-timing.js";
 import { finishCancelRequestedRun, runClaimed } from "./loop.js";
 import { tickSchedules } from "./schedules.js";
 import { describeTickError, guardTick, type GuardedTick } from "./tick-guard.js";
+import {deliverMessages} from "./message-delivery.js";
 import { deliverDueWebhooks } from "./webhook.js";
 
 let workerTimer: ReturnType<typeof setInterval> | null = null;
@@ -74,7 +75,7 @@ export function startRuntime(): void {
   resetDrain(); // P3-09: a TTL leaving no heartbeat tolerance fails at startup
   const workerId = currentWorkerId();
   // K-20 / OPS-010: all ticks share guardTick (catch + log + exponential backoff 1s..30s, reset on success).
-  const webhookTick: GuardedTick = guardTick("webhook", () => deliverDueWebhooks());
+  const webhookTick: GuardedTick = guardTick("webhook", async () => { await deliverDueWebhooks(); await deliverMessages(workerId); });
   const workerTick: GuardedTick = guardTick("worker", async () => {
     await claimRuns(workerId);
     await sweepExpiredApprovals(workerId);

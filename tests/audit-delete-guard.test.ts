@@ -12,7 +12,7 @@ const { auditRepo } = await import("../packages/store/src/repositories/audit.js"
 const { isDeleteClassAuditAction } = await import("../packages/store/src/repositories/audit-scope-sql.js");
 
 const base = { actorType: "user", actorId: "usr_1", resourceType: "plugin", resourceId: "plg_1" };
-const orgArg = () => (execute.mock.calls.at(-1) as unknown as [string, unknown[]])[1][6];
+const orgArg = () => (execute.mock.calls.at(-1) as unknown as [string, unknown[]])[1][8];
 
 describe("audit: delete-class actions need an explicit orgUnitId", () => {
   beforeEach(() => {
@@ -37,7 +37,7 @@ describe("audit: delete-class actions need an explicit orgUnitId", () => {
     expect(orgArg()).toBeNull();
     await auditRepo.audit({ ...base, action: "agent.delete", resourceType: "agent", orgUnitId: "org_a" });
     expect(orgArg()).toBe("org_a");
-    expect(one).not.toHaveBeenCalled();
+    expect(one).toHaveBeenCalledTimes(2); // actor snapshots, no department lookup
   });
 
   it("non-delete actions still resolve the department when omitted", async () => {

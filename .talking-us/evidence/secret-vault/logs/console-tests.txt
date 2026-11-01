@@ -1,0 +1,11 @@
+$ pnpm --filter @forge/console test
+$ vitest run
+
+ RUN  v4.1.12 /Users/libo/projects/forge/apps/console
+
+
+ Test Files  44 passed (44)
+      Tests  521 passed (521)
+   Start at  23:28:20
+   Duration  896ms (transform 1.13s, setup 0ms, import 1.72s, tests 768ms, environment 2ms)
+

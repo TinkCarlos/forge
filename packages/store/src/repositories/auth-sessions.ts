@@ -1,5 +1,6 @@
 import type { RowDataPacket } from "mysql2/promise";
 import { execute, one, transaction } from "../db.js";
+import { errors } from "@forge/core";
 
 /**
  * Session store (migration 007). Callers pass hashes (SHA-256 hex of the cookie token), never the token itself.
@@ -21,11 +22,15 @@ export interface AuthOidcStateRow {
 }
 
 export const authSessionsRepo = {
-  async createAuthSession(input: { tokenHash: string; userId: string; csrfToken: string; now: Date; expiresAt: Date }): Promise<void> {
-    await execute(
+  async createAuthSession(input: { tokenHash: string; userId: string; csrfToken: string; now: Date; expiresAt: Date; authenticationRevision?: number }): Promise<void> {
+    await transaction(async conn => {
+      const [rows] = await conn.query<RowDataPacket[]>("SELECT revision, status FROM users WHERE id = ? FOR UPDATE", [input.userId]);
+      if (!rows[0] || rows[0].status !== "active" || (input.authenticationRevision !== undefined && Number(rows[0].revision) !== input.authenticationRevision)) throw errors.unauthorized("账号已变更，请重新登录");
+      await conn.execute(
       "INSERT INTO auth_sessions (token_hash, user_id, csrf_token, created_at, last_seen_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)",
       [input.tokenHash, input.userId, input.csrfToken, input.now, input.now, input.expiresAt],
-    );
+      );
+    });
   },
   async getAuthSession(tokenHash: string, now: Date): Promise<AuthSessionRow | null> {
     return one<AuthSessionRow>(

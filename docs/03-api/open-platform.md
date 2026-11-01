@@ -1,5 +1,13 @@
 # Forge 统一开放平台 API
 
+## 2026-11-01 Job与消息兼容增量（未实现）
+
+用户已确认统一Job与消息管理设计。新增公开资源为/open/v1/jobs目录/执行受理、/open/v1/job-executions查询/结果/SSE/取消，精确合同见[OJ01–OJ04](../../.talking-us/20261101-113405-Forge后台优化与Job消息管理-接口文档.md#4-开放与集成入口)。新Scope为jobs:invoke、job-executions:read/cancel，须App/Key显式授予并绑定Job grant；旧Key不自动获得。
+
+已有Agent Run、invoke、Run结果/SSE/取消合同保留。原App回调配置改在消息管理维护，旧eventId/envelope/resultUrl/HMAC及接收方幂等语义继续兼容；新Job事件不自动替换旧Run事件或发送所有嵌套Run。发送/迁移/重放规则见[消息协议](../../.talking-us/20261101-113405-Forge后台优化与Job消息管理-接口文档.md#6-事件webhook与兼容)，当前单URL实现尚未因此改变。
+
+Connector只通过integration/v1的签名Principal Job入口，不能访问消息配置或管理API。文件/产物仍按原Scope和来源范围授权，Job关联不是放大文件访问范围的依据。
+
 版本：1.0　日期：2026-10-21　状态：待评审
 
 > 面向外部系统的稳定接口。管理端接口见 [admin-api.md](admin-api.md)。所有示例中的密钥、域名、ID 均为占位符。

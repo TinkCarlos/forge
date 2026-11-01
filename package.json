@@ -32,8 +32,13 @@
     "typecheck:console": "pnpm --filter @forge/console typecheck",
     "lint": "eslint apps/api apps/worker packages && pnpm --filter @forge/console lint",
     "test:console": "pnpm --filter @forge/console test",
-    "verify": "pnpm typecheck && pnpm typecheck:console && pnpm lint && pnpm build:console && pnpm test && pnpm test:console",
-    "verify:envs": "node scripts/verify-envs.mjs"
+    "verify": "pnpm errors:check && pnpm typecheck && pnpm typecheck:console && pnpm lint && pnpm build:console && pnpm test && pnpm test:console",
+    "verify:envs": "node scripts/verify-envs.mjs",
+    "errors:generate": "node --import tsx scripts/generate-error-codes.ts",
+    "errors:check": "node --import tsx scripts/generate-error-codes.ts --check",
+    "db:generate": "drizzle-kit generate --config=drizzle.config.ts",
+    "secrets:migrate": "tsx scripts/secrets-maintenance.ts migrate",
+    "secrets:rewrap": "tsx scripts/secrets-maintenance.ts rewrap"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",
@@ -42,6 +47,7 @@
     "ajv": "^8.17.1",
     "cron-parser": "^5.0.4",
     "dotenv": "^16.4.7",
+    "drizzle-orm": "0.45.4",
     "fastify": "^5.2.1",
     "jose": "^6.0.8",
     "mysql2": "^3.12.0",
@@ -54,6 +60,7 @@
   "devDependencies": {
     "@types/node": "^22.10.7",
     "concurrently": "^9.1.2",
+    "drizzle-kit": "0.31.11",
     "eslint": "10.13.0",
     "pino-pretty": "^13.0.0",
     "typescript": "^5.7.3",

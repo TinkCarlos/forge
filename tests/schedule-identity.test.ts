@@ -8,6 +8,7 @@ const SCHEDULE_ORG = "01J00000000000000000000000";
 const ACCOUNT_ORG = "01J0000000000000000000SVC0";
 
 const account: ServiceAccountRow = {
+  revision: 1,
   id: "svc_01J0000000000000000000ABCD",
   key: "nightly-report",
   name: "Nightly Report Bot",
@@ -39,6 +40,7 @@ describe("buildScheduleIdentity", () => {
       id: account.id,
       name: "Nightly Report Bot",
       role: "operator",
+      permissions: [],
       orgUnitId: ACCOUNT_ORG,
       dataScope: "org",
     });

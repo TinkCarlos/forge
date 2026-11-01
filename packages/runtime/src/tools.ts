@@ -64,7 +64,7 @@ export async function withToolRetries<T extends { ok: boolean; errorCode?: strin
     await onRetry?.(attempt, result);
     attempt += 1;
   }
-  throw new ForgeError("HTP-4002", "工具重试次数已耗尽", 502, undefined, true);
+  throw new ForgeError("HTP-4002", { message: "工具重试次数已耗尽", httpStatus: 502, retryable: true });
 }
 
 export async function mapLimit<T>(items: readonly T[], limit: number, fn: (item: T) => Promise<void>): Promise<void> {

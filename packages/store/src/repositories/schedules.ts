@@ -1,3 +1,4 @@
+import { updateConfiguration, type ConfigurationWrite } from "../configuration-revision.js";
 import { ulidWithPrefix } from "@forge/core";
 import { execute, json, one, query } from "../db.js";
 
@@ -24,42 +25,37 @@ export const schedulesRepo = {
     );
     return id;
   },
-  async updateSchedule(id: string, fields: Record<string, unknown>): Promise<void> {
-    const allowed = ["name", "cron", "timezone", "input_json", "status", "next_run_at", "last_run_id", "service_account_id"];
-    const sets: string[] = [];
-    const params: unknown[] = [];
-    for (const [key, value] of Object.entries(fields)) {
-      if (!allowed.includes(key)) continue;
-      sets.push(`\`${key}\` = ?`);
-      params.push(key.endsWith("_json") ? json(value) : value);
-    }
-    if (!sets.length) return;
-    params.push(id);
-    await execute(`UPDATE schedules SET ${sets.join(", ")} WHERE id = ?`, params);
+  async updateSchedule(id: string, fields: Record<string, unknown>, options: ConfigurationWrite): Promise<number> {
+    const allowed = ["name","cron","timezone","input_json","status","next_run_at","last_run_id","service_account_id"];
+    const values = Object.fromEntries(Object.entries(fields).filter(([key]) => allowed.includes(key)).map(([key, value]) => [key, key.endsWith("_json") ? json(value) : value]));
+    return updateConfiguration("schedules", id, values, options);
   },
   async dueSchedules(): Promise<Record<string, unknown>[]> {
     return query("SELECT * FROM schedules WHERE status = 'active' AND (next_run_at IS NULL OR next_run_at <= CURRENT_TIMESTAMP(3)) ORDER BY next_run_at LIMIT 20");
   },
   /** Successful trigger: advance, remember the run, and reset the consecutive-failure counter. */
-  async markScheduleRun(id: string, nextRunAt: Date, lastRunId: string): Promise<void> {
-    await execute("UPDATE schedules SET next_run_at = ?, last_run_id = ?, failure_count = 0, last_error_code = NULL WHERE id = ?", [nextRunAt, lastRunId, id]);
+  async markScheduleRun(id: string, nextRunAt: Date, lastRunId: string, revision?: number): Promise<void> {
+    await execute("UPDATE schedules SET next_run_at = ?, last_run_id = ?, failure_count = 0, last_error_code = NULL WHERE id = ? AND revision = COALESCE(?, revision)", [nextRunAt, lastRunId, id, revision ?? null]);
   },
   /** Failed trigger: count it, keep the error code, and stop scheduling (status 'disabled', next_run_at NULL). */
-  async recordScheduleFailure(id: string, errorCode: string): Promise<void> {
+  async recordScheduleFailure(id: string, errorCode: string, revision?: number): Promise<void> {
     await execute(
-      "UPDATE schedules SET status = 'disabled', next_run_at = NULL, failure_count = failure_count + 1, last_error_code = ? WHERE id = ?",
-      [errorCode.slice(0, 16), id],
+      "UPDATE schedules SET status = 'disabled', revision = revision + 1, next_run_at = NULL, failure_count = failure_count + 1, last_error_code = ? WHERE id = ? AND revision = COALESCE(?, revision)",
+      [errorCode.slice(0, 16), id, revision ?? null],
     );
   },
   /**
    * Transient trigger failure (e.g. database error while resolving the identity): count it and keep the code, but the
    * schedule stays active; only this occurrence is skipped (next_run_at moves to the next cron slot).
    */
-  async recordScheduleTriggerError(id: string, errorCode: string, nextRunAt: Date | null): Promise<void> {
+  async recordScheduleTriggerError(id: string, errorCode: string, nextRunAt: Date | null, revision?: number): Promise<void> {
     await execute(
-      "UPDATE schedules SET next_run_at = ?, failure_count = failure_count + 1, last_error_code = ? WHERE id = ?",
-      [nextRunAt, errorCode.slice(0, 16), id],
+      "UPDATE schedules SET next_run_at = ?, failure_count = failure_count + 1, last_error_code = ? WHERE id = ? AND revision = COALESCE(?, revision)",
+      [nextRunAt, errorCode.slice(0, 16), id, revision ?? null],
     );
+  },
+  async advanceScheduleClock(id: string, nextRunAt: Date, revision: number): Promise<void> {
+    await execute("UPDATE schedules SET next_run_at = ? WHERE id = ? AND revision = ?", [nextRunAt, id, revision]);
   },
   /** True while a run triggered by this schedule is still in flight (used by concurrency_policy = 'skip'). */
   async hasInFlightScheduleRun(scheduleId: string): Promise<boolean> {

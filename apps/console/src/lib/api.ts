@@ -3,10 +3,10 @@ import { reportNetworkError, reportUnavailable } from "./api-availability";
 /** K-35：断网（fetch 抛 TypeError）的固定错误码。 */
 export const NETWORK_ERROR_CODE = "NET-0001";
 
-export type Session = { csrfToken?: string; user?: { name?: string; email?: string; role?: string } } & Record<string, unknown>;
+export type Session = { csrfToken?: string; user?: { id?: string; revision?: number; name?: string; email?: string; role?: string } } & Record<string, unknown>;
 
 export class ApiError extends Error {
-  constructor(message: string, readonly status: number, readonly code?: string) {
+  constructor(message: string, readonly status: number, readonly code?: string, readonly details?: { field?: string; fields?: {path:string;issue:string}[] }) {
     super(message);
   }
 }
@@ -21,9 +21,9 @@ export function setUnauthorizedHandler(handler: () => void) {
   onUnauthorized = handler;
 }
 
-export async function api<T = unknown>(path: string, options: { method?: string; body?: unknown } = {}): Promise<T> {
+export async function api<T = unknown>(path: string, options: { method?: string; body?: unknown; headers?: Record<string, string> } = {}): Promise<T> {
   const method = options.method ?? "GET";
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { ...options.headers };
   if (options.body !== undefined) headers["Content-Type"] = "application/json";
   if (method !== "GET" && session?.csrfToken) headers["x-csrf-token"] = session.csrfToken;
   let response: Response;
@@ -58,7 +58,7 @@ export async function api<T = unknown>(path: string, options: { method?: string;
   if (response.status === 401 && !path.startsWith("/auth/local/login")) onUnauthorized();
   if (response.status === 503) reportUnavailable(payload?.error?.code);
   if (!response.ok) {
-    throw new ApiError(payload?.error?.message ?? `请求失败（${response.status}）`, response.status, payload?.error?.code);
+    throw new ApiError(payload?.error?.message ?? `请求失败（${response.status}）`, response.status, payload?.error?.code, payload?.error?.details);
   }
   return payload as T;
 }

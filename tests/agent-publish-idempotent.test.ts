@@ -1,3 +1,4 @@
+import { configurationHeaders } from "./helpers/configuration-headers.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance } from "fastify";
@@ -8,7 +9,7 @@ import { cleanupRealSessions, realSession, sessionHeaders } from "./helpers/real
 
 // P2-12 K-34 (needs a *_test DB): publishing the version that is already published is idempotent. The store uses a
 // conditional UPDATE; 0 affected rows -> 200 with the current state, no second agent.publish audit. Two concurrent
-// requests for the same version -> both 200, exactly one audit row.
+// requests with one captured revision -> one 200 and one 409; fresh-read replay is 200 without a second audit.
 const suffix = `${Date.now().toString(36)}${randomBytes(3).toString("hex")}`;
 const ROOT = "01J00000000000000000000000";
 const ADMIN_ID = "01J00000000000000000000001";
@@ -17,10 +18,10 @@ let headers: Record<string, string> = {};
 let agentId = "";
 const versions: string[] = [];
 
-const publish = (versionId: string) => app.inject({ method: "POST", url: `/admin/api/agents/${agentId}/publish`, headers, payload: { versionId } });
+const publish = async (versionId: string) => app.inject({ method: "POST", url: `/admin/api/agents/${agentId}/publish`, headers: await configurationHeaders(`/admin/api/agents/${agentId}/publish`, headers), payload: { versionId } });
 const audits = async (versionId: string) => (await query("SELECT id FROM audit_logs WHERE action = 'agent.publish' AND resource_id = ?", [versionId])).length;
 const published = async () => (await one<{ published_version_id: string | null }>("SELECT published_version_id FROM agents WHERE id = ?", [agentId]))!.published_version_id;
-const draft = (v: string) => repos.createAgentVersion({ agentId, version: v, instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "draft", createdBy: ADMIN_ID });
+const draft = (v: string) => repos.createAgentVersion({ agentId, version: v, instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "draft", createdBy: ADMIN_ID }, { expectedRevision: "system" });
 
 beforeAll(async () => {
   app = await buildApp({ logger: false });
@@ -41,9 +42,11 @@ afterAll(async () => {
 });
 
 describe("K-34 publish is idempotent", () => {
-  it("two concurrent publishes of the same version -> both 200, one audit, one published version", async () => {
+  it("two concurrent publishes with one revision -> one 200/409, one audit, one published version", async () => {
     const [a, b] = await Promise.all([publish(versions[0]!), publish(versions[0]!)]);
-    expect([a.statusCode, b.statusCode], `${a.body} ${b.body}`).toEqual([200, 200]);
+    expect([a.statusCode, b.statusCode].sort(), `${a.body} ${b.body}`).toEqual([200, 409]);
+    const conflict = a.statusCode === 409 ? a : b;
+    expect(conflict.json().error.code).toBe("CFG-8503");
     expect(await audits(versions[0]!)).toBe(1);
     expect(await published()).toBe(versions[0]);
     expect((await one<{ status: string }>("SELECT status FROM agent_versions WHERE id = ?", [versions[0]]))!.status).toBe("published");

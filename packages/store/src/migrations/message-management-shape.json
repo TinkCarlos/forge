@@ -1,0 +1,1926 @@
+{
+  "message_channels": {
+    "columns": [
+      {
+        "COLUMN_NAME": "id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "id"
+      },
+      {
+        "COLUMN_NAME": "key",
+        "COLUMN_TYPE": "varchar(64)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "key"
+      },
+      {
+        "COLUMN_NAME": "name",
+        "COLUMN_TYPE": "varchar(128)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_ai_ci",
+        "COLUMN_COMMENT": "name"
+      },
+      {
+        "COLUMN_NAME": "description",
+        "COLUMN_TYPE": "varchar(1024)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_ai_ci",
+        "COLUMN_COMMENT": "description"
+      },
+      {
+        "COLUMN_NAME": "owner_org_unit_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "owner org unit id"
+      },
+      {
+        "COLUMN_NAME": "created_by",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "created by"
+      },
+      {
+        "COLUMN_NAME": "revision",
+        "COLUMN_TYPE": "int unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "1",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "revision"
+      },
+      {
+        "COLUMN_NAME": "status",
+        "COLUMN_TYPE": "varchar(16)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "disabled",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "status"
+      },
+      {
+        "COLUMN_NAME": "created_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "CURRENT_TIMESTAMP(3)",
+        "EXTRA": "DEFAULT_GENERATED",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "created at"
+      },
+      {
+        "COLUMN_NAME": "updated_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "CURRENT_TIMESTAMP(3)",
+        "EXTRA": "DEFAULT_GENERATED on update CURRENT_TIMESTAMP(3)",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "updated at"
+      },
+      {
+        "COLUMN_NAME": "type",
+        "COLUMN_TYPE": "varchar(16)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "type"
+      },
+      {
+        "COLUMN_NAME": "published_version_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "published version id"
+      },
+      {
+        "COLUMN_NAME": "next_version",
+        "COLUMN_TYPE": "int unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "1",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "next version"
+      },
+      {
+        "COLUMN_NAME": "legacy_app_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "legacy app id"
+      },
+      {
+        "COLUMN_NAME": "credential_owner_type",
+        "COLUMN_TYPE": "varchar(24)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "credential owner type"
+      },
+      {
+        "COLUMN_NAME": "credential_owner_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "credential owner id"
+      },
+      {
+        "COLUMN_NAME": "dispatch_epoch",
+        "COLUMN_TYPE": "bigint unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "1",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "dispatch epoch"
+      }
+    ],
+    "indexes": [
+      {
+        "INDEX_NAME": "idx_message_channels_org",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "owner_org_unit_id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_message_channels_org",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 2,
+        "COLUMN_NAME": "status",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_message_channels_org",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 3,
+        "COLUMN_NAME": "id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "PRIMARY",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "uk_message_channels_key",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "key",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "uk_message_channels_legacy",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "legacy_app_id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      }
+    ],
+    "foreignKeys": [
+      {
+        "CONSTRAINT_NAME": "fk_message_channels_0",
+        "COLUMN_NAME": "legacy_app_id",
+        "ORDINAL_POSITION": 1,
+        "SAME_SCHEMA": 1,
+        "REFERENCED_TABLE_NAME": "api_apps",
+        "REFERENCED_COLUMN_NAME": "id",
+        "DELETE_RULE": "RESTRICT",
+        "UPDATE_RULE": "NO ACTION"
+      }
+    ],
+    "checks": [
+      {
+        "CONSTRAINT_NAME": "ck_message_channels_owner",
+        "ENFORCED": "YES",
+        "CHECK_CLAUSE": "(((`legacy_app_id` is null) and (`credential_owner_type` = _utf8mb4\\'message_channel\\') and (`credential_owner_id` = `id`)) or ((`legacy_app_id` is not null) and (`credential_owner_type` = _utf8mb4\\'api_app\\') and (`credential_owner_id` = `legacy_app_id`)))"
+      },
+      {
+        "CONSTRAINT_NAME": "ck_message_channels_status",
+        "ENFORCED": "YES",
+        "CHECK_CLAUSE": "(`status` in (_utf8mb4\\'active\\',_utf8mb4\\'disabled\\',_utf8mb4\\'deleted\\'))"
+      },
+      {
+        "CONSTRAINT_NAME": "ck_message_channels_type",
+        "ENFORCED": "YES",
+        "CHECK_CLAUSE": "(`type` in (_utf8mb4\\'webhook\\',_utf8mb4\\'wecom\\'))"
+      }
+    ],
+    "options": [
+      {
+        "ENGINE": "InnoDB",
+        "TABLE_COLLATION": "utf8mb4_0900_ai_ci",
+        "TABLE_COMMENT": "message channels"
+      }
+    ]
+  },
+  "message_channel_versions": {
+    "columns": [
+      {
+        "COLUMN_NAME": "id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "id"
+      },
+      {
+        "COLUMN_NAME": "created_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "CURRENT_TIMESTAMP(3)",
+        "EXTRA": "DEFAULT_GENERATED",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "created at"
+      },
+      {
+        "COLUMN_NAME": "channel_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "channel id"
+      },
+      {
+        "COLUMN_NAME": "version",
+        "COLUMN_TYPE": "int unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "version"
+      },
+      {
+        "COLUMN_NAME": "endpoint_secret_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "endpoint secret id"
+      },
+      {
+        "COLUMN_NAME": "signing_secret_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "signing secret id"
+      },
+      {
+        "COLUMN_NAME": "header_refs_json",
+        "COLUMN_TYPE": "json",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "header refs json"
+      },
+      {
+        "COLUMN_NAME": "endpoint_fingerprint",
+        "COLUMN_TYPE": "char(64)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "endpoint fingerprint"
+      },
+      {
+        "COLUMN_NAME": "transport_json",
+        "COLUMN_TYPE": "json",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "transport json"
+      },
+      {
+        "COLUMN_NAME": "mentioned_ids_json",
+        "COLUMN_TYPE": "json",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "mentioned ids json"
+      },
+      {
+        "COLUMN_NAME": "mentioned_mobiles_json",
+        "COLUMN_TYPE": "json",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "mentioned mobiles json"
+      },
+      {
+        "COLUMN_NAME": "created_by",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "created by"
+      }
+    ],
+    "indexes": [
+      {
+        "INDEX_NAME": "fk_message_channel_versions_1",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "endpoint_secret_id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "fk_message_channel_versions_2",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "signing_secret_id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "PRIMARY",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "uk_message_channel_versions",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "channel_id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "uk_message_channel_versions",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 2,
+        "COLUMN_NAME": "version",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      }
+    ],
+    "foreignKeys": [
+      {
+        "CONSTRAINT_NAME": "fk_message_channel_versions_0",
+        "COLUMN_NAME": "channel_id",
+        "ORDINAL_POSITION": 1,
+        "SAME_SCHEMA": 1,
+        "REFERENCED_TABLE_NAME": "message_channels",
+        "REFERENCED_COLUMN_NAME": "id",
+        "DELETE_RULE": "RESTRICT",
+        "UPDATE_RULE": "NO ACTION"
+      },
+      {
+        "CONSTRAINT_NAME": "fk_message_channel_versions_1",
+        "COLUMN_NAME": "endpoint_secret_id",
+        "ORDINAL_POSITION": 1,
+        "SAME_SCHEMA": 1,
+        "REFERENCED_TABLE_NAME": "secrets",
+        "REFERENCED_COLUMN_NAME": "id",
+        "DELETE_RULE": "RESTRICT",
+        "UPDATE_RULE": "NO ACTION"
+      },
+      {
+        "CONSTRAINT_NAME": "fk_message_channel_versions_2",
+        "COLUMN_NAME": "signing_secret_id",
+        "ORDINAL_POSITION": 1,
+        "SAME_SCHEMA": 1,
+        "REFERENCED_TABLE_NAME": "secrets",
+        "REFERENCED_COLUMN_NAME": "id",
+        "DELETE_RULE": "RESTRICT",
+        "UPDATE_RULE": "NO ACTION"
+      }
+    ],
+    "checks": [],
+    "options": [
+      {
+        "ENGINE": "InnoDB",
+        "TABLE_COLLATION": "utf8mb4_0900_ai_ci",
+        "TABLE_COMMENT": "message channel versions"
+      }
+    ]
+  },
+  "message_templates": {
+    "columns": [
+      {
+        "COLUMN_NAME": "id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "id"
+      },
+      {
+        "COLUMN_NAME": "key",
+        "COLUMN_TYPE": "varchar(64)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "key"
+      },
+      {
+        "COLUMN_NAME": "name",
+        "COLUMN_TYPE": "varchar(128)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_ai_ci",
+        "COLUMN_COMMENT": "name"
+      },
+      {
+        "COLUMN_NAME": "description",
+        "COLUMN_TYPE": "varchar(1024)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_ai_ci",
+        "COLUMN_COMMENT": "description"
+      },
+      {
+        "COLUMN_NAME": "owner_org_unit_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "owner org unit id"
+      },
+      {
+        "COLUMN_NAME": "created_by",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "created by"
+      },
+      {
+        "COLUMN_NAME": "revision",
+        "COLUMN_TYPE": "int unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "1",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "revision"
+      },
+      {
+        "COLUMN_NAME": "status",
+        "COLUMN_TYPE": "varchar(16)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "disabled",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "status"
+      },
+      {
+        "COLUMN_NAME": "created_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "CURRENT_TIMESTAMP(3)",
+        "EXTRA": "DEFAULT_GENERATED",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "created at"
+      },
+      {
+        "COLUMN_NAME": "updated_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "CURRENT_TIMESTAMP(3)",
+        "EXTRA": "DEFAULT_GENERATED on update CURRENT_TIMESTAMP(3)",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "updated at"
+      },
+      {
+        "COLUMN_NAME": "draft_json",
+        "COLUMN_TYPE": "json",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "draft json"
+      },
+      {
+        "COLUMN_NAME": "published_version_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "published version id"
+      },
+      {
+        "COLUMN_NAME": "next_version",
+        "COLUMN_TYPE": "int unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "1",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "next version"
+      }
+    ],
+    "indexes": [
+      {
+        "INDEX_NAME": "idx_message_templates_org",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "owner_org_unit_id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_message_templates_org",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 2,
+        "COLUMN_NAME": "status",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_message_templates_org",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 3,
+        "COLUMN_NAME": "id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "PRIMARY",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "uk_message_templates_key",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "key",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      }
+    ],
+    "foreignKeys": [],
+    "checks": [
+      {
+        "CONSTRAINT_NAME": "ck_message_templates_status",
+        "ENFORCED": "YES",
+        "CHECK_CLAUSE": "(`status` in (_utf8mb4\\'active\\',_utf8mb4\\'disabled\\',_utf8mb4\\'deleted\\'))"
+      }
+    ],
+    "options": [
+      {
+        "ENGINE": "InnoDB",
+        "TABLE_COLLATION": "utf8mb4_0900_ai_ci",
+        "TABLE_COMMENT": "message templates"
+      }
+    ]
+  },
+  "message_template_versions": {
+    "columns": [
+      {
+        "COLUMN_NAME": "id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "id"
+      },
+      {
+        "COLUMN_NAME": "created_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "CURRENT_TIMESTAMP(3)",
+        "EXTRA": "DEFAULT_GENERATED",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "created at"
+      },
+      {
+        "COLUMN_NAME": "template_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "template id"
+      },
+      {
+        "COLUMN_NAME": "version",
+        "COLUMN_TYPE": "int unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "version"
+      },
+      {
+        "COLUMN_NAME": "format",
+        "COLUMN_TYPE": "varchar(24)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "format"
+      },
+      {
+        "COLUMN_NAME": "content",
+        "COLUMN_TYPE": "text",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_ai_ci",
+        "COLUMN_COMMENT": "content"
+      },
+      {
+        "COLUMN_NAME": "variables_json",
+        "COLUMN_TYPE": "json",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "variables json"
+      },
+      {
+        "COLUMN_NAME": "content_hash",
+        "COLUMN_TYPE": "char(64)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "content hash"
+      },
+      {
+        "COLUMN_NAME": "created_by",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "created by"
+      }
+    ],
+    "indexes": [
+      {
+        "INDEX_NAME": "PRIMARY",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "uk_message_template_versions",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "template_id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "uk_message_template_versions",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 2,
+        "COLUMN_NAME": "version",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      }
+    ],
+    "foreignKeys": [
+      {
+        "CONSTRAINT_NAME": "fk_message_template_versions_0",
+        "COLUMN_NAME": "template_id",
+        "ORDINAL_POSITION": 1,
+        "SAME_SCHEMA": 1,
+        "REFERENCED_TABLE_NAME": "message_templates",
+        "REFERENCED_COLUMN_NAME": "id",
+        "DELETE_RULE": "RESTRICT",
+        "UPDATE_RULE": "NO ACTION"
+      }
+    ],
+    "checks": [
+      {
+        "CONSTRAINT_NAME": "ck_message_template_versions_format",
+        "ENFORCED": "YES",
+        "CHECK_CLAUSE": "(`format` = _utf8mb4\\'wecom_text\\')"
+      }
+    ],
+    "options": [
+      {
+        "ENGINE": "InnoDB",
+        "TABLE_COLLATION": "utf8mb4_0900_ai_ci",
+        "TABLE_COMMENT": "message template versions"
+      }
+    ]
+  },
+  "message_rules": {
+    "columns": [
+      {
+        "COLUMN_NAME": "id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "id"
+      },
+      {
+        "COLUMN_NAME": "key",
+        "COLUMN_TYPE": "varchar(64)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "key"
+      },
+      {
+        "COLUMN_NAME": "name",
+        "COLUMN_TYPE": "varchar(128)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_ai_ci",
+        "COLUMN_COMMENT": "name"
+      },
+      {
+        "COLUMN_NAME": "description",
+        "COLUMN_TYPE": "varchar(1024)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_ai_ci",
+        "COLUMN_COMMENT": "description"
+      },
+      {
+        "COLUMN_NAME": "owner_org_unit_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "owner org unit id"
+      },
+      {
+        "COLUMN_NAME": "created_by",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "created by"
+      },
+      {
+        "COLUMN_NAME": "revision",
+        "COLUMN_TYPE": "int unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "1",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "revision"
+      },
+      {
+        "COLUMN_NAME": "status",
+        "COLUMN_TYPE": "varchar(16)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "disabled",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "status"
+      },
+      {
+        "COLUMN_NAME": "created_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "CURRENT_TIMESTAMP(3)",
+        "EXTRA": "DEFAULT_GENERATED",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "created at"
+      },
+      {
+        "COLUMN_NAME": "updated_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "CURRENT_TIMESTAMP(3)",
+        "EXTRA": "DEFAULT_GENERATED on update CURRENT_TIMESTAMP(3)",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "updated at"
+      },
+      {
+        "COLUMN_NAME": "event_type",
+        "COLUMN_TYPE": "varchar(64)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "event type"
+      },
+      {
+        "COLUMN_NAME": "scope_type",
+        "COLUMN_TYPE": "varchar(16)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "scope type"
+      },
+      {
+        "COLUMN_NAME": "scope_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "scope id"
+      },
+      {
+        "COLUMN_NAME": "channel_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "channel id"
+      },
+      {
+        "COLUMN_NAME": "template_version_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "template version id"
+      },
+      {
+        "COLUMN_NAME": "include_nested_runs",
+        "COLUMN_TYPE": "tinyint",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "0",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "include nested runs"
+      }
+    ],
+    "indexes": [
+      {
+        "INDEX_NAME": "fk_message_rules_0",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "channel_id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "fk_message_rules_1",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "template_version_id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_message_rules_match",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "event_type",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_message_rules_match",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 2,
+        "COLUMN_NAME": "status",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_message_rules_match",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 3,
+        "COLUMN_NAME": "owner_org_unit_id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_message_rules_match",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 4,
+        "COLUMN_NAME": "scope_type",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_message_rules_match",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 5,
+        "COLUMN_NAME": "scope_id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "PRIMARY",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "uk_message_rules_key",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "key",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      }
+    ],
+    "foreignKeys": [
+      {
+        "CONSTRAINT_NAME": "fk_message_rules_0",
+        "COLUMN_NAME": "channel_id",
+        "ORDINAL_POSITION": 1,
+        "SAME_SCHEMA": 1,
+        "REFERENCED_TABLE_NAME": "message_channels",
+        "REFERENCED_COLUMN_NAME": "id",
+        "DELETE_RULE": "RESTRICT",
+        "UPDATE_RULE": "NO ACTION"
+      },
+      {
+        "CONSTRAINT_NAME": "fk_message_rules_1",
+        "COLUMN_NAME": "template_version_id",
+        "ORDINAL_POSITION": 1,
+        "SAME_SCHEMA": 1,
+        "REFERENCED_TABLE_NAME": "message_template_versions",
+        "REFERENCED_COLUMN_NAME": "id",
+        "DELETE_RULE": "RESTRICT",
+        "UPDATE_RULE": "NO ACTION"
+      }
+    ],
+    "checks": [
+      {
+        "CONSTRAINT_NAME": "ck_message_rules_scope",
+        "ENFORCED": "YES",
+        "CHECK_CLAUSE": "(((`scope_type` = _utf8mb4\\'global\\') and (`scope_id` is null)) or ((`scope_type` in (_utf8mb4\\'job\\',_utf8mb4\\'agent\\',_utf8mb4\\'api_app\\',_utf8mb4\\'org\\')) and (`scope_id` is not null)))"
+      },
+      {
+        "CONSTRAINT_NAME": "ck_message_rules_status",
+        "ENFORCED": "YES",
+        "CHECK_CLAUSE": "(`status` in (_utf8mb4\\'active\\',_utf8mb4\\'disabled\\',_utf8mb4\\'deleted\\'))"
+      }
+    ],
+    "options": [
+      {
+        "ENGINE": "InnoDB",
+        "TABLE_COLLATION": "utf8mb4_0900_ai_ci",
+        "TABLE_COMMENT": "message rules"
+      }
+    ]
+  },
+  "message_deliveries": {
+    "columns": [
+      {
+        "COLUMN_NAME": "id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "id"
+      },
+      {
+        "COLUMN_NAME": "created_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "CURRENT_TIMESTAMP(3)",
+        "EXTRA": "DEFAULT_GENERATED",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "created at"
+      },
+      {
+        "COLUMN_NAME": "event_id",
+        "COLUMN_TYPE": "varchar(64)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "event id"
+      },
+      {
+        "COLUMN_NAME": "event_type",
+        "COLUMN_TYPE": "varchar(64)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "event type"
+      },
+      {
+        "COLUMN_NAME": "source_type",
+        "COLUMN_TYPE": "varchar(32)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "source type"
+      },
+      {
+        "COLUMN_NAME": "source_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "source id"
+      },
+      {
+        "COLUMN_NAME": "source_generation",
+        "COLUMN_TYPE": "int unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "1",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "source generation"
+      },
+      {
+        "COLUMN_NAME": "owner_org_unit_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "owner org unit id"
+      },
+      {
+        "COLUMN_NAME": "subject_type",
+        "COLUMN_TYPE": "varchar(16)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "subject type"
+      },
+      {
+        "COLUMN_NAME": "subject_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "subject id"
+      },
+      {
+        "COLUMN_NAME": "app_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "app id"
+      },
+      {
+        "COLUMN_NAME": "channel_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "channel id"
+      },
+      {
+        "COLUMN_NAME": "channel_version_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "channel version id"
+      },
+      {
+        "COLUMN_NAME": "matched_rules_json",
+        "COLUMN_TYPE": "json",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "matched rules json"
+      },
+      {
+        "COLUMN_NAME": "template_version_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "template version id"
+      },
+      {
+        "COLUMN_NAME": "payload_body",
+        "COLUMN_TYPE": "mediumblob",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "payload body"
+      },
+      {
+        "COLUMN_NAME": "payload_hash",
+        "COLUMN_TYPE": "char(64)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "payload hash"
+      },
+      {
+        "COLUMN_NAME": "status",
+        "COLUMN_TYPE": "varchar(24)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "queued",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "status"
+      },
+      {
+        "COLUMN_NAME": "hold_reason",
+        "COLUMN_TYPE": "varchar(32)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "hold reason"
+      },
+      {
+        "COLUMN_NAME": "cancel_requested",
+        "COLUMN_TYPE": "tinyint",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "0",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "cancel requested"
+      },
+      {
+        "COLUMN_NAME": "state_revision",
+        "COLUMN_TYPE": "int unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "1",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "state revision"
+      },
+      {
+        "COLUMN_NAME": "send_cycle",
+        "COLUMN_TYPE": "int unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "1",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "send cycle"
+      },
+      {
+        "COLUMN_NAME": "cycle_attempts",
+        "COLUMN_TYPE": "int unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "0",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "cycle attempts"
+      },
+      {
+        "COLUMN_NAME": "total_attempts",
+        "COLUMN_TYPE": "int unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "0",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "total attempts"
+      },
+      {
+        "COLUMN_NAME": "next_attempt_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "next attempt at"
+      },
+      {
+        "COLUMN_NAME": "claimed_by",
+        "COLUMN_TYPE": "varchar(128)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "claimed by"
+      },
+      {
+        "COLUMN_NAME": "lease_expires_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "lease expires at"
+      },
+      {
+        "COLUMN_NAME": "fence_token",
+        "COLUMN_TYPE": "bigint unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "0",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "fence token"
+      },
+      {
+        "COLUMN_NAME": "authorized_epoch",
+        "COLUMN_TYPE": "bigint unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "0",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "authorized epoch"
+      },
+      {
+        "COLUMN_NAME": "historical_target_ack",
+        "COLUMN_TYPE": "tinyint",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "0",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "historical target ack"
+      },
+      {
+        "COLUMN_NAME": "first_delivered_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "first delivered at"
+      },
+      {
+        "COLUMN_NAME": "last_delivered_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "last delivered at"
+      },
+      {
+        "COLUMN_NAME": "last_error_code",
+        "COLUMN_TYPE": "varchar(16)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "last error code"
+      },
+      {
+        "COLUMN_NAME": "legacy_delivery_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "legacy delivery id"
+      },
+      {
+        "COLUMN_NAME": "legacy_attempts",
+        "COLUMN_TYPE": "int unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "0",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "legacy attempts"
+      },
+      {
+        "COLUMN_NAME": "payload_purged_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "payload purged at"
+      },
+      {
+        "COLUMN_NAME": "updated_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "CURRENT_TIMESTAMP(3)",
+        "EXTRA": "DEFAULT_GENERATED on update CURRENT_TIMESTAMP(3)",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "updated at"
+      }
+    ],
+    "indexes": [
+      {
+        "INDEX_NAME": "fk_message_deliveries_1",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "channel_version_id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_message_deliveries_channel",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "channel_id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_message_deliveries_channel",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 2,
+        "COLUMN_NAME": "created_at",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_message_deliveries_channel",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 3,
+        "COLUMN_NAME": "id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_message_deliveries_due",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "status",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_message_deliveries_due",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 2,
+        "COLUMN_NAME": "next_attempt_at",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_message_deliveries_due",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 3,
+        "COLUMN_NAME": "id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_message_deliveries_org",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "owner_org_unit_id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_message_deliveries_org",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 2,
+        "COLUMN_NAME": "created_at",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_message_deliveries_org",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 3,
+        "COLUMN_NAME": "id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_message_deliveries_source",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "source_type",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_message_deliveries_source",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 2,
+        "COLUMN_NAME": "source_id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_message_deliveries_source",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 3,
+        "COLUMN_NAME": "created_at",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_message_deliveries_source",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 4,
+        "COLUMN_NAME": "id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "PRIMARY",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "uk_message_event_channel",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "event_id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "uk_message_event_channel",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 2,
+        "COLUMN_NAME": "channel_id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "uk_message_legacy_delivery",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "legacy_delivery_id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      }
+    ],
+    "foreignKeys": [
+      {
+        "CONSTRAINT_NAME": "fk_message_deliveries_0",
+        "COLUMN_NAME": "channel_id",
+        "ORDINAL_POSITION": 1,
+        "SAME_SCHEMA": 1,
+        "REFERENCED_TABLE_NAME": "message_channels",
+        "REFERENCED_COLUMN_NAME": "id",
+        "DELETE_RULE": "RESTRICT",
+        "UPDATE_RULE": "NO ACTION"
+      },
+      {
+        "CONSTRAINT_NAME": "fk_message_deliveries_1",
+        "COLUMN_NAME": "channel_version_id",
+        "ORDINAL_POSITION": 1,
+        "SAME_SCHEMA": 1,
+        "REFERENCED_TABLE_NAME": "message_channel_versions",
+        "REFERENCED_COLUMN_NAME": "id",
+        "DELETE_RULE": "RESTRICT",
+        "UPDATE_RULE": "NO ACTION"
+      }
+    ],
+    "checks": [
+      {
+        "CONSTRAINT_NAME": "ck_message_deliveries_cycle",
+        "ENFORCED": "YES",
+        "CHECK_CLAUSE": "((`send_cycle` > 0) and (`state_revision` > 0))"
+      },
+      {
+        "CONSTRAINT_NAME": "ck_message_deliveries_held",
+        "ENFORCED": "YES",
+        "CHECK_CLAUSE": "((`status` <> _utf8mb4\\'held\\') or (`hold_reason` is not null))"
+      },
+      {
+        "CONSTRAINT_NAME": "ck_message_deliveries_payload",
+        "ENFORCED": "YES",
+        "CHECK_CLAUSE": "((`payload_body` is not null) or (`payload_purged_at` is not null))"
+      },
+      {
+        "CONSTRAINT_NAME": "ck_message_deliveries_status",
+        "ENFORCED": "YES",
+        "CHECK_CLAUSE": "(`status` in (_utf8mb4\\'queued\\',_utf8mb4\\'sending\\',_utf8mb4\\'retry_wait\\',_utf8mb4\\'delivered\\',_utf8mb4\\'failed\\',_utf8mb4\\'unknown\\',_utf8mb4\\'held\\',_utf8mb4\\'cancelled\\'))"
+      }
+    ],
+    "options": [
+      {
+        "ENGINE": "InnoDB",
+        "TABLE_COLLATION": "utf8mb4_0900_ai_ci",
+        "TABLE_COMMENT": "message deliveries"
+      }
+    ]
+  },
+  "message_delivery_attempts": {
+    "columns": [
+      {
+        "COLUMN_NAME": "id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "id"
+      },
+      {
+        "COLUMN_NAME": "created_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "CURRENT_TIMESTAMP(3)",
+        "EXTRA": "DEFAULT_GENERATED",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "created at"
+      },
+      {
+        "COLUMN_NAME": "delivery_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "delivery id"
+      },
+      {
+        "COLUMN_NAME": "attempt_no",
+        "COLUMN_TYPE": "int unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "attempt no"
+      },
+      {
+        "COLUMN_NAME": "send_cycle",
+        "COLUMN_TYPE": "int unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "send cycle"
+      },
+      {
+        "COLUMN_NAME": "status",
+        "COLUMN_TYPE": "varchar(16)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "prepared",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "status"
+      },
+      {
+        "COLUMN_NAME": "channel_version_id",
+        "COLUMN_TYPE": "char(26)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "channel version id"
+      },
+      {
+        "COLUMN_NAME": "endpoint_fingerprint",
+        "COLUMN_TYPE": "char(64)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "endpoint fingerprint"
+      },
+      {
+        "COLUMN_NAME": "payload_hash",
+        "COLUMN_TYPE": "char(64)",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "ascii",
+        "COLLATION_NAME": "ascii_bin",
+        "COLUMN_COMMENT": "payload hash"
+      },
+      {
+        "COLUMN_NAME": "fence_token",
+        "COLUMN_TYPE": "bigint unsigned",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "fence token"
+      },
+      {
+        "COLUMN_NAME": "submitted_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "submitted at"
+      },
+      {
+        "COLUMN_NAME": "completed_at",
+        "COLUMN_TYPE": "datetime(3)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "completed at"
+      },
+      {
+        "COLUMN_NAME": "response_status",
+        "COLUMN_TYPE": "int unsigned",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "response status"
+      },
+      {
+        "COLUMN_NAME": "response_summary",
+        "COLUMN_TYPE": "varchar(512)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_ai_ci",
+        "COLUMN_COMMENT": "response summary"
+      },
+      {
+        "COLUMN_NAME": "error_code",
+        "COLUMN_TYPE": "varchar(16)",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": "utf8mb4",
+        "COLLATION_NAME": "utf8mb4_0900_bin",
+        "COLUMN_COMMENT": "error code"
+      },
+      {
+        "COLUMN_NAME": "retry_after_seconds",
+        "COLUMN_TYPE": "int unsigned",
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "retry after seconds"
+      },
+      {
+        "COLUMN_NAME": "uncertain",
+        "COLUMN_TYPE": "tinyint",
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": "0",
+        "EXTRA": "",
+        "CHARACTER_SET_NAME": null,
+        "COLLATION_NAME": null,
+        "COLUMN_COMMENT": "uncertain"
+      }
+    ],
+    "indexes": [
+      {
+        "INDEX_NAME": "idx_message_delivery_attempts_delivery",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "delivery_id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_message_delivery_attempts_delivery",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 2,
+        "COLUMN_NAME": "attempt_no",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_message_delivery_attempts_due",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "status",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_message_delivery_attempts_due",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 2,
+        "COLUMN_NAME": "created_at",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "idx_message_delivery_attempts_due",
+        "NON_UNIQUE": 1,
+        "SEQ_IN_INDEX": 3,
+        "COLUMN_NAME": "id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "PRIMARY",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "uk_message_delivery_attempt",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 1,
+        "COLUMN_NAME": "delivery_id",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      },
+      {
+        "INDEX_NAME": "uk_message_delivery_attempt",
+        "NON_UNIQUE": 0,
+        "SEQ_IN_INDEX": 2,
+        "COLUMN_NAME": "attempt_no",
+        "SUB_PART": null,
+        "INDEX_TYPE": "BTREE"
+      }
+    ],
+    "foreignKeys": [
+      {
+        "CONSTRAINT_NAME": "fk_message_delivery_attempts_0",
+        "COLUMN_NAME": "delivery_id",
+        "ORDINAL_POSITION": 1,
+        "SAME_SCHEMA": 1,
+        "REFERENCED_TABLE_NAME": "message_deliveries",
+        "REFERENCED_COLUMN_NAME": "id",
+        "DELETE_RULE": "RESTRICT",
+        "UPDATE_RULE": "NO ACTION"
+      }
+    ],
+    "checks": [
+      {
+        "CONSTRAINT_NAME": "ck_message_delivery_attempts_number",
+        "ENFORCED": "YES",
+        "CHECK_CLAUSE": "((`attempt_no` > 0) and (`send_cycle` > 0))"
+      },
+      {
+        "CONSTRAINT_NAME": "ck_message_delivery_attempts_status",
+        "ENFORCED": "YES",
+        "CHECK_CLAUSE": "(`status` in (_utf8mb4\\'prepared\\',_utf8mb4\\'submitted\\',_utf8mb4\\'succeeded\\',_utf8mb4\\'failed\\',_utf8mb4\\'unknown\\'))"
+      }
+    ],
+    "options": [
+      {
+        "ENGINE": "InnoDB",
+        "TABLE_COLLATION": "utf8mb4_0900_ai_ci",
+        "TABLE_COMMENT": "message delivery attempts"
+      }
+    ]
+  }
+}

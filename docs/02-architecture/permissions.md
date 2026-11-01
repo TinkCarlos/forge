@@ -1,5 +1,25 @@
 # Forge 功能权限与数据权限设计
 
+## 2026-11-01 Job/消息增量策略矩阵（整体尚未实现）
+
+开发状态：core新增功能目录与QueryFilter结构、store Job查询SQL过滤器已实施并定向验证；完整E1策略加载、当前主体/角色/外部上限装配与新HTTP入口仍未接入。现有非管理员角色不因目录新增自动获得权限；不能把内部SQL过滤器当成完整鉴权已验收。
+
+依据[需求](../../.talking-us/20261101-113405-Forge后台优化与Job消息管理-详细需求文档.md)及[开发设计](../../.talking-us/20261101-113405-Forge后台优化与Job消息管理-开发设计文档.md)。新目录须同步core集中权限、种子、角色矩阵、DTO/UI与服务端；不自动覆盖已维护角色或给旧角色增加全局权限。
+
+| 资源 | 功能权限 | 行级范围、过滤与二次检查 |
+| --- | --- | --- |
+| job_definition / job_app_grant | job.view/manage/publish/run | 定义owner_org/created_by；App显式grant且有效Scope交集，不能自报组织/借创建人运行 |
+| job_execution / step / attempt / event | job.view/control/retry；交付观察job_delivery.manage | execution.owner_org/subject/app；子对象JOIN执行；控制按当前状态/版本，SSE轮询实时撤权；输入/输出/下载重新查权 |
+| human_task | human_task.view/decide | JOIN执行范围＋允许动作/分配/当前inputHash；任务处理不自动授予Job控制或工具审批权 |
+| message_channel / rule / template | message.view/manage/test | 配置owner_org/created_by，规则scope与目标渠道/模板范围取交集；全局规则限获准平台主体 |
+| message_delivery / attempt | message.view/retry；补历史目标另message.manage | 投递owner_org/app，正文再交源Job/Run权限；metadata与正文分开；重发不允许夹带新目标/正文 |
+| source_snapshot / quality_check / artifact | job.view及既定file/ artifact读取下载权限 | JOIN执行/文件/原Run；无权原文不因可见任务或消息获得下载链接 |
+| eval_dataset / case / eval_run / result | eval.view/manage/run/review | 数据集owner_org/created_by、执行主体；真实数据/评分输入不越界，评测费用同普通Job预算 |
+
+资源ID过滤、索引字段及AccessContext契约见[数据库字典](../../.talking-us/20261101-113405-Forge后台优化与Job消息管理-数据库设计文档.md)。allow并集减deny再交外部范围，默认拒绝，不先查全量再内存筛选；详情、修改、SSE、证据与文件/产物下载独立校验，不可见统一404。
+
+兼容旧schedule/apikey权限仅映射可见原计划/App对应的Job/回调子集，限制allowedActions且服务端强制，不转成全局job/message权限。迁移的资源级App Secret继续由绑定的精确App消费者解析，不扩大Secret scope；新channel消费者和Secret引用/删除/详情JOIN必须同步实现。全局角色已实现不等于本增量数据策略已实现。
+
 版本：1.0　日期：2026-10-21　状态：待评审
 
 > 功能权限回答「能不能用这个功能」，数据权限回答「在这个功能里能看/改哪些数据」。两者同时生效，取交集；任何一方拒绝即拒绝。
@@ -141,7 +161,7 @@
 - **deny 优先**：任一适用 deny 即拒绝，除非是平台管理员且显式豁免（默认不豁免）。
 - **并集**：多个 allow 取并集；范围 `all` 吸收其他范围。
 - **作用域**：角色绑定到组织时，数据策略仍按策略自身的范围计算；绑定作用域限制的是“管理权限”，不是自动数据范围。避免“组织管理员天然看全部数据”的误解。
-- **外部上限**：Agent Principal 的 `dataScope`、API App 的 `app` 范围作为上限，与本地策略取交集。
+- **外部上限**：Connector已验签call policy的`dataScopeType/dataScope`（由Forge派生进AccessContext）、API App的`app`范围作为上限，与本地策略取交集。
 
 ### 4.4 评估算法
 
@@ -159,7 +179,7 @@
    - self → subject_id = 当前主体（或 created_by）
    - app → app_id = 当前应用
    - service_account → subject_id = 当前服务账号
-5. 与外部上限取交集（Agent Principal dataScope / API App app）
+5. 与外部上限取交集（已验签Connector call policy范围 / API App app）
 6. 生成 QueryFilter，交给 Repository
 7. 详情/下载/SSE 再执行一次资源级检查，防止 ID 猜测
 ```
@@ -173,11 +193,11 @@
 | 管理 API 列表 | Repository 必须接收 `QueryFilter`；无过滤参数的查询编译期/测试失败 |
 | 管理 API 详情 | `assertCanRead(resource)`；不存在与无权限统一 404 |
 | 开放 API | 应用范围 `app`；Run/Thread/File 查询带 `app_id` |
-| 集成 API | Principal 签名 `dataScope` ∩ 本地策略 |
+| 集成 API | 已验签身份 + 签名call policy数据范围 ∩ 本地策略 |
 | SSE | 订阅前检查 Run 可见性；事件中不泄露不可见资源 |
 | 文件/Artifact | 元数据检查通过后才签发短期 URL；对象存储私有 |
 | 知识库检索 | 检索前过滤 `kb_id`/组织；向量结果再次按文档权限过滤 |
-| 工具调用 | 只允许策略快照中的工具；外部数据范围通过 Connector `dataScope` 传递，目标系统最终执行 |
+| 工具调用 | 只允许策略快照中的工具；外部范围读取已验签Connector call policy，按工具契约收紧参数，目标端按自身签名入站策略执行，不伪造范围头 |
 | 导出 | 单独 `export` 动作；异步导出再次校验并审计 |
 | 审计日志 | `audit.view` + `audit_log` 数据范围；默认平台管理员/审计角色 |
 | 定时任务 | 以服务账号身份运行，使用其数据范围；创建者停用不影响服务账号，服务账号停用则暂停 |
@@ -358,3 +378,22 @@ LIMIT :limit;
 | FR-GV-20 权限审计 | 第 6、9 节 |
 | FR-GV-21 服务账号/定时任务 | 第 3.4、4.5 节 |
 | FR-GV-22~25 SSO/Connector | [sso-and-connector.md](sso-and-connector.md) |
+
+E0 0.2.0实包说明：SDK normalized Principal不包含dataScope，已验签配置的call policy保留该字段但SDK不做行过滤。具体缺省拒绝、范围类型/映射及双端执行规则以[E0适配设计](../../.talking-us/2026-10-31-forge-e0-admission.md)为准；不得将缺失范围当all。
+
+
+## E1 凭据资源实际权限（2026-10-31）
+
+`secret`元数据全部要求`secret.manage`；列表、详情、版本、引用在Store SQL按`owner_org_unit_id/created_by`过滤，默认拒绝、范围外404。dataScope all可管理平台；组织管理可含子树，但凭据使用的org作用域只精确本组织，resource只精确类型/ID。平台/无组织归属写需all，不能因self可见而修改平台配置。
+
+新建resource作用域还要求对应`agent.manage/model.manage/mcp.manage/tool.manage/apikey.manage`及资源可管理；复用既有Secret ID须secret.manage和可见性，再在父资源事务中检查active/scope。资源管理员写自己知道的值不借用他人秘密，由后端创建同一资源的受控凭据。普通Run用户按已保存绑定取用，不被额外要求secret.manage；取用永不通过管理API返回明文。引用详情SQL也过滤父资源归属。停用/损坏/缺失引用失败关闭，不向legacy回退。
+
+当前沿用已实现角色dataScope过滤；完整data_policies deny/行策略矩阵仍是后续E1工作，不能把本节当作全策略引擎已完成。Secret审计写资源自身组织；维护任务actorType=system/actorId=null，created_by可保留原资源创建人以维持self管理归属。
+
+账号增量的失败操作日志归属可信操作者当时部门（匿名NULL），使组织审计能查本组织失败/拒绝；仅含固定路由、目标ID和code，不读取不可见资源。成功资源事件仍按资源部门记录。详见[账号开发设计](../../.talking-us/2026-11-01-forge-identity-design.md)。
+
+## 当前 U03 全局角色实现契约（2026-11-01）
+
+权限模板移到core/src/auth/permissions.ts，数据库roles/role_permissions是实际用户和服务账号的功能权限来源；真实身份快照缺失时不给模板默认权限。用户主角色兼容原role列，附加global绑定取激活角色并集。读取目录、预览、编辑/复制/恢复/删除、角色作用于现存管理/集成API及调度的具体规则见[U03设计](../../.talking-us/2026-11-01-forge-roles-design.md)。
+
+全局角色写入要求role.manage+all且不能超额授权；平台角色固定，内置不可删除；其它内置模板仅首次初始化，重复seed不会覆盖权限或SSO映射。SSO已有绑定保留本地配置，新主体授权在共同账号锁内核对映射/角色版本。组织/组作用域绑定和完整数据策略仍待U04，与本节全局并集不可混同；旧MVP org仍表示子树，待迁移为显式org_tree后再开放精确org。

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { api } from '@/lib/api'
+import { api, ApiError } from '@/lib/api'
+import { toast } from 'sonner'
 import { onReject } from '@/lib/settle'
 import { useAuthStore } from '@/stores/auth-store'
 import { ConfirmDialog } from '@/components/confirm-dialog'
@@ -17,7 +18,14 @@ export function SignOutDialog({ open, onOpenChange }: SignOutDialogProps) {
 
   const handleSignOut = async () => {
     setBusy(true)
-    await api('/auth/logout', { method: 'POST' }).catch(() => {})
+    try { await api('/auth/logout', { method: 'POST' }) }
+    catch (error) {
+      if (!(error instanceof ApiError && error.status === 401)) {
+        toast.error('退出登录失败，请重试')
+        setBusy(false)
+        return
+      }
+    }
     reset()
     setBusy(false)
     onOpenChange(false)

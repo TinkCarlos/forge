@@ -43,7 +43,7 @@ export function AppSidebar() {
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size='lg' asChild>
+            <SidebarMenuButton size='lg' className='h-10 py-1 [@media(pointer:coarse)]:min-h-11' asChild>
               <Link to='/agents'>
                 <div className='flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground'>
                   <Hammer className='size-4' />
@@ -57,7 +57,7 @@ export function AppSidebar() {
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
-      <SidebarContent>
+      <SidebarContent className='gap-0'>
         {groups.map((props) => (
           <NavGroup key={props.title} {...props} />
         ))}

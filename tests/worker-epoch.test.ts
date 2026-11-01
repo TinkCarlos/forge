@@ -24,7 +24,7 @@ const claimedBy = async (runId: string) => (await one<{ claimed_by: string | nul
 
 beforeAll(async () => {
   agentId = await repos.createAgent({ key: `it-ep-${suffix}`, name: "IT EP", ownerOrgUnitId: ROOT, createdBy: ADMIN_ID });
-  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "none", model: "none" } }, status: "published", createdBy: ADMIN_ID });
+  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "none", model: "none" } }, status: "published", createdBy: ADMIN_ID }, { expectedRevision: "system" });
 });
 afterAll(async () => {
   if (!agentId) return;

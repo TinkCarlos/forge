@@ -1,3 +1,4 @@
+import { configurationHeaders } from "./helpers/configuration-headers.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
@@ -36,7 +37,7 @@ async function makeApp(name: string, appScopes: string[], keyScopes: string[]): 
   return { appId, key };
 }
 const patchScopes = async (appId: string, scopes: string[]) => {
-  const res = await app.inject({ method: "PATCH", url: `/admin/api/apps/${appId}`, headers, payload: { scopes } });
+  const res = await app.inject({ method: "PATCH", url: `/admin/api/apps/${appId}`, headers: await configurationHeaders(`/admin/api/apps/${appId}`, headers), payload: { scopes } });
   expect(res.statusCode, res.body).toBe(200);
 };
 const bearer = (key: string) => ({ authorization: `Bearer ${key}` });
@@ -62,9 +63,9 @@ beforeAll(async () => {
   headers = sessionHeaders(admin, sessionCookieValue(admin));
   agentKey = `it-ksi-${suffix}`;
   agentId = await repos.createAgent({ key: agentKey, name: "IT ksi", ownerOrgUnitId: ROOT, createdBy: ADMIN_ID });
-  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID });
-  await repos.publishAgentVersion(agentId, versionId);
-  await repos.updateAgent(agentId, { api_enabled: 1 });
+  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID }, { expectedRevision: "system" });
+  await repos.publishAgentVersion(agentId, versionId, { expectedRevision: "system" });
+  await repos.updateAgent(agentId, { api_enabled: 1 }, { expectedRevision: "system" });
 });
 
 afterAll(async () => {
@@ -153,7 +154,7 @@ describe("P2 effective scope = Key scopes ∩ app's current scopes", () => {
 
   it("SC-06 new Key via admin API is unchanged: stores the app's scopes at creation and works within them", async () => {
     const { appId } = await makeApp("newkey", ["agents:read"], ["agents:read"]);
-    const created = await app.inject({ method: "POST", url: `/admin/api/apps/${appId}/keys`, headers, payload: { name: "fresh" } });
+    const created = await app.inject({ method: "POST", url: `/admin/api/apps/${appId}/keys`, headers: await configurationHeaders(`/admin/api/apps/${appId}/keys`, headers), payload: { name: "fresh" } });
     expect(created.statusCode, created.body).toBe(200);
     const body = created.json() as { id: string; key: string; prefix: string };
     expect(body.key.startsWith("fsk_")).toBe(true);

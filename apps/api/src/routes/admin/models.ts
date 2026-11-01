@@ -1,7 +1,7 @@
 import { type FastifyInstance } from "fastify";
-import { ENV_REF_CODE, assertNoEnvRefs, assertOutboundUrlStatic, config, encryptSecret, errors, ForgeError, OUTBOUND_BLOCKED_CODE, storedJsonValue } from "@forge/core";
+import { ENV_REF_CODE, assertNoEnvRefs, assertOutboundUrlStatic, credentialHeaderInput, credentialHeaderRefsInput, storedHeaderSecretRefs, errors, ForgeError, OUTBOUND_BLOCKED_CODE, storedJsonValue } from "@forge/core";
 import { callModel } from "@forge/models";
-import { assertOrgWritable } from "@forge/governance";
+import { assertOrgWritable, assertSecretReferences } from "@forge/governance";
 import { repos } from "@forge/store";
 import {
   bodyOf,
@@ -11,6 +11,8 @@ import {
   jsonObjectBody,
   admin,
   writeAudit,
+  configurationWrite,
+  configurationResult,
   requireBodyString,
 } from "../../plugins/http-helpers.js";
 import { ROUTE_SCHEMAS, assertValidInput } from "../../plugins/input-schema.js";
@@ -26,13 +28,17 @@ export default async function adminModelRoutes(app: FastifyInstance): Promise<vo
     const items = await Promise.all(
       providers.map(async (provider) => ({
         id: provider.id,
+        revision: provider.revision,
         key: provider.key,
         name: provider.name,
         protocol: provider.protocol,
         baseUrl: provider.base_url,
         status: provider.status,
+        secretId: provider.secret_id ?? null,
+        headerSecretRefs: storedHeaderSecretRefs(provider.header_secret_refs_json),
         models: (await repos.listModels(provider.id)).map((model) => ({
           id: model.id,
+          revision: model.revision,
           key: model.key,
           displayName: model.display_name,
           capabilities: model.capabilities_json == null ? null : storedJsonValue(model.capabilities_json, { table: "llm_models", column: "capabilities_json", id: String(model.id) }, "stringArray"),
@@ -54,17 +60,21 @@ export default async function adminModelRoutes(app: FastifyInstance): Promise<vo
     const apiKey = stringBody(body, "apiKey");
     assertOutboundUrlStatic(requireBodyString(body, "baseUrl"));
     assertNoEnvRefs({ headers: jsonObjectBody(body, "headers", {}), apiKey }); // AG (S-61)
+    const headerSecretRefs = body.headerSecretRefs === undefined ? undefined : credentialHeaderRefsInput(jsonObjectBody(body, "headerSecretRefs", {}));
+    const secretId = body.secretId as string | null | undefined;
+    await assertSecretReferences(session.principal, [...Object.values(headerSecretRefs ?? {}), ...(secretId ? [secretId] : [])]);
     const providerId = await repos.createProvider({
       key,
       name: stringBody(body, "name", key),
       protocol: stringBody(body, "protocol", "openai-compatible"),
       baseUrl: requireBodyString(body, "baseUrl"),
-      apiKeyEncrypted: apiKey ? encryptSecret(apiKey, config.FORGE_MASTER_KEY) : null,
-      headers: jsonObjectBody(body, "headers", {}),
+      apiKey: apiKey || undefined,
+      secretId,
+      headerSecretRefs,
+      headers: credentialHeaderInput(jsonObjectBody(body, "headers", {})),
       timeoutMs: body.timeoutMs === undefined ? 120000 : Number(body.timeoutMs), // schema: integer 1000..600000
       createdBy: session.principal.id,
-    });
-    await writeAudit(session, "provider.create", "llm_provider", providerId, { key });
+    }, { actorType: "user", actorId: session.principal.id, action: "provider.create", resourceType: "llm_provider", resourceId: null, details: { key }, orgUnitId: null });
     return { id: providerId };
   });
 
@@ -89,7 +99,7 @@ export default async function adminModelRoutes(app: FastifyInstance): Promise<vo
     return { id: modelId };
   });
 
-  app.patch("/admin/api/providers/:id", { schema: ROUTE_SCHEMAS.providerPatch, attachValidation: true }, async (request) => {
+  app.patch("/admin/api/providers/:id", { schema: ROUTE_SCHEMAS.providerPatch, attachValidation: true }, async (request, reply) => {
     const session = await admin(request, "model.manage");
     await assertOrgWritable(session.principal, null, PLATFORM_WRITE_MESSAGE); // P0-03 / U-15: platform-wide resource (no department column)
     const provider = await repos.getProviderById(param(request, "id"));
@@ -104,16 +114,18 @@ export default async function adminModelRoutes(app: FastifyInstance): Promise<vo
       assertOutboundUrlStatic(String(fields.base_url));
     }
     assertNoEnvRefs({ headers: body.headers !== undefined ? jsonObjectBody(body, "headers", {}) : undefined, apiKey: body.apiKey }); // AG (S-61)
-    if (body.apiKey) fields.api_key_encrypted = encryptSecret(stringBody(body, "apiKey"), config.FORGE_MASTER_KEY);
-    if (body.headers !== undefined) fields.headers_json = jsonObjectBody(body, "headers", {});
+    if (body.apiKey) fields.api_key = stringBody(body, "apiKey");
+    if (body.secretId !== undefined) fields.secret_id = body.secretId;
+    if (body.headers !== undefined) fields.headers_json = credentialHeaderInput(jsonObjectBody(body, "headers", {}));
+    if (body.headerSecretRefs !== undefined) fields.header_secret_refs_json = credentialHeaderRefsInput(jsonObjectBody(body, "headerSecretRefs", {}));
+    await assertSecretReferences(session.principal, [...Object.values((fields.header_secret_refs_json ?? {}) as Record<string, string>), ...(typeof fields.secret_id === "string" ? [fields.secret_id] : [])]);
     if (body.timeoutMs !== undefined) fields.timeout_ms = Number(body.timeoutMs);
     if (body.status !== undefined) fields.status = stringBody(body, "status");
-    await repos.updateProvider(provider.id, fields);
-    await writeAudit(session, "provider.update", "llm_provider", provider.id, { name: fields.name, status: fields.status });
-    return { ok: true };
+    const revision = await repos.updateProvider(provider.id, fields, configurationWrite(request, session, "provider.update", "llm_provider", provider.id, { name: fields.name, status: fields.status }, null));
+    return configurationResult(reply, revision);
   });
 
-  app.patch("/admin/api/models/:id", { schema: ROUTE_SCHEMAS.modelPatch, attachValidation: true }, async (request) => {
+  app.patch("/admin/api/models/:id", { schema: ROUTE_SCHEMAS.modelPatch, attachValidation: true }, async (request, reply) => {
     const session = await admin(request, "model.manage");
     await assertOrgWritable(session.principal, null, PLATFORM_WRITE_MESSAGE); // P0-03 / U-15: platform-wide resource (no department column)
     const model = await repos.getModelById(param(request, "id"));
@@ -128,9 +140,8 @@ export default async function adminModelRoutes(app: FastifyInstance): Promise<vo
     if (body.inputPrice !== undefined) fields.input_price_per_mtok = Number(body.inputPrice);
     if (body.outputPrice !== undefined) fields.output_price_per_mtok = Number(body.outputPrice);
     if (body.status !== undefined) fields.status = stringBody(body, "status");
-    await repos.updateModel(model.id, fields);
-    await writeAudit(session, "model.update", "llm_model", model.id, { displayName: fields.display_name });
-    return { ok: true };
+    const revision = await repos.updateModel(model.id, fields, configurationWrite(request, session, "model.update", "llm_model", model.id, { displayName: fields.display_name }, null));
+    return configurationResult(reply, revision);
   });
 
   app.post("/admin/api/providers/:id/test", { schema: ROUTE_SCHEMAS.noBody, attachValidation: true }, async (request) => {

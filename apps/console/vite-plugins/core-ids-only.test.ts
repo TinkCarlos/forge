@@ -15,8 +15,8 @@ describe('K-33 产物守卫：不带服务端代码', () => {
   })
   it('packages/ 下其他模块（core 根、config、store）进了 chunk 就报出来', () => {
     expect(serverCodeInChunks({
-      'assets/x.js': ['/r/packages/core/src/index.ts', '/r/packages/core/src/config.ts', '/r/packages/store/src/index.ts'],
-    })).toHaveLength(3)
+      'assets/x.js': ['/r/packages/core/src/index.ts', '/r/packages/core/src/config.ts', '/r/packages/store/src/index.ts', '/r/packages/core/src/id-generator.ts', '/r/packages/core/src/errors/codes.ts'],
+    })).toHaveLength(5)
   })
   it('item 11：额外只放行 packages/core/src/sso-error-codes.ts（纯模块）', () => {
     expect(serverCodeInChunks({

@@ -1,0 +1,55 @@
+--- before/tests/audit-action-classification.test.ts
++++ after/tests/audit-action-classification.test.ts
+@@ -1,6 +1,7 @@
+ import { readdirSync, readFileSync, statSync } from "node:fs";
+ import { join } from "node:path";
+ import { describe, expect, it } from "vitest";
++import ts from "typescript";
+ import { isDeleteClassAuditAction } from "../packages/store/src/repositories/audit-scope-sql.js";
+ 
+ // Audit action classification (pure, static). Delete-class actions must pass orgUnitId explicitly (repos.audit throws
+@@ -43,12 +44,24 @@
+   });
+ }
+ 
+-/** Action literals in apps/api/src and packages/*\/src: `action: "x"` and writeAudit/prepareAudit(session, "x", ...). */
++function actionPropertyLiterals(src: string): string[] {
++  const source = ts.createSourceFile("audit.ts", src, ts.ScriptTarget.Latest, true);
++  const actions: string[] = [];
++  function visit(node: ts.Node): void {
++    if (ts.isPropertyAssignment(node) && (ts.isIdentifier(node.name) || ts.isStringLiteral(node.name)) && node.name.text === "action" && ts.isStringLiteralLike(node.initializer)) actions.push(node.initializer.text);
++    ts.forEachChild(node, visit);
++  }
++  visit(source);
++  return actions;
++}
++
++/** Action values in object properties and audit-writing calls, excluding TypeScript type annotations. */
+ function actionLiterals(): Map<string, string> {
+   const found = new Map<string, string>();
+   for (const file of ROOTS.flatMap(files)) {
+     const src = readFileSync(file, "utf8");
+-    for (const re of [/\baction: "([^"]+)"/g, /\bconfigurationWrite\(\s*\w+,\s*\w+,\s*"([^"]+)"/g, /\b(?:writeAudit|prepareAudit)\(\s*\w+,\s*"([^"]+)"/g]) {
++    for (const action of actionPropertyLiterals(src)) found.set(action, file.slice(REPO.length + 1));
++    for (const re of [/\bconfigurationWrite\(\s*\w+,\s*\w+,\s*"([^"]+)"/g, /\b(?:writeAudit|prepareAudit)\(\s*\w+,\s*"([^"]+)"/g]) {
+       for (const m of src.matchAll(re)) found.set(m[1]!, file.slice(REPO.length + 1));
+     }
+   }
+@@ -56,6 +69,17 @@
+ }
+ 
+ describe("audit action classification", () => {
++  it("scans action values without treating literal parameter or property types as audit events", () => {
++    const source = `
++      type Options = { action: "cancel" };
++      function control(action: "retry" | "cancel") {
++        return { action: "message.retry" };
++      }
++      const audit = {action:'user.update'};
++    `;
++    expect(actionPropertyLiterals(source)).toEqual(["message.retry", "user.update"]);
++  });
++
+   it("every action literal in the code is explicitly classified (scanner sanity: finds plugin.uninstall and user.update)", () => {
+     const found = actionLiterals();
+     expect(found.has("plugin.uninstall") && found.has("user.update") && found.has("auth.logout")).toBe(true);

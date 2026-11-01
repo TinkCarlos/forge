@@ -1,0 +1,52 @@
+import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
+import mysql, { type Connection, type RowDataPacket } from "mysql2/promise";
+import { afterAll,beforeAll,expect,it } from "vitest";
+import { config } from "@forge/core";
+import { applyRoles } from "../packages/store/src/migrations/roles.js";
+const name=`forge_roles_${randomBytes(5).toString("hex")}_test`;
+let conn:Connection;
+let createdDatabase=false;
+beforeAll(async()=>{
+  const url=new URL(config.DATABASE_URL);if(!url.pathname.endsWith("_test"))throw Error("isolated test DB required");
+  conn=await mysql.createConnection({host:url.hostname,port:Number(url.port||3306),user:decodeURIComponent(url.username),password:decodeURIComponent(url.password),multipleStatements:true});
+  await conn.query(`CREATE DATABASE \`${name}\` CHARACTER SET latin1`);createdDatabase=true;await conn.query(`USE \`${name}\``);
+  await conn.query(readFileSync(new URL("../packages/store/src/schema.sql",import.meta.url),"utf8"));
+});
+afterAll(async()=>{try{if(createdDatabase)await conn.query(`DROP DATABASE \`${name}\``);}finally{await conn?.end();}});
+it("fresh and 011 upgrade structures match, partial DDL resumes and edited empty matrices survive repeat",async()=>{
+  await applyRoles(conn);
+  const shape=async()=>{const [rows]=await conn.query<RowDataPacket[]>("SELECT TABLE_NAME,COLUMN_NAME,COLUMN_TYPE,IS_NULLABLE,COLUMN_DEFAULT,COLLATION_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME IN ('roles','permissions','role_permissions','role_bindings') ORDER BY TABLE_NAME,ORDINAL_POSITION");return rows;};
+  const fresh=await shape();
+  await conn.query("DROP TABLE role_bindings,role_permissions,permissions,roles");
+  const first=readFileSync(new URL("../packages/store/drizzle/0004_roles.sql",import.meta.url),"utf8").split("--> statement-breakpoint")[0]!;
+  await conn.query(first);await applyRoles(conn);expect(await shape()).toEqual(fresh);
+  await conn.query("DELETE rp FROM role_permissions rp JOIN roles r ON r.id=rp.role_id WHERE r.key='builder'");
+  await conn.query("UPDATE roles SET name='Edited builder',status='disabled',revision=9 WHERE `key`='builder'");
+  await applyRoles(conn);await applyRoles(conn);
+  const [rows]=await conn.query<RowDataPacket[]>("SELECT r.name,r.status,r.revision,(SELECT COUNT(*) FROM role_permissions p WHERE p.role_id=r.id) AS count FROM roles r WHERE r.key='builder'");
+  expect(rows[0]).toMatchObject({name:"Edited builder",status:"disabled",revision:9,count:0});
+  expect(fresh.find(row=>row.TABLE_NAME==="roles"&&row.COLUMN_NAME==="name")?.COLLATION_NAME).toBe("utf8mb4_0900_ai_ci");
+});
+it("repeat migration refuses malformed columns, unique keys, and foreign-key rules",async()=>{
+  await conn.query("ALTER TABLE role_bindings MODIFY scope_id VARCHAR(26) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL");
+  await expect(applyRoles(conn)).rejects.toMatchObject({code:"SYS-9001"});
+  await conn.query("ALTER TABLE role_bindings MODIFY scope_id VARCHAR(26) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT ''");
+  await conn.query("ALTER TABLE roles DROP INDEX uk_roles_key,ADD INDEX uk_roles_key (`key`)");
+  await expect(applyRoles(conn)).rejects.toMatchObject({code:"SYS-9001"});
+  await conn.query("ALTER TABLE roles DROP INDEX uk_roles_key,ADD UNIQUE INDEX uk_roles_key (`key`)");
+  await conn.query("ALTER TABLE role_bindings DROP FOREIGN KEY fk_role_bindings_role");
+  await conn.query("ALTER TABLE role_bindings ADD CONSTRAINT fk_role_bindings_role FOREIGN KEY(role_id) REFERENCES roles(id) ON DELETE CASCADE");
+  await expect(applyRoles(conn)).rejects.toMatchObject({code:"SYS-9001"});
+  await conn.query("ALTER TABLE role_bindings DROP FOREIGN KEY fk_role_bindings_role");
+  await conn.query("ALTER TABLE role_bindings ADD CONSTRAINT fk_role_bindings_role FOREIGN KEY(role_id) REFERENCES roles(id) ON DELETE RESTRICT");
+  await expect(applyRoles(conn)).resolves.toBeUndefined();
+});
+it("seed rerun preserves customized role permissions and SSO mappings",{timeout:20_000},async()=>{
+  const url=new URL(config.DATABASE_URL);url.pathname=`/${name}`;
+  const seed=()=>execFileSync(process.execPath,["--import","tsx","scripts/seed.ts"],{env:{...process.env,DATABASE_URL:url.href,TEST_DATABASE_URL:url.href},stdio:"pipe"});
+  seed();await conn.query("UPDATE oidc_role_mappings SET local_role='auditor',revision=8 WHERE agent_role_code='builder'");seed();
+  const [roles]=await conn.query<RowDataPacket[]>("SELECT name,status,revision FROM roles WHERE `key`='builder'");expect(roles[0]).toMatchObject({name:"Edited builder",status:"disabled",revision:9});
+  const [mapping]=await conn.query<RowDataPacket[]>("SELECT local_role,revision FROM oidc_role_mappings WHERE agent_role_code='builder'");expect(mapping[0]).toMatchObject({local_role:"auditor",revision:8});
+});

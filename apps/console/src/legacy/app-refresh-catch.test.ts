@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 /**
  * FE-R7 P3：旧版控制台「刷新」类按钮（顶栏 #refresh、加载失败卡片的「重试」、运行中心/待审批的「刷新」，
- * 后两者是 onclick="app.renderCurrent()"）以及「查看权限矩阵」（onclick="app.showPermissionMatrix()"）
+ * 后两者是 onclick="app.renderCurrent()"）以及「新增角色」（onclick="app.openRole()"）
  * 失败时不能留下未捕获的 Promise rejection：
  * - 401（会话过期）：handleSessionExpired 已提示过一次，这里静默（errorText 返回空，toast 不弹）。
  * - 其他错误（500 等）：照常弹错误 toast（带错误码），不能被吞。
@@ -54,7 +54,7 @@ class Dialog extends El {
 }
 
 type Resp = { status: number; body?: unknown }
-const SESSION = { csrfToken: 'c', user: { name: 'A', role: 'platform_admin', dataScope: 'all' } }
+const SESSION = { permissions:['*'], csrfToken: 'c', user: { name: 'A', role: 'platform_admin', dataScope: 'all' } }
 
 function harness(routes: Record<string, Resp>) {
   const modal = new Dialog()
@@ -71,7 +71,7 @@ function harness(routes: Record<string, Resp>) {
     return { status: resp.status, ok: resp.status >= 200 && resp.status < 300, text: async () => (resp.body === undefined ? '' : JSON.stringify(resp.body)) }
   }
   const state: Record<string, unknown> = { session: null, tab: 'runs', runs: [], runView: null, eventSource: null }
-  const deps: Record<string, unknown> = {
+  const deps: Record<string, unknown> = { bindConfigurationFields: () => {},
     $, document, fetch, state,
     setTimeout: () => 0, clearTimeout: () => {}, setInterval: () => 0, clearInterval: () => {},
     window: { addEventListener: () => {} }, location: { hash: '' },
@@ -79,13 +79,13 @@ function harness(routes: Record<string, Resp>) {
     idSeg: (s: string) => encodeURIComponent(s), fmt: (v: unknown) => String(v ?? '—'),
   }
   const names = Object.keys(deps)
-  const fnNames = ['esc', 'errorText', 'toast', 'api', 'handleSessionExpired', 'showLogin', 'showApp', 'init', 'enterApp', 'renderCurrent',
-    'renderRuns', 'empty', 'statusPill', 'openModal', 'endRunStream', 'closeStream']
+  const fnNames = ['canPermission', 'esc', 'errorText', 'toast', 'api', 'handleSessionExpired', 'showLogin', 'showApp', 'init', 'enterApp', 'renderCurrent',
+    'field', 'textarea', 'select', 'permissionName', 'permissionFields', 'renderRuns', 'empty', 'statusPill', 'openModal', 'endRunStream', 'closeStream']
   const optional = ['refreshCurrent'].filter(hasFn)
-  const src = `${constLine('SESSION_EXPIRED_TEXT')}\n${[...fnNames, ...optional].map(fnSource).join('\n')}\nreturn { init, ${method('showPermissionMatrix')} };`
+  const src = `${constLine('SESSION_EXPIRED_TEXT')}\n${constLine('PERMISSION_DOMAINS')}\n${constLine('PERMISSION_ACTIONS')}\n${[...fnNames, ...optional].map(fnSource).join('\n')}\nreturn { init, ${method('openRole')} };`
   const app = new Function(...names, src)(...names.map((n) => deps[n])) as {
     init(): Promise<void>
-    showPermissionMatrix(): unknown
+    openRole(): unknown
   }
   /** 模拟浏览器点击：只调用处理函数，不 await、不处理它的返回值（浏览器也不会）。 */
   const clickRefresh = () => { for (const f of els['#refresh'].listeners.click ?? []) f() }
@@ -162,33 +162,33 @@ describe('内联 onclick="app.renderCurrent()"（重试 / 运行中心、待审�
   })
 })
 
-describe('内联 onclick="app.showPermissionMatrix()"', () => {
+describe('内联 onclick="app.openRole()"', () => {
   it('401：没有未捕获的 rejection，过期提示只一次', async () => {
-    const h = harness({ ...OK_ROUTES, '/admin/api/permissions': R401 })
+    const h = harness({ ...OK_ROUTES, '/admin/api/roles': R401 })
     await h.app.init()
-    h.app.showPermissionMatrix()
+    h.app.openRole()
     await settle()
     expect(unhandled).toEqual([])
     expect(h.toasts()).toEqual([EXPIRED])
   })
 
   it('500：弹错误 toast，没有未捕获的 rejection', async () => {
-    const h = harness({ ...OK_ROUTES, '/admin/api/permissions': R500 })
+    const h = harness({ ...OK_ROUTES, '/admin/api/roles': R500 })
     await h.app.init()
-    h.app.showPermissionMatrix()
+    h.app.openRole()
     await settle()
     expect(unhandled).toEqual([])
     expect(h.toasts()).toEqual(['服务器内部错误（错误码 SYS-9001）'])
   })
 
-  it('正常：打开权限矩阵弹窗', async () => {
-    const h = harness({ ...OK_ROUTES, '/admin/api/permissions': { status: 200, body: { roles: { platform_admin: ['agents:read'] } } } })
+  it('正常：打开角色编辑弹窗', async () => {
+    const h = harness({ ...OK_ROUTES, '/admin/api/roles': { status: 200, body: { catalog: [{ key:'agent.view', domain:'agent' }] } } })
     await h.app.init()
-    h.app.showPermissionMatrix()
+    h.app.openRole()
     await settle()
     expect(unhandled).toEqual([])
     expect(h.modal.open).toBe(true)
-    expect(h.els['#modal-body'].innerHTML).toContain('platform_admin')
+    expect(h.els['#modal-body'].innerHTML).toContain('agent.view')
     expect(h.toasts()).toEqual([])
   })
 })

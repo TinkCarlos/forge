@@ -1,3 +1,4 @@
+import { configurationHeaders } from "./helpers/configuration-headers.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance } from "fastify";
@@ -43,7 +44,7 @@ describe("P2 dailyQuota bounds", () => {
   });
 
   it.each(BAD.map((v) => [JSON.stringify(v), v]))("PATCH dailyQuota=%s -> 400, stored value unchanged", async (_label, value) => {
-    const res = await app.inject({ method: "PATCH", url: `/admin/api/apps/${appId}`, headers, payload: { dailyQuota: value } });
+    const res = await app.inject({ method: "PATCH", url: `/admin/api/apps/${appId}`, headers: await configurationHeaders(`/admin/api/apps/${appId}`, headers), payload: { dailyQuota: value } });
     expect(res.statusCode, res.body).toBe(400);
     expect(await stored()).toBe(1000);
   });
@@ -54,7 +55,7 @@ describe("P2 dailyQuota bounds", () => {
     expect((await one<{ r: number }>("SELECT daily_quota AS r FROM api_apps WHERE id = ?", [created.json().id]))!.r).toBe(1);
     const dflt = await app.inject({ method: "POST", url: "/admin/api/apps", headers, payload: { key: k("dflt") } });
     expect((await one<{ r: number }>("SELECT daily_quota AS r FROM api_apps WHERE id = ?", [dflt.json().id]))!.r).toBe(1000);
-    expect((await app.inject({ method: "PATCH", url: `/admin/api/apps/${appId}`, headers, payload: { dailyQuota: 10000000 } })).statusCode).toBe(200);
+    expect((await app.inject({ method: "PATCH", url: `/admin/api/apps/${appId}`, headers: await configurationHeaders(`/admin/api/apps/${appId}`, headers), payload: { dailyQuota: 10000000 } })).statusCode).toBe(200);
     expect(await stored()).toBe(10000000);
   });
 });

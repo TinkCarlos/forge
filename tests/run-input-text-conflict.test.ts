@@ -1,3 +1,4 @@
+import { configurationHeaders } from "./helpers/configuration-headers.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
@@ -38,7 +39,7 @@ const connectorToken = () =>
 
 type Payload = Record<string, unknown>;
 const entries: Array<{ name: string; call: (payload: Payload) => Promise<LightMyRequestResponse> }> = [
-  { name: "admin POST /admin/api/agents/:id/run", call: (payload) => app.inject({ method: "POST", url: `/admin/api/agents/${agentId}/run`, headers, payload }) },
+  { name: "admin POST /admin/api/agents/:id/run", call: async (payload) => app.inject({ method: "POST", url: `/admin/api/agents/${agentId}/run`, headers: await configurationHeaders(`/admin/api/agents/${agentId}/run`, headers), payload }) },
   { name: "open POST /open/v1/agents/:key/runs", call: (payload) => app.inject({ method: "POST", url: `/open/v1/agents/${agentKey}/runs`, headers: { authorization: `Bearer ${openKey}` }, payload }) },
   { name: "open POST /open/v1/agents/:key/invoke", call: (payload) => app.inject({ method: "POST", url: `/open/v1/agents/${agentKey}/invoke?wait=0`, headers: { authorization: `Bearer ${openKey}` }, payload }) },
   { name: "integration POST /integration/v1/runs", call: async (payload) => connectorApp.inject({ method: "POST", url: "/integration/v1/runs", headers: { authorization: `Bearer ${await connectorToken()}` }, payload: { agentKey, ...payload } }) },
@@ -62,9 +63,9 @@ beforeAll(async () => {
   headers = sessionHeaders(admin, sessionCookieValue(admin));
   agentKey = `it-itc-${suffix}`;
   agentId = await repos.createAgent({ key: agentKey, name: "IT itc", ownerOrgUnitId: ROOT, createdBy: ADMIN_ID });
-  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID });
-  await repos.publishAgentVersion(agentId, versionId);
-  await repos.updateAgent(agentId, { api_enabled: 1 });
+  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID }, { expectedRevision: "system" });
+  await repos.publishAgentVersion(agentId, versionId, { expectedRevision: "system" });
+  await repos.updateAgent(agentId, { api_enabled: 1 }, { expectedRevision: "system" });
   appId = await repos.createApiApp({ key: `it-itc-${suffix}`, name: "IT itc", ownerOrgUnitId: ROOT, scopes: ["runs:create", "runs:read"] });
   openKey = `fsk_${randomBytes(32).toString("base64url")}`;
   await repos.createApiKey({ appId, name: "it", prefix: openKey.slice(0, 16), keyHash: hashApiKey(openKey, config.API_KEY_PEPPER), scopes: ["runs:create", "runs:read"] });

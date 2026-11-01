@@ -5,6 +5,7 @@ const port = 8091;
 const issuer = `http://127.0.0.1:${port}`;
 const audience = "forge";
 const clientId = "forge-client";
+let expectedNonce = "";
 const { publicKey, privateKey } = await generateKeyPair("RS256");
 const jwk = await exportJWK(publicKey);
 const publicPem = await exportSPKI(publicKey);
@@ -44,7 +45,7 @@ const server = http.createServer(async (req, res) => {
     return send({ keys: [{ ...jwk, kid: "oidc-test-key", alg: "RS256", use: "sig" }] });
   }
   if (url.pathname === "/token") {
-    const token = await idTokenFor();
+    const token = await idTokenFor(expectedNonce);
     return send({ id_token: token, access_token: token, token_type: "Bearer", expires_in: 3600 });
   }
   res.writeHead(404).end();
@@ -73,8 +74,13 @@ const { repos } = await import("@forge/store");
 
 try {
   const authorizeUrl = await buildOidcAuthorizeUrl("/agents");
-  const state = new URL(authorizeUrl).searchParams.get("state");
+  const authorization = new URL(authorizeUrl);
+  expectedNonce = authorization.searchParams.get("nonce") ?? "";
+  const state = authorization.searchParams.get("state");
   if (!state) throw new Error("auth URL missing state");
+  const local = await repos.getUserByEmail("admin@forge.local");
+  if (!local) throw new Error("seeded local admin missing");
+  await repos.bindUserIdentity(local.id, "admin-oidc-subject", issuer, { expectedRevision: local.revision, audit: { actorType: "system", action: "smoke.sso.bind", resourceType: "user", resourceId: local.id, orgUnitId: null } });
   const result = await handleOidcCallback("mock-code", state);
   if (result.principal.role !== "platform_admin") throw new Error(`unexpected role ${result.principal.role}`);
   console.log("✓ OIDC authorization URL + token exchange + role mapping");

@@ -1,4 +1,6 @@
-import { ulidWithPrefix } from "@forge/core";
+import { updateConfiguration, type ConfigurationWrite } from "../configuration-revision.js";
+import type { RowDataPacket } from "mysql2/promise";
+import { errors, ulidWithPrefix } from "@forge/core";
 import { execute, json, one, query, transaction } from "../db.js";
 import type { AgentRow, AgentVersionRow } from "../types.js";
 
@@ -26,18 +28,10 @@ export const agentsRepo = {
     );
     return id;
   },
-  async updateAgent(id: string, fields: Record<string, unknown>): Promise<void> {
-    const allowed = ["name", "description", "status", "api_enabled", "api_scopes_json", "published_version_id", "latest_version_id", "owner_org_unit_id"];
-    const sets: string[] = [];
-    const params: unknown[] = [];
-    for (const [key, value] of Object.entries(fields)) {
-      if (!allowed.includes(key)) continue;
-      sets.push(`\`${key}\` = ?`);
-      params.push(key.endsWith("_json") ? json(value) : value);
-    }
-    if (!sets.length) return;
-    params.push(id);
-    await execute(`UPDATE agents SET ${sets.join(", ")} WHERE id = ?`, params);
+  async updateAgent(id: string, fields: Record<string, unknown>, options: ConfigurationWrite): Promise<number> {
+    const allowed = ["name","description","status","api_enabled","api_scopes_json","published_version_id","latest_version_id","owner_org_unit_id"];
+    const values = Object.fromEntries(Object.entries(fields).filter(([key]) => allowed.includes(key)).map(([key, value]) => [key, key.endsWith("_json") ? json(value) : value]));
+    return updateConfiguration("agents", id, values, options);
   },
   async listAgentVersions(agentId: string): Promise<AgentVersionRow[]> {
     return query<AgentVersionRow>("SELECT * FROM agent_versions WHERE agent_id = ? ORDER BY created_at DESC", [agentId]);
@@ -67,31 +61,37 @@ export const agentsRepo = {
     status?: string;
     changelog?: string;
     createdBy?: string | null;
-  }): Promise<string> {
+  }, options: ConfigurationWrite): Promise<string> {
     const id = ulidWithPrefix("ver");
-    await execute(
-      "INSERT INTO agent_versions (id, agent_id, version, status, instructions, spec_json, changelog, created_by, published_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      [id, input.agentId, input.version, input.status ?? "draft", input.instructions, json(input.spec), input.changelog ?? "", input.createdBy ?? null, input.status === "published" ? new Date() : null],
-    );
-    await agentsRepo.updateAgent(input.agentId, { latest_version_id: id });
+    await agentsRepo.updateAgent(input.agentId, { latest_version_id: id, ...(input.status === "published" ? { published_version_id: id } : {}) }, {
+      ...options,
+      audit: options.audit ? { ...options.audit, resourceId: id } : undefined,
+      beforeWrite: async (conn) => {
+        await conn.execute("INSERT INTO agent_versions (id, agent_id, version, status, instructions, spec_json, changelog, created_by, published_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          [id, input.agentId, input.version, input.status ?? "draft", input.instructions, json(input.spec), input.changelog ?? "", input.createdBy ?? null, input.status === "published" ? new Date() : null]);
+        if (options.beforeWrite) await options.beforeWrite(conn);
+      },
+    });
     return id;
   },
-  /**
-   * K-34: conditional UPDATE. Returns false (and changes nothing) when versionId is already the published version, so
-   * concurrent / repeated publishes of the same version are idempotent; the agents row lock serializes them.
-   */
-  async publishAgentVersion(agentId: string, versionId: string): Promise<boolean> {
+  async publishAgentVersion(agentId: string, versionId: string, options: ConfigurationWrite): Promise<boolean> {
     return transaction(async (conn) => {
-      const [result] = await conn.execute(
-        "UPDATE agents SET published_version_id = ?, latest_version_id = ? WHERE id = ? AND (published_version_id IS NULL OR published_version_id <> ?)",
-        [versionId, versionId, agentId, versionId],
-      );
-      if (Number((result as { affectedRows?: number }).affectedRows ?? 0) === 0) return false;
-      await conn.execute("UPDATE agent_versions SET status = 'published', published_at = CURRENT_TIMESTAMP(3) WHERE id = ? AND agent_id = ?", [versionId, agentId]);
-      return true;
+      const [rows] = await conn.query<RowDataPacket[]>("SELECT published_version_id FROM agents WHERE id = ? FOR UPDATE", [agentId]);
+      if (!rows[0]) throw errors.notFound("Agent 不存在");
+      const [versions] = await conn.query<RowDataPacket[]>("SELECT id FROM agent_versions WHERE id = ? AND agent_id = ?", [versionId, agentId]);
+      if (!versions[0]) throw errors.notFound("版本不存在");
+      const changed = rows[0].published_version_id !== versionId;
+      await agentsRepo.updateAgent(agentId, changed ? { published_version_id: versionId, latest_version_id: versionId } : {}, {
+        ...options, connection: conn, audit: changed ? options.audit : undefined,
+        afterWrite: changed ? async (connection) => {
+          await connection.execute("UPDATE agent_versions SET status = 'published', published_at = CURRENT_TIMESTAMP(3) WHERE id = ? AND agent_id = ?", [versionId, agentId]);
+          if (options.afterWrite) await options.afterWrite(connection);
+        } : undefined,
+      });
+      return changed;
     });
   },
   async publishLatestAgentVersion(agentId: string, versionId: string): Promise<void> {
-    await agentsRepo.publishAgentVersion(agentId, versionId);
+    await agentsRepo.publishAgentVersion(agentId, versionId, { expectedRevision: "system" });
   },
 };

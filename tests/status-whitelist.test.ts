@@ -1,3 +1,4 @@
+import { configurationHeaders } from "./helpers/configuration-headers.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
@@ -46,7 +47,7 @@ afterAll(async () => {
 describe("user status whitelist", () => {
   for (const status of BAD) {
     it(`PATCH status=${JSON.stringify(status)} -> 400 CFG-8501, unchanged`, async () => {
-      const res = await app.inject({ method: "PATCH", url: `/admin/api/users/${userId}`, headers, payload: { status } });
+      const res = await app.inject({ method: "PATCH", url: `/admin/api/users/${userId}`, headers: await configurationHeaders(`/admin/api/users/${userId}`, headers), payload: { status } });
       expect(res.statusCode, res.body).toBe(400);
       expect(code(res)).toBe("CFG-8501");
       expect((await repos.getUserById(userId))!.status).toBe("active");
@@ -61,7 +62,7 @@ describe("user status whitelist", () => {
   }
   it("PATCH disabled then active -> 200", async () => {
     for (const status of ["disabled", "active"]) {
-      const res = await app.inject({ method: "PATCH", url: `/admin/api/users/${userId}`, headers, payload: { status } });
+      const res = await app.inject({ method: "PATCH", url: `/admin/api/users/${userId}`, headers: await configurationHeaders(`/admin/api/users/${userId}`, headers), payload: { status } });
       expect(res.statusCode, res.body).toBe(200);
       expect((await repos.getUserById(userId))!.status).toBe(status);
     }
@@ -81,7 +82,7 @@ describe("skill status whitelist (K-12, I-SKL-07)", () => {
   const skillStatus = async () => String((await repos.getSkill(skillId))!.status);
   for (const status of BAD) {
     it(`PATCH status=${JSON.stringify(status)} -> 400 CFG-8501 (not silently disabled, not 500)`, async () => {
-      const res = await app.inject({ method: "PATCH", url: `/admin/api/skills/${skillId}`, headers, payload: { status } });
+      const res = await app.inject({ method: "PATCH", url: `/admin/api/skills/${skillId}`, headers: await configurationHeaders(`/admin/api/skills/${skillId}`, headers), payload: { status } });
       expect(res.statusCode, res.body).toBe(400);
       expect(code(res)).toBe("CFG-8501");
       expect(await skillStatus()).toBe("active");
@@ -89,7 +90,7 @@ describe("skill status whitelist (K-12, I-SKL-07)", () => {
   }
   it("valid values -> 200", async () => {
     for (const status of ["disabled", "active"]) {
-      const res = await app.inject({ method: "PATCH", url: `/admin/api/skills/${skillId}`, headers, payload: { status } });
+      const res = await app.inject({ method: "PATCH", url: `/admin/api/skills/${skillId}`, headers: await configurationHeaders(`/admin/api/skills/${skillId}`, headers), payload: { status } });
       expect(res.statusCode, res.body).toBe(200);
       expect(await skillStatus()).toBe(status);
     }

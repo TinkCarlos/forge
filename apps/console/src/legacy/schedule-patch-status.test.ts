@@ -21,7 +21,7 @@ function topFn(name: string): string {
 }
 
 type Call = { path: string; method: string; body: Record<string, unknown> }
-const schedule = { id: 'sch_01M5PK6G1GPZ3APBN3QNXR', name: '日报', cron: '0 9 * * *', timezone: 'Asia/Shanghai', input_json: { text: 'hi' }, status: 'active', next_run_at: null }
+const schedule = { revision: 1, id: 'sch_01M5PK6G1GPZ3APBN3QNXR', name: '日报', cron: '0 9 * * *', timezone: 'Asia/Shanghai', input_json: { text: 'hi' }, status: 'active', next_run_at: null }
 
 function harness() {
   const calls: Call[] = []
@@ -33,11 +33,12 @@ function harness() {
       return {}
     },
     openModal: (_t: string, _html: string, cb: (data: FormData) => Promise<void>) => { submit = cb },
+    scheduleFields: () => '', scheduleReadableTime: (value: string) => value, recordFields: () => '',
     field: () => '', textarea: () => '', toast: () => {}, renderSchedules: async () => {},
     switchTab: async () => {}, fmt: (v: unknown) => String(v), confirmAction: async () => true,
   }
   const names = Object.keys(deps)
-  const body = `${topFn('parseJsonField')}\n${topFn('isEntityId')}\n${topFn('idSeg')}\nreturn { ${method('openScheduleEdit')}, ${method('scheduleAction')} };`
+  const body = `${topFn('parseJsonField')}\n${topFn('isEntityId')}\n${topFn('idSeg')}\n${topFn('revisionHeaders')}\nreturn { ${method('openScheduleEdit')}, ${method('scheduleAction')} };`
   const app = new Function(...names, body)(...names.map((n) => deps[n as keyof typeof deps])) as {
     openScheduleEdit(id: string): void
     scheduleAction(id: string, action: string): Promise<void>

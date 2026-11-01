@@ -79,7 +79,7 @@ export default async function integrationRoutes(app: FastifyInstance): Promise<v
     assertPermission(principal, "run.view");
     const run = await repos.getRun(param(request, "id"));
     await assertRunAccess(principal, run);
-    if (!["succeeded", "failed", "cancelled", "budget_exhausted"].includes(run!.status)) throw new ForgeError("RUN-7002", "Run 尚未结束", 409, { status: run!.status });
+    if (!["succeeded", "failed", "cancelled", "budget_exhausted"].includes(run!.status)) throw new ForgeError("RUN-7002", { message: "Run 尚未结束", httpStatus: 409, details: { status: run!.status }, retryable: false });
     return { runId: run!.id, status: run!.status, output: presentRunOutput(run!.output_json), error: run!.error_code ? { code: run!.error_code, message: run!.error_message } : null, usage: run!.usage_json };
   });
 

@@ -1,0 +1,37 @@
+{
+  "previousFullGate": {
+    "backendTests": 2314,
+    "consoleTests": 598,
+    "failures": 0,
+    "skipped": 0
+  },
+  "snapshotChecks": [
+    {
+      "check": "lint",
+      "exitCode": 0,
+      "log": "/tmp/forge-main-snapshot-direct-lint.log"
+    },
+    {
+      "check": "console-lint",
+      "exitCode": 0,
+      "log": "/tmp/forge-main-snapshot-direct-console-lint.log"
+    },
+    {
+      "check": "types",
+      "exitCode": 0,
+      "log": "/tmp/forge-main-snapshot-direct-types.log"
+    },
+    {
+      "check": "console-types",
+      "exitCode": 0,
+      "log": "/tmp/forge-main-snapshot-direct-console-types.log"
+    },
+    {
+      "check": "console-tests",
+      "exitCode": 0,
+      "log": "/tmp/forge-main-snapshot-direct-console-tests.log"
+    }
+  ],
+  "whitespaceOnlySourceChanges": 4,
+  "productionDeployed": false
+}

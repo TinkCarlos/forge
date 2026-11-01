@@ -1,3 +1,4 @@
+import { configurationHeaders } from "./helpers/configuration-headers.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance } from "fastify";
@@ -25,8 +26,8 @@ beforeAll(async () => {
   const session = await realSession({ name: "IT validation", role: "platform_admin", orgUnitId: ROOT, dataScope: "all" });
   headers = sessionHeaders(session, sessionCookieValue(session));
   agentId = await repos.createAgent({ key: `it-val-${suffix}`, name: "IT val", ownerOrgUnitId: ROOT, createdBy: ADMIN_ID });
-  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID });
-  await repos.publishAgentVersion(agentId, versionId);
+  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID }, { expectedRevision: "system" });
+  await repos.publishAgentVersion(agentId, versionId, { expectedRevision: "system" });
   accountId = await repos.createServiceAccount({ key: `it-val-svc-${suffix}`, name: "IT val svc", orgUnitId: ROOT, role: "operator", dataScope: "org", createdBy: ADMIN_ID });
   scheduleId = await repos.createSchedule({
     key: `it-val-${suffix}`, name: "IT val", agentId, orgUnitId: ROOT, subjectType: "service", subjectId: accountId, serviceAccountId: accountId,
@@ -50,20 +51,20 @@ describe("route input schema -> 400 CFG-8501", () => {
     expect(create.statusCode).toBe(400);
     expect(code(create)).toBe("CFG-8501");
     expect(await repos.getAgentByKey(`it-val-long-${suffix}`)).toBeNull();
-    const patch = await app.inject({ method: "PATCH", url: `/admin/api/agents/${agentId}`, headers, payload: { name: "n".repeat(200) } });
+    const patch = await app.inject({ method: "PATCH", url: `/admin/api/agents/${agentId}`, headers: await configurationHeaders(`/admin/api/agents/${agentId}`, headers), payload: { name: "n".repeat(200) } });
     expect(patch.statusCode).toBe(400);
     expect((await repos.getAgent(agentId))!.name).toBe("IT val");
   });
 
   it("K-24 / I-ERR-22: PATCH cron only (no status) with an invalid cron -> 400, nothing stored; bad timezone / status -> 400", async () => {
     for (const payload of [{ cron: "not a cron" }, { cron: "61 * * * *" }, { timezone: "Mars/Olympus" }, { status: "paused" }, { name: "n".repeat(200) }]) {
-      const res = await app.inject({ method: "PATCH", url: `/admin/api/schedules/${scheduleId}`, headers, payload });
+      const res = await app.inject({ method: "PATCH", url: `/admin/api/schedules/${scheduleId}`, headers: await configurationHeaders(`/admin/api/schedules/${scheduleId}`, headers), payload });
       expect(res.statusCode, JSON.stringify(payload)).toBe(400);
       expect(code(res)).toBe("CFG-8501");
     }
     const row = (await repos.getSchedule(scheduleId))!;
     expect([row.cron, row.timezone, row.status, row.name]).toEqual(["0 9 * * *", "Asia/Shanghai", "disabled", "IT val"]);
-    const ok = await app.inject({ method: "PATCH", url: `/admin/api/schedules/${scheduleId}`, headers, payload: { cron: "0 10 * * *" } });
+    const ok = await app.inject({ method: "PATCH", url: `/admin/api/schedules/${scheduleId}`, headers: await configurationHeaders(`/admin/api/schedules/${scheduleId}`, headers), payload: { cron: "0 10 * * *" } });
     expect(ok.statusCode).toBe(200);
     expect((await repos.getSchedule(scheduleId))!.cron).toBe("0 10 * * *");
   });
@@ -90,7 +91,7 @@ describe("route input schema -> 400 CFG-8501", () => {
     expect(agent.statusCode, agent.body).toBe(400);
     expect(code(agent)).toBe("CFG-8501");
     expect(await query("SELECT id FROM agents WHERE `key` = ?", [`it-val-ver-${suffix}`])).toHaveLength(0);
-    const sched = await app.inject({ method: "PATCH", url: `/admin/api/schedules/${scheduleId}`, headers, payload: { name: "n".repeat(129) } });
+    const sched = await app.inject({ method: "PATCH", url: `/admin/api/schedules/${scheduleId}`, headers: await configurationHeaders(`/admin/api/schedules/${scheduleId}`, headers), payload: { name: "n".repeat(129) } });
     expect(sched.statusCode, sched.body).toBe(400);
     expect((await query<{ name: string }>("SELECT name FROM schedules WHERE id = ?", [scheduleId]))[0]!.name).toBe("IT val");
   });
@@ -122,13 +123,13 @@ describe("route input schema -> 400 CFG-8501", () => {
   it("P1-11 / I-SCH-12: enable with an invalid cron / timezone already stored -> 400, still disabled, no audit", async () => {
     for (const [cron, timezone] of [["not-a-cron", "Asia/Shanghai"], ["0 9 * * *", "Mars/Olympus"]] as const) {
       await execute("UPDATE schedules SET cron = ?, timezone = ?, status = 'disabled', next_run_at = NULL WHERE id = ?", [cron, timezone, scheduleId]);
-      const res = await app.inject({ method: "POST", url: `/admin/api/schedules/${scheduleId}/enable`, headers });
+      const res = await app.inject({ method: "POST", url: `/admin/api/schedules/${scheduleId}/enable`, headers: await configurationHeaders(`/admin/api/schedules/${scheduleId}/enable`, headers) });
       expect(res.statusCode, `${cron} ${timezone}`).toBe(400);
       expect(code(res)).toBe("CFG-8501");
       const [row] = await query<{ status: string; next_run_at: unknown }>("SELECT status, next_run_at FROM schedules WHERE id = ?", [scheduleId]);
       expect(row).toEqual({ status: "disabled", next_run_at: null });
     }
-    const audits = await query<{ n: number }>("SELECT COUNT(*) AS n FROM audit_logs WHERE action = 'schedule.enable' AND resource_id = ?", [scheduleId]);
+    const audits = await query<{ n: number }>("SELECT COUNT(*) AS n FROM audit_logs WHERE outcome = 'success' AND action = 'schedule.enable' AND resource_id = ?", [scheduleId]);
     expect(Number(audits[0]!.n)).toBe(0);
     await execute("UPDATE schedules SET cron = '0 9 * * *', timezone = 'Asia/Shanghai' WHERE id = ?", [scheduleId]);
   });

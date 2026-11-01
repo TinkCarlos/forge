@@ -35,11 +35,6 @@
     @apply min-h-svh w-full bg-background text-foreground has-[div[data-variant='inset']]:bg-sidebar;
   }
 
-  /* Override Radix scroll locking for sticky headers */
-  body[data-scroll-locked] {
-    overflow: unset !important;
-  }
-
   /* Cursor pointer for buttons */
   button:not(:disabled),
   [role='button']:not(:disabled) {

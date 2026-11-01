@@ -1,3 +1,4 @@
+import { configurationHeaders } from "./helpers/configuration-headers.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance } from "fastify";
@@ -24,7 +25,7 @@ const writes = (agentId: string, versionId: string) => [
   { name: "publish", method: "POST" as const, url: `/admin/api/agents/${agentId}/publish`, payload: { versionId } },
 ];
 const agentAudits = async (agentId: string) =>
-  (await query("SELECT id FROM audit_logs WHERE resource_id = ? OR JSON_UNQUOTE(JSON_EXTRACT(details_json, '$.agentId')) = ?", [agentId, agentId])).length;
+  (await query("SELECT id FROM audit_logs WHERE outcome = 'success' AND (resource_id = ? OR JSON_UNQUOTE(JSON_EXTRACT(details_json, '$.agentId')) = ?)", [agentId, agentId])).length;
 
 beforeAll(async () => {
   app = await buildApp({ logger: false });
@@ -39,8 +40,8 @@ beforeAll(async () => {
     H[name] = sessionHeaders(s, sessionCookieValue(s));
   }
   unowned = await repos.createAgent({ key: `it-uaw-none-${suffix}`, name: "IT unowned", ownerOrgUnitId: null, createdBy: ADMIN_ID });
-  unownedVersion = await repos.createAgentVersion({ agentId: unowned, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID });
-  await repos.publishAgentVersion(unowned, unownedVersion);
+  unownedVersion = await repos.createAgentVersion({ agentId: unowned, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID }, { expectedRevision: "system" });
+  await repos.publishAgentVersion(unowned, unownedVersion, { expectedRevision: "system" });
   owned = await repos.createAgent({ key: `it-uaw-own-${suffix}`, name: "IT owned", ownerOrgUnitId: ROOT, createdBy: ADMIN_ID });
 });
 
@@ -86,31 +87,31 @@ describe("unowned Agent writes (I-AGT-13)", () => {
   });
 
   it("builder can still run the unowned Agent (not 403)", async () => {
-    const res = await app.inject({ method: "POST", url: `/admin/api/agents/${unowned}/run`, headers: H.builder!, payload: { input: { text: "hi" } } });
+    const res = await app.inject({ method: "POST", url: `/admin/api/agents/${unowned}/run`, headers: await configurationHeaders(`/admin/api/agents/${unowned}/run`, H.builder!), payload: { input: { text: "hi" } } });
     expect(res.statusCode, res.body).not.toBe(403);
     expect(res.statusCode).toBeLessThan(300);
   });
 
   it("platform_admin can PATCH, create a version and publish the unowned Agent", async () => {
     const [patch, version] = writes(unowned, unownedVersion);
-    expect((await app.inject({ method: patch!.method, url: patch!.url, headers: H.platform_admin!, payload: patch!.payload })).statusCode).toBe(200);
-    const created = await app.inject({ method: version!.method, url: version!.url, headers: H.platform_admin!, payload: { version: "2.0.0" } });
+    expect((await app.inject({ method: patch!.method, url: patch!.url, headers: await configurationHeaders(patch!.url, H.platform_admin!), payload: patch!.payload })).statusCode).toBe(200);
+    const created = await app.inject({ method: version!.method, url: version!.url, headers: await configurationHeaders(version!.url, H.platform_admin!), payload: { version: "2.0.0" } });
     expect(created.statusCode, created.body).toBe(200);
     const versionId = (created.json() as { versionId: string }).versionId;
-    expect((await app.inject({ method: "POST", url: `/admin/api/agents/${unowned}/publish`, headers: H.platform_admin!, payload: { versionId } })).statusCode).toBe(200);
+    expect((await app.inject({ method: "POST", url: `/admin/api/agents/${unowned}/publish`, headers: await configurationHeaders(`/admin/api/agents/${unowned}/publish`, H.platform_admin!), payload: { versionId } })).statusCode).toBe(200);
   });
 
   it("P3-17: org_admin with dataScope=all can PATCH, create a version and publish the unowned Agent", async () => {
     const [patch, version] = writes(unowned, unownedVersion);
-    expect((await app.inject({ method: patch!.method, url: patch!.url, headers: H.org_admin_all!, payload: { name: "renamed by all-scope" } })).statusCode).toBe(200);
-    const created = await app.inject({ method: version!.method, url: version!.url, headers: H.org_admin_all!, payload: { version: "3.0.0" } });
+    expect((await app.inject({ method: patch!.method, url: patch!.url, headers: await configurationHeaders(patch!.url, H.org_admin_all!), payload: { name: "renamed by all-scope" } })).statusCode).toBe(200);
+    const created = await app.inject({ method: version!.method, url: version!.url, headers: await configurationHeaders(version!.url, H.org_admin_all!), payload: { version: "3.0.0" } });
     expect(created.statusCode, created.body).toBe(200);
     const versionId = (created.json() as { versionId: string }).versionId;
-    expect((await app.inject({ method: "POST", url: `/admin/api/agents/${unowned}/publish`, headers: H.org_admin_all!, payload: { versionId } })).statusCode).toBe(200);
+    expect((await app.inject({ method: "POST", url: `/admin/api/agents/${unowned}/publish`, headers: await configurationHeaders(`/admin/api/agents/${unowned}/publish`, H.org_admin_all!), payload: { versionId } })).statusCode).toBe(200);
   });
 
   it("owned Agent in the caller's department is still writable by builder", async () => {
-    const res = await app.inject({ method: "PATCH", url: `/admin/api/agents/${owned}`, headers: H.builder!, payload: { name: "owned renamed" } });
+    const res = await app.inject({ method: "PATCH", url: `/admin/api/agents/${owned}`, headers: await configurationHeaders(`/admin/api/agents/${owned}`, H.builder!), payload: { name: "owned renamed" } });
     expect(res.statusCode, res.body).toBe(200);
   });
 });

@@ -1,0 +1,62 @@
+{
+  "version": "7",
+  "dialect": "mysql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1793455226994,
+      "tag": "0000_legacy_baseline",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1793455279577,
+      "tag": "0001_configuration_revision",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1793457334507,
+      "tag": "0002_secret_vault",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1793492306347,
+      "tag": "0003_identity_lifecycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1793496283787,
+      "tag": "0004_roles",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1793508392794,
+      "tag": "0005_job_core_expand",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1793510945324,
+      "tag": "0006_message_management_expand",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1793516050244,
+      "tag": "0007_run_thread_protocol",
+      "breakpoints": true
+    }
+  ]
+}

@@ -1,3 +1,4 @@
+import { ForgeError } from "./errors/forge-error.js";
 import { isIP } from "node:net";
 import { z } from "zod";
 import { allowlistProblems } from "./allowlist-format";
@@ -104,6 +105,7 @@ const envSchema = z.object({
     .string()
     .optional()
     .refine((value) => value === undefined || value === "" || isMasterKey(value), `FORGE_MASTER_KEY must be base64 for exactly ${MASTER_KEY_BYTES} bytes`),
+  FORGE_MASTER_KEYRING_FILE: z.string().trim().min(1).max(1024).optional(),
   SESSION_SECRET: z.string().optional(),
   API_KEY_PEPPER: z.string().optional(),
   FORGE_ADMIN_EMAIL: z.string().email().default("admin@forge.local"),
@@ -221,7 +223,7 @@ export function parseConfig(env: Record<string, string | undefined>, options: Pa
       const key = issue.path.join(".");
       return issue.message.startsWith(`${key} `) ? issue.message : `${key}: ${issue.message}`;
     });
-    throw new Error(`Invalid configuration:\n${messages.join("\n")}`);
+    throw new ForgeError("CFG-8501", { message: `Invalid configuration:\n${messages.join("\n")}` });
   }
   const warn = options.warn ?? ((message: string) => console.warn(message));
   // K-22: a set but unrecognised NODE_ENV (e.g. "Development", "staging") is treated like production; say so once.
@@ -232,15 +234,12 @@ export function parseConfig(env: Record<string, string | undefined>, options: Pa
   // r5 §2.6: the expiry sweep runs once per worker cycle, so a cycle at least as long as the grace period could let an
   // approval pass the grace period before anyone looks at it.
   if (parsed.data.WORKER_POLL_MS >= parsed.data.APPROVAL_EXPIRED_GRACE_SECONDS * 1000) {
-    throw new Error("Invalid configuration:\nWORKER_POLL_MS must be smaller than APPROVAL_EXPIRED_GRACE_SECONDS x 1000 (the expiry sweep runs once per worker cycle).");
+    throw new ForgeError("CFG-8501", { message: "Invalid configuration:\nWORKER_POLL_MS must be smaller than APPROVAL_EXPIRED_GRACE_SECONDS x 1000 (the expiry sweep runs once per worker cycle)." });
   }
   const config = resolveSecrets(parsed.data, warn);
   // K-22: SSO is enforced everywhere except an explicit development/test NODE_ENV (unset is treated like production).
   if (!isDevLike(config) && config.SSO_MODE !== "required") {
-    throw new Error(`SSO_MODE=required is mandatory unless NODE_ENV is explicitly development or test (${nodeEnvLabel(config.NODE_ENV)}).`);
-  }
-  if (!isDevLike(config) && config.ALLOW_LOCAL_LOGIN) {
-    // Emergency admin remains available, but production should use SSO for normal users.
+    throw new ForgeError("CFG-8501", { message: `SSO_MODE=required is mandatory unless NODE_ENV is explicitly development or test (${nodeEnvLabel(config.NODE_ENV)}).` });
   }
   return config;
 }
@@ -260,22 +259,20 @@ function resolveSecrets(parsed: ParsedEnv, warn: (message: string) => void): Con
   const label = nodeEnvLabel(parsed.NODE_ENV);
   if (!devAllowed) {
     if (missing.length) {
-      throw new Error(
-        `Missing required secrets (${label}): ${missing.join(", ")}. Set them in the environment; development defaults are only used when NODE_ENV is explicitly development or test.`,
-      );
+      throw new ForgeError("CFG-8501", { message: `Missing required secrets (${label}): ${missing.join(", ")}. Set them in the environment; development defaults are only used when NODE_ENV is explicitly development or test.` });
     }
     const stillDefault = SECRET_NAMES.filter((name) => parsed[name] === DEV_SECRET_DEFAULTS[name]);
     if (stillDefault.length) {
-      throw new Error(`Refusing development default secrets (${label}): ${stillDefault.join(", ")}. Set unique values for them in the environment.`);
+      throw new ForgeError("CFG-8501", { message: `Refusing development default secrets (${label}): ${stillDefault.join(", ")}. Set unique values for them in the environment.` });
     }
     // OPS-003: blank or too-short secrets are as bad as missing ones.
     const tooShort = (["SESSION_SECRET", "API_KEY_PEPPER"] as const).filter((name) => (parsed[name] ?? "").trim().length < MIN_SECRET_LENGTH);
     if (tooShort.length) {
-      throw new Error(`Secrets too short (${label}): ${tooShort.join(", ")}. Use at least ${MIN_SECRET_LENGTH} characters (e.g. openssl rand -base64 32).`);
+      throw new ForgeError("CFG-8501", { message: `Secrets too short (${label}): ${tooShort.join(", ")}. Use at least ${MIN_SECRET_LENGTH} characters (e.g. openssl rand -base64 32).` });
     }
     // OPS-007: the admin password from .env.example must be changed before a non-development start.
     if (EXAMPLE_ADMIN_PASSWORDS.includes(parsed.FORGE_ADMIN_PASSWORD.trim())) {
-      throw new Error(`Refusing the example FORGE_ADMIN_PASSWORD (${label}). Set a unique admin password in the environment before starting.`);
+      throw new ForgeError("CFG-8501", { message: `Refusing the example FORGE_ADMIN_PASSWORD (${label}). Set a unique admin password in the environment before starting.` });
     }
     return parsed as Config;
   }

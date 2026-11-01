@@ -69,7 +69,7 @@ describe("item B: multipart on /auth write routes -> 415", () => {
     expect(res.statusCode).toBe(415);
     expect(res.headers["set-cookie"]).toBeUndefined();
     expect((await app.inject({ method: "GET", url: "/auth/session", headers })).statusCode).toBe(200);
-    expect(await query("SELECT id FROM audit_logs WHERE actor_id = ? AND action = 'auth.logout'", [session.userId])).toEqual([]);
+    expect(await query("SELECT id FROM audit_logs WHERE outcome = 'success' AND actor_id = ? AND action = 'auth.logout'", [session.userId])).toEqual([]);
     const json = await app.inject({ method: "POST", url: "/auth/logout", headers });
     expect(json.statusCode, json.body).toBe(200);
     expect((await app.inject({ method: "GET", url: "/auth/session", headers })).statusCode).toBe(401);

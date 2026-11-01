@@ -17,6 +17,9 @@
     "noEmit": true,
     "baseUrl": ".",
     "paths": {
+      "@forge/governance/sensitive": ["packages/governance/src/sensitive.ts"],
+      "@forge/core/errors": ["packages/core/src/errors/index.ts"],
+      "@forge/contracts": ["packages/contracts/src/index.ts"],
       "@forge/core": [
         "packages/core/src/index.ts"
       ],

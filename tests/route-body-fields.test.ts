@@ -17,18 +17,15 @@ import Fastify from "fastify";
 // apps/api/src/routes/**, top-level fields only, reads written as body.x / body?.x / the helpers listed below /
 // the schedules `input` alias / the whole-body helpers in WHOLE_BODY_HELPERS. Not covered: nested field reads,
 // reads through other aliases or destructuring outside these patterns (those fail 4 instead), packages/** code.
-const { ForgeError } = vi.hoisted(() => ({
-  ForgeError: class ForgeError extends Error {
-    constructor(public readonly code: string, message: string, public readonly httpStatus = 400, public readonly details?: unknown) {
-      super(message);
-    }
-  },
-}));
-vi.mock("@forge/core", async () => ({
+import { ForgeError } from "../packages/core/src/errors/forge-error.js";
+vi.mock("@forge/core", async () => {
+  const { ForgeError } = await import("../packages/core/src/errors/forge-error.js");
+  return {
   ...(await import("../packages/core/src/cron.js")),
   ForgeError,
-  errors: { invalid: (m: string, details?: unknown) => new ForgeError("CFG-8501", m, 400, details) },
-}));
+  errors: { invalid: (m: string, details?: unknown) => new ForgeError("CFG-8501", { message: m, httpStatus: 400, details: details, retryable: false }) },
+  };
+});
 import { AJV_CUSTOM_OPTIONS, ROUTE_SCHEMAS, assertValidInput } from "../apps/api/src/plugins/input-schema.js";
 
 type Schema = { type?: unknown; properties?: Record<string, Schema>; items?: Schema; additionalProperties?: unknown };

@@ -1,4 +1,4 @@
-import { ForgeError } from "./index";
+import { ForgeError } from "./errors/forge-error.js";
 import { storedJsonObject, type StoredJsonRef } from "./stored-json";
 
 /**
@@ -12,7 +12,7 @@ export const ENV_REF_CODE = "CFG-8504";
 export const ENV_REF_MESSAGE = "不支持 env: 引用";
 
 export function envRefError(): ForgeError {
-  return new ForgeError(ENV_REF_CODE, ENV_REF_MESSAGE, 400);
+  return new ForgeError(ENV_REF_CODE, { message: ENV_REF_MESSAGE, httpStatus: 400, retryable: false });
 }
 
 export function isEnvRef(value: unknown): boolean {

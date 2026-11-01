@@ -90,3 +90,10 @@ describe("SSO-1212: raw values are sanitized before they reach the logs", () => 
     expect(sanitizeUrlForLog("/auth/oidc/callback?error=a%20b&error=ok")).toBe("/auth/oidc/callback?error=[REDACTED]&error=ok");
   });
 });
+
+it.each([HTML, JSON_ONLY])("records each IdP rejection once at its final boundary (%s)", async (headers) => {
+  const response = await callback(qs("access_denied", RAW_DESC), headers);
+  const errors = lines.map(line => JSON.parse(line) as { level: number; reqId?: string }).filter(entry => entry.level >= 40);
+  expect(errors).toHaveLength(1);
+  expect(errors[0]!.reqId).toBe(response.headers["x-request-id"]);
+});

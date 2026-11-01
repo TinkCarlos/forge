@@ -49,7 +49,7 @@ beforeAll(async () => {
     await execute("INSERT INTO org_units (id, parent_id, `key`, name, path) VALUES (?, ?, ?, ?, ?)", [id, ROOT, `it-apr-${tag}-${suffix}`, `IT apr ${tag}`, `/it-apr-${tag}-${suffix}/`]);
   }
   agentId = await repos.createAgent({ key: `it-apr-agent-${suffix}`, name: "IT approvals agent", ownerOrgUnitId: ROOT, createdBy: ADMIN_ID });
-  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID });
+  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID }, { expectedRevision: "system" });
   for (let i = 0; i < 3; i += 1) orgAApprovals.push(await pendingApproval(ORG_A, { to: `user${i}@example.com`, subject: "周报", api_key: SECRET, body: "z".repeat(150) }));
   // Approval whose tool call row is missing -> tool_name/args_preview null.
   noToolApproval = await pendingApproval(ORG_A, { a: 1 });

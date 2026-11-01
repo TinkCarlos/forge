@@ -34,7 +34,7 @@ async function lastAuditId(resourceId: string, action: string): Promise<string> 
   return rows[0]!.id;
 }
 async function visible(headers: Record<string, string>): Promise<Set<string>> {
-  const res = await app.inject({ method: "GET", url: "/admin/api/audit?limit=500", headers });
+  const res = await app.inject({ method: "GET", url: "/admin/api/audit?limit=200", headers });
   expect(res.statusCode).toBe(200);
   return new Set((res.json() as { items: Array<{ id: string }> }).items.map((row) => row.id));
 }
@@ -89,7 +89,7 @@ describe("write: the resource's department, not the actor's", () => {
     const as = agents[2]!;
     await repos.audit({ actorType: "user", actorId: actor.userId, action: "agent.update", resourceType: "agent", resourceId: as });
     auditIds.actorMoved = await lastAuditId(as, "agent.update");
-    await repos.updateUser(actor.userId, { orgUnitId: S });
+    await repos.updateUser(actor.userId, { orgUnitId: S }, { expectedRevision: "system" });
     const row = await query<{ org_unit_id: string | null }>("SELECT org_unit_id FROM audit_logs WHERE id = ?", [auditIds.actorMoved]);
     expect(row[0]?.org_unit_id).toBe(S);
   });

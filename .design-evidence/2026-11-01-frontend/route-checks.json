@@ -1,0 +1,458 @@
+[
+  {
+    "route": "agents",
+    "viewport": [
+      1280,
+      800
+    ],
+    "width": 1280,
+    "title": "Agents",
+    "error": false,
+    "tables": [
+      {
+        "client": 978,
+        "scroll": 978
+      }
+    ],
+    "navCurrent": "AAgents",
+    "screenshot": "/Users/libo/projects/forge/.design-evidence/2026-11-01-frontend/agents-1280.png"
+  },
+  {
+    "route": "models",
+    "viewport": [
+      1280,
+      800
+    ],
+    "width": 1280,
+    "title": "模型",
+    "error": false,
+    "tables": [],
+    "navCurrent": "M模型",
+    "screenshot": "/Users/libo/projects/forge/.design-evidence/2026-11-01-frontend/models-1280.png"
+  },
+  {
+    "route": "mcp",
+    "viewport": [
+      1280,
+      800
+    ],
+    "width": 1280,
+    "title": "MCP 服务",
+    "error": false,
+    "tables": [],
+    "navCurrent": "CMCP 服务",
+    "screenshot": "/Users/libo/projects/forge/.design-evidence/2026-11-01-frontend/mcp-1280.png"
+  },
+  {
+    "route": "skills",
+    "viewport": [
+      1280,
+      800
+    ],
+    "width": 1280,
+    "title": "Skills",
+    "error": false,
+    "tables": [
+      {
+        "client": 978,
+        "scroll": 978
+      }
+    ],
+    "navCurrent": "SSkills",
+    "screenshot": "/Users/libo/projects/forge/.design-evidence/2026-11-01-frontend/skills-1280.png"
+  },
+  {
+    "route": "tools",
+    "viewport": [
+      1280,
+      800
+    ],
+    "width": 1280,
+    "title": "工具源",
+    "error": false,
+    "tables": [],
+    "navCurrent": "T工具源",
+    "screenshot": "/Users/libo/projects/forge/.design-evidence/2026-11-01-frontend/tools-1280.png"
+  },
+  {
+    "route": "packages",
+    "viewport": [
+      1280,
+      800
+    ],
+    "width": 1280,
+    "title": "能力包",
+    "error": false,
+    "tables": [],
+    "navCurrent": "P能力包",
+    "screenshot": "/Users/libo/projects/forge/.design-evidence/2026-11-01-frontend/packages-1280.png"
+  },
+  {
+    "route": "runs",
+    "viewport": [
+      1280,
+      800
+    ],
+    "width": 1280,
+    "title": "运行中心",
+    "error": false,
+    "tables": [],
+    "navCurrent": "R运行中心",
+    "screenshot": "/Users/libo/projects/forge/.design-evidence/2026-11-01-frontend/runs-1280.png"
+  },
+  {
+    "route": "approvals",
+    "viewport": [
+      1280,
+      800
+    ],
+    "width": 1280,
+    "title": "审批中心",
+    "error": false,
+    "tables": [],
+    "navCurrent": "!审批中心",
+    "screenshot": "/Users/libo/projects/forge/.design-evidence/2026-11-01-frontend/approvals-1280.png"
+  },
+  {
+    "route": "schedules",
+    "viewport": [
+      1280,
+      800
+    ],
+    "width": 1280,
+    "title": "定时任务",
+    "error": false,
+    "tables": [],
+    "navCurrent": "H定时任务",
+    "screenshot": "/Users/libo/projects/forge/.design-evidence/2026-11-01-frontend/schedules-1280.png"
+  },
+  {
+    "route": "apps",
+    "viewport": [
+      1280,
+      800
+    ],
+    "width": 1280,
+    "title": "应用与密钥",
+    "error": false,
+    "tables": [],
+    "navCurrent": "K应用与密钥",
+    "screenshot": "/Users/libo/projects/forge/.design-evidence/2026-11-01-frontend/apps-1280.png"
+  },
+  {
+    "route": "users",
+    "viewport": [
+      1280,
+      800
+    ],
+    "width": 1280,
+    "title": "账号与权限",
+    "error": false,
+    "tables": [
+      {
+        "client": 978,
+        "scroll": 978
+      }
+    ],
+    "navCurrent": "U账号与权限",
+    "screenshot": "/Users/libo/projects/forge/.design-evidence/2026-11-01-frontend/users-1280.png"
+  },
+  {
+    "route": "users/roles",
+    "viewport": [
+      1280,
+      800
+    ],
+    "width": 1280,
+    "title": "账号与权限",
+    "error": false,
+    "tables": [
+      {
+        "client": 978,
+        "scroll": 978
+      }
+    ],
+    "navCurrent": "U账号与权限",
+    "screenshot": "/Users/libo/projects/forge/.design-evidence/2026-11-01-frontend/users-roles-1280.png"
+  },
+  {
+    "route": "audit",
+    "viewport": [
+      1280,
+      800
+    ],
+    "width": 1280,
+    "title": "操作日志",
+    "error": false,
+    "tables": [
+      {
+        "client": 978,
+        "scroll": 1050
+      }
+    ],
+    "navCurrent": "L操作日志",
+    "screenshot": "/Users/libo/projects/forge/.design-evidence/2026-11-01-frontend/audit-1280.png"
+  },
+  {
+    "route": "secrets",
+    "viewport": [
+      1280,
+      800
+    ],
+    "width": 1280,
+    "title": "凭据",
+    "error": false,
+    "tables": [],
+    "navCurrent": "V凭据",
+    "screenshot": "/Users/libo/projects/forge/.design-evidence/2026-11-01-frontend/secrets-1280.png"
+  },
+  {
+    "route": "sso",
+    "viewport": [
+      1280,
+      800
+    ],
+    "width": 1280,
+    "title": "SSO / Connector",
+    "error": false,
+    "tables": [
+      {
+        "client": 978,
+        "scroll": 978
+      }
+    ],
+    "navCurrent": "ISSO / Connector",
+    "screenshot": "/Users/libo/projects/forge/.design-evidence/2026-11-01-frontend/sso-1280.png"
+  },
+  {
+    "route": "agents",
+    "viewport": [
+      390,
+      844
+    ],
+    "width": 390,
+    "title": "Agents",
+    "error": false,
+    "tables": [
+      {
+        "client": 356,
+        "scroll": 640,
+        "minWidth": "640px"
+      }
+    ],
+    "navCurrent": "AAgents",
+    "screenshot": "/Users/libo/projects/forge/.design-evidence/2026-11-01-frontend/agents-390.png"
+  },
+  {
+    "route": "models",
+    "viewport": [
+      390,
+      844
+    ],
+    "width": 390,
+    "title": "模型",
+    "error": false,
+    "tables": [],
+    "navCurrent": "M模型",
+    "screenshot": "/Users/libo/projects/forge/.design-evidence/2026-11-01-frontend/models-390.png"
+  },
+  {
+    "route": "mcp",
+    "viewport": [
+      390,
+      844
+    ],
+    "width": 390,
+    "title": "MCP 服务",
+    "error": false,
+    "tables": [],
+    "navCurrent": "CMCP 服务",
+    "screenshot": "/Users/libo/projects/forge/.design-evidence/2026-11-01-frontend/mcp-390.png"
+  },
+  {
+    "route": "skills",
+    "viewport": [
+      390,
+      844
+    ],
+    "width": 390,
+    "title": "Skills",
+    "error": false,
+    "tables": [
+      {
+        "client": 356,
+        "scroll": 640,
+        "minWidth": "640px"
+      }
+    ],
+    "navCurrent": "SSkills",
+    "screenshot": "/Users/libo/projects/forge/.design-evidence/2026-11-01-frontend/skills-390.png"
+  },
+  {
+    "route": "tools",
+    "viewport": [
+      390,
+      844
+    ],
+    "width": 390,
+    "title": "工具源",
+    "error": false,
+    "tables": [],
+    "navCurrent": "T工具源",
+    "screenshot": "/Users/libo/projects/forge/.design-evidence/2026-11-01-frontend/tools-390.png"
+  },
+  {
+    "route": "packages",
+    "viewport": [
+      390,
+      844
+    ],
+    "width": 390,
+    "title": "能力包",
+    "error": false,
+    "tables": [],
+    "navCurrent": "P能力包",
+    "screenshot": "/Users/libo/projects/forge/.design-evidence/2026-11-01-frontend/packages-390.png"
+  },
+  {
+    "route": "runs",
+    "viewport": [
+      390,
+      844
+    ],
+    "width": 390,
+    "title": "运行中心",
+    "error": false,
+    "tables": [],
+    "navCurrent": "R运行中心",
+    "screenshot": "/Users/libo/projects/forge/.design-evidence/2026-11-01-frontend/runs-390.png"
+  },
+  {
+    "route": "approvals",
+    "viewport": [
+      390,
+      844
+    ],
+    "width": 390,
+    "title": "审批中心",
+    "error": false,
+    "tables": [],
+    "navCurrent": "!审批中心",
+    "screenshot": "/Users/libo/projects/forge/.design-evidence/2026-11-01-frontend/approvals-390.png"
+  },
+  {
+    "route": "schedules",
+    "viewport": [
+      390,
+      844
+    ],
+    "width": 390,
+    "title": "定时任务",
+    "error": false,
+    "tables": [],
+    "navCurrent": "H定时任务",
+    "screenshot": "/Users/libo/projects/forge/.design-evidence/2026-11-01-frontend/schedules-390.png"
+  },
+  {
+    "route": "apps",
+    "viewport": [
+      390,
+      844
+    ],
+    "width": 390,
+    "title": "应用与密钥",
+    "error": false,
+    "tables": [],
+    "navCurrent": "K应用与密钥",
+    "screenshot": "/Users/libo/projects/forge/.design-evidence/2026-11-01-frontend/apps-390.png"
+  },
+  {
+    "route": "users",
+    "viewport": [
+      390,
+      844
+    ],
+    "width": 390,
+    "title": "账号与权限",
+    "error": false,
+    "tables": [
+      {
+        "client": 356,
+        "scroll": 760,
+        "minWidth": "760px"
+      }
+    ],
+    "navCurrent": "U账号与权限",
+    "screenshot": "/Users/libo/projects/forge/.design-evidence/2026-11-01-frontend/users-390.png"
+  },
+  {
+    "route": "users/roles",
+    "viewport": [
+      390,
+      844
+    ],
+    "width": 390,
+    "title": "账号与权限",
+    "error": false,
+    "tables": [
+      {
+        "client": 356,
+        "scroll": 806,
+        "minWidth": "640px"
+      }
+    ],
+    "navCurrent": "U账号与权限",
+    "screenshot": "/Users/libo/projects/forge/.design-evidence/2026-11-01-frontend/users-roles-390.png"
+  },
+  {
+    "route": "audit",
+    "viewport": [
+      390,
+      844
+    ],
+    "width": 390,
+    "title": "操作日志",
+    "error": false,
+    "tables": [
+      {
+        "client": 356,
+        "scroll": 1050,
+        "minWidth": "1050px"
+      }
+    ],
+    "navCurrent": "L操作日志",
+    "screenshot": "/Users/libo/projects/forge/.design-evidence/2026-11-01-frontend/audit-390.png"
+  },
+  {
+    "route": "secrets",
+    "viewport": [
+      390,
+      844
+    ],
+    "width": 390,
+    "title": "凭据",
+    "error": false,
+    "tables": [],
+    "navCurrent": "V凭据",
+    "screenshot": "/Users/libo/projects/forge/.design-evidence/2026-11-01-frontend/secrets-390.png"
+  },
+  {
+    "route": "sso",
+    "viewport": [
+      390,
+      844
+    ],
+    "width": 390,
+    "title": "SSO / Connector",
+    "error": false,
+    "tables": [
+      {
+        "client": 356,
+        "scroll": 356,
+        "minWidth": "0px"
+      }
+    ],
+    "navCurrent": "ISSO / Connector",
+    "screenshot": "/Users/libo/projects/forge/.design-evidence/2026-11-01-frontend/sso-390.png"
+  }
+]

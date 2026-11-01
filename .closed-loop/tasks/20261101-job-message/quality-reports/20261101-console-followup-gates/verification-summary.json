@@ -1,0 +1,76 @@
+{
+  "verifiedAt": "2026-11-01T07:25:16.078598+00:00",
+  "nodeVersion": "v24.22.1",
+  "mysqlVersion": "8.4.13",
+  "latestCandidate": {
+    "command": "pnpm verify",
+    "nodeEnv": "development",
+    "exitCode": 0,
+    "backendFiles": 198,
+    "backendTests": 2314,
+    "consoleFiles": 56,
+    "consoleTests": 598,
+    "failed": 0,
+    "skipped": 0,
+    "sourceUnchangedThroughoutFinalRun": true,
+    "sourceFiles": 637
+  },
+  "earlierCandidateMatrix": {
+    "development": {
+      "status": "passed",
+      "backendTests": 2309,
+      "consoleTests": 598,
+      "failed": 0,
+      "skipped": 0
+    },
+    "test": {
+      "status": "passed",
+      "backendTests": 2309,
+      "consoleTests": 598,
+      "failed": 0,
+      "skipped": 0
+    },
+    "unset": {
+      "status": "passed",
+      "backendTests": 2309,
+      "consoleTests": 598,
+      "failed": 0,
+      "skipped": 0
+    }
+  },
+  "earlierMatrixIsLatestCandidate": false,
+  "lint": {
+    "errors": 0,
+    "warnings": 4
+  },
+  "smokes": [
+    {
+      "check": "build",
+      "exitCode": 0,
+      "nodeVersion": "v24.22.1"
+    },
+    {
+      "check": "smoke",
+      "exitCode": 0,
+      "nodeVersion": "v24.22.1"
+    },
+    {
+      "check": "smoke:edit",
+      "exitCode": 0,
+      "nodeVersion": "v24.22.1"
+    },
+    {
+      "check": "smoke:sso",
+      "exitCode": 0,
+      "nodeVersion": "v24.22.1"
+    }
+  ],
+  "diffCheck": "passed",
+  "missingScripts": [
+    "test:integration",
+    "test:contract"
+  ],
+  "committed": false,
+  "pushed": false,
+  "deployed": false
+}

@@ -57,7 +57,7 @@ const ONE = { status: "succeeded", completed: 1, terminal: 1, assistant: 1, mode
 
 beforeAll(async () => {
   agentId = await repos.createAgent({ key: `it-race-${suffix}`, name: "IT race", ownerOrgUnitId: ROOT, createdBy: ADMIN_ID });
-  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" }, limits: { maxSteps: 2 } }, status: "published", createdBy: ADMIN_ID });
+  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" }, limits: { maxSteps: 2 } }, status: "published", createdBy: ADMIN_ID }, { expectedRevision: "system" });
 });
 
 afterAll(async () => {

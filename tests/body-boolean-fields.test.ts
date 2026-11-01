@@ -1,3 +1,4 @@
+import { configurationHeaders } from "./helpers/configuration-headers.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance } from "fastify";
@@ -27,8 +28,8 @@ beforeAll(async () => {
   const pa = await realSession({ name: "IT bbf", role: "platform_admin", orgUnitId: ROOT, dataScope: "all" });
   headers = sessionHeaders(pa, sessionCookieValue(pa));
   agentId = await repos.createAgent({ key: `it-bbf-${suffix}`, name: "IT bbf", ownerOrgUnitId: ROOT, createdBy: ADMIN_ID });
-  const versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID });
-  await repos.publishAgentVersion(agentId, versionId);
+  const versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID }, { expectedRevision: "system" });
+  await repos.publishAgentVersion(agentId, versionId, { expectedRevision: "system" });
   accountId = await repos.createServiceAccount({ key: `it-bbf-svc-${suffix}`, name: "IT bbf svc", orgUnitId: ROOT, role: "operator", dataScope: "org", createdBy: ADMIN_ID });
 });
 
@@ -47,21 +48,21 @@ describe("boolean body fields are booleans", () => {
   it("agent PATCH apiEnabled: 'yes' / 'true' / 'false' / 1 / null -> 400 field apiEnabled, unchanged; false / true stored", async () => {
     await execute("UPDATE agents SET api_enabled = 0 WHERE id = ?", [agentId]);
     for (const value of ["yes", "true", "false", 1, null]) {
-      const res = await app.inject({ method: "PATCH", url: `/admin/api/agents/${agentId}`, headers, payload: { apiEnabled: value } });
+      const res = await app.inject({ method: "PATCH", url: `/admin/api/agents/${agentId}`, headers: await configurationHeaders(`/admin/api/agents/${agentId}`, headers), payload: { apiEnabled: value } });
       expect([JSON.stringify(value), res.statusCode]).toEqual([JSON.stringify(value), 400]);
       expect(field(res)).toMatchObject({ code: "CFG-8501", details: { field: "apiEnabled" } });
       expect(await apiEnabled()).toBe(0);
     }
-    expect((await app.inject({ method: "PATCH", url: `/admin/api/agents/${agentId}`, headers, payload: { apiEnabled: true } })).statusCode).toBe(200);
+    expect((await app.inject({ method: "PATCH", url: `/admin/api/agents/${agentId}`, headers: await configurationHeaders(`/admin/api/agents/${agentId}`, headers), payload: { apiEnabled: true } })).statusCode).toBe(200);
     expect(await apiEnabled()).toBe(1);
-    expect((await app.inject({ method: "PATCH", url: `/admin/api/agents/${agentId}`, headers, payload: { apiEnabled: false } })).statusCode).toBe(200);
+    expect((await app.inject({ method: "PATCH", url: `/admin/api/agents/${agentId}`, headers: await configurationHeaders(`/admin/api/agents/${agentId}`, headers), payload: { apiEnabled: false } })).statusCode).toBe(200);
     expect(await apiEnabled()).toBe(0);
   });
 
   it("P1: agent PATCH with an undeclared field -> 400 CFG-8501 field=<name>, nothing stored (rejected, not stripped)", async () => {
     await execute("UPDATE agents SET api_enabled = 0 WHERE id = ?", [agentId]);
     const before = await one<{ name: string }>("SELECT name FROM agents WHERE id = ?", [agentId]);
-    const res = await app.inject({ method: "PATCH", url: `/admin/api/agents/${agentId}`, headers, payload: { name: "renamed", apiEnabled: true, enabled: true } });
+    const res = await app.inject({ method: "PATCH", url: `/admin/api/agents/${agentId}`, headers: await configurationHeaders(`/admin/api/agents/${agentId}`, headers), payload: { name: "renamed", apiEnabled: true, enabled: true } });
     expect([res.statusCode, field(res)]).toMatchObject([400, { code: "CFG-8501", details: { field: "enabled" } }]);
     expect(await one<{ name: string }>("SELECT name FROM agents WHERE id = ?", [agentId])).toEqual(before);
     expect(await apiEnabled()).toBe(0);
@@ -73,11 +74,11 @@ describe("boolean body fields are booleans", () => {
       cron: "0 9 * * *", timezone: "Asia/Shanghai", input: { text: "x" }, status: "disabled", nextRunAt: null, createdBy: ADMIN_ID,
     });
     const url = `/admin/api/schedules/${id}/disable`;
-    const noBody = await app.inject({ method: "POST", url, headers });
+    const noBody = await app.inject({ method: "POST", url, headers: await configurationHeaders(url, headers) });
     expect(noBody.statusCode, noBody.body).toBe(200);
-    const empty = await app.inject({ method: "POST", url, headers, payload: {} });
+    const empty = await app.inject({ method: "POST", url, headers: await configurationHeaders(url, headers), payload: {} });
     expect(empty.statusCode, empty.body).toBe(200);
-    const extra = await app.inject({ method: "POST", url, headers, payload: { force: true } });
+    const extra = await app.inject({ method: "POST", url, headers: await configurationHeaders(url, headers), payload: { force: true } });
     expect([extra.statusCode, field(extra)]).toMatchObject([400, { code: "CFG-8501", details: { field: "force" } }]);
   });
 

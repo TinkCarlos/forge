@@ -1,4 +1,21 @@
+export interface ApiAppRow extends Record<string, unknown> {
+  revision: number;
+  id: string; key: string; name: string; status: string; scopes_json: string[]; webhook_url: string | null; webhook_secret_id?: string | null;
+  owner_org_unit_id: string | null; rate_limit_per_minute: number; daily_quota: number; created_at: Date;
+}
+export interface ApiKeyMetadataRow {
+  id: string; app_id: string; name: string; prefix: string; scopes_json: string[]; status: string;
+  expires_at: Date | null; last_used_at: Date | null; created_at: Date;
+}
+
+export interface RoleRow {
+  id: string; key: string; name: string; description: string; builtin: number; status: string; revision: number;
+  permissions_json: string[]; created_at: Date; updated_at: Date;
+}
+
 export interface UserRow {
+  authorization_json?: unknown;
+  revision: number;
   id: string;
   username: string;
   email: string;
@@ -8,6 +25,7 @@ export interface UserRow {
   data_scope: string;
   org_unit_id: string | null;
   idp_subject: string | null;
+  idp_issuer?: string | null;
   status: string;
   is_emergency_admin: number;
   created_at: Date;
@@ -21,6 +39,7 @@ export interface UserFilter {
 }
 
 export interface AgentRow {
+  revision: number;
   id: string;
   key: string;
   name: string;
@@ -48,6 +67,11 @@ export interface AgentVersionRow {
 }
 
 export interface RunRow {
+  runtime_engine?: string;
+  snapshot_quality?: string;
+  retry_of_run_id?: string|null;
+  workspace_id?: string|null;
+  workflow_id?: string|null;
   id: string;
   thread_id: string;
   agent_id: string;
@@ -75,6 +99,8 @@ export interface RunRow {
 }
 
 export interface MessageRow {
+  thread_seq?: string|null;
+  protocol_version?: string|null;
   id: string;
   thread_id: string;
   run_id: string;
@@ -146,18 +172,22 @@ export interface ApprovalRow {
 }
 
 export interface ProviderRow {
+  revision: number;
   id: string;
   key: string;
   name: string;
   protocol: string;
   base_url: string;
   api_key_encrypted: string | null;
+  secret_id?: string | null;
+  header_secret_refs_json?: unknown;
   headers_json: unknown;
   timeout_ms: number;
   status: string;
 }
 
 export interface ModelRow {
+  revision: number;
   id: string;
   provider_id: string;
   key: string;
@@ -171,6 +201,8 @@ export interface ModelRow {
 }
 
 export interface ServiceAccountRow {
+  authorization_json?: unknown;
+  revision: number;
   id: string;
   key: string;
   name: string;

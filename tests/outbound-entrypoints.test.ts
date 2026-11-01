@@ -1,3 +1,4 @@
+import { configurationHeaders } from "./helpers/configuration-headers.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
@@ -57,7 +58,7 @@ describe("static check when saving configuration", () => {
       expect(await repos.getMcpServerByKey(key)).toBeNull();
       const id = await repos.createMcpServer({ key, name: key, url: "https://mcp.example/mcp", createdBy: ADMIN_ID });
       cleanup.push(() => execute("DELETE FROM mcp_servers WHERE id = ?", [id]));
-      expectBlocked(await app.inject({ method: "PATCH", url: `/admin/api/mcp/${id}`, headers, payload: { url } }));
+      expectBlocked(await app.inject({ method: "PATCH", url: `/admin/api/mcp/${id}`, headers: await configurationHeaders(`/admin/api/mcp/${id}`, headers), payload: { url } }));
       expect((await repos.getMcpServer(id))!.url).toBe("https://mcp.example/mcp");
     });
 
@@ -67,7 +68,7 @@ describe("static check when saving configuration", () => {
       expect(await repos.getProviderByKey(key)).toBeNull();
       const id = await repos.createProvider({ key, name: key, protocol: "openai-compatible", baseUrl: "https://llm.example/v1", createdBy: ADMIN_ID });
       cleanup.push(() => execute("DELETE FROM llm_providers WHERE id = ?", [id]));
-      expectBlocked(await app.inject({ method: "PATCH", url: `/admin/api/providers/${id}`, headers, payload: { baseUrl: url } }));
+      expectBlocked(await app.inject({ method: "PATCH", url: `/admin/api/providers/${id}`, headers: await configurationHeaders(`/admin/api/providers/${id}`, headers), payload: { baseUrl: url } }));
     });
 
     it(`OpenAPI tool source import refuses ${url}`, async () => {
@@ -82,7 +83,7 @@ describe("static check when saving configuration", () => {
       expectBlocked(await app.inject({ method: "POST", url: "/admin/api/apps", headers, payload: { key, webhookUrl: url, webhookSecret: "whsec_x" } }));
       const id = await repos.createApiApp({ key, name: key, ownerOrgUnitId: ROOT, scopes: ["runs:read"], createdBy: ADMIN_ID });
       cleanup.push(() => execute("DELETE FROM api_apps WHERE id = ?", [id]));
-      expectBlocked(await app.inject({ method: "PATCH", url: `/admin/api/apps/${id}`, headers, payload: { webhookUrl: url } }));
+      expectBlocked(await app.inject({ method: "PATCH", url: `/admin/api/apps/${id}`, headers: await configurationHeaders(`/admin/api/apps/${id}`, headers), payload: { webhookUrl: url } }));
       expect((await repos.getApiApp(id))!.webhook_url).toBeNull();
     });
   }
@@ -97,7 +98,7 @@ describe("full check when the request is made", () => {
       const key = `it-ob-mcpl-${tag()}`;
       const id = await repos.createMcpServer({ key, name: key, url, createdBy: ADMIN_ID });
       cleanup.push(() => execute("DELETE FROM mcp_servers WHERE id = ?", [id]));
-      expectBlocked(await app.inject({ method: "POST", url: `/admin/api/mcp/${id}/refresh`, headers, payload: {} }));
+      expectBlocked(await app.inject({ method: "POST", url: `/admin/api/mcp/${id}/refresh`, headers: await configurationHeaders(`/admin/api/mcp/${id}/refresh`, headers), payload: {} }));
       const server = (await repos.getMcpServer(id))!;
       await expect(discoverMcpTools(server)).rejects.toMatchObject({ code: OUTBOUND_BLOCKED_CODE });
       const result = await callMcpTool(server, "anything", {});
@@ -111,7 +112,7 @@ describe("full check when the request is made", () => {
       await repos.createModel({ providerId: id, key: "m1", displayName: "m1" });
       cleanup.push(() => execute("DELETE FROM llm_providers WHERE id = ?", [id]));
       cleanup.push(() => execute("DELETE FROM llm_models WHERE provider_id = ?", [id]));
-      expectBlocked(await app.inject({ method: "POST", url: `/admin/api/providers/${id}/test`, headers, payload: {} }));
+      expectBlocked(await app.inject({ method: "POST", url: `/admin/api/providers/${id}/test`, headers: await configurationHeaders(`/admin/api/providers/${id}/test`, headers), payload: {} }));
       await expect(callModel({ providerKey: key, modelKey: "m1", messages: [{ role: "user", content: "hi" }], tools: [] })).rejects.toMatchObject({ code: OUTBOUND_BLOCKED_CODE });
     });
 
@@ -141,12 +142,12 @@ describe("full check when the request is made", () => {
     });
 
     it(`OIDC discovery refuses issuer ${url}`, async () => {
-      const original = config.OIDC_ISSUER;
-      (config as { OIDC_ISSUER?: string }).OIDC_ISSUER = url;
+      const original = { OIDC_ISSUER:config.OIDC_ISSUER,OIDC_CLIENT_ID:config.OIDC_CLIENT_ID,OIDC_CLIENT_SECRET:config.OIDC_CLIENT_SECRET,SSO_MODE:config.SSO_MODE };
+      Object.assign(config,{OIDC_ISSUER:url,OIDC_CLIENT_ID:"mock",OIDC_CLIENT_SECRET:"synthetic",SSO_MODE:"optional"});
       try {
         await expect(buildOidcAuthorizeUrl("/")).rejects.toMatchObject({ code: OUTBOUND_BLOCKED_CODE });
       } finally {
-        (config as { OIDC_ISSUER?: string }).OIDC_ISSUER = original;
+        Object.assign(config,original);
       }
     });
   }

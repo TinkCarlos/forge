@@ -1,12 +1,12 @@
-import { randomBytes, createHash } from "node:crypto";
+import { randomBytes, createHash, createHmac } from "node:crypto";
 import { createLocalJWKSet, importSPKI, jwtVerify, type JSONWebKeySet, type JWTPayload } from "jose";
 import {
   config,
-  defaultDataScope,
   errors,
   ForgeError,
   hashApiKey,
   hashPassword,
+  isPasswordHash,
   OUTBOUND_BLOCKED_CODE,
   safeEqual,
   safeFetch,
@@ -16,8 +16,10 @@ import {
   type Principal,
   type Config,
   type Role,
+  readAuthorization,
+  BUILTIN_ROLES,
 } from "@forge/core";
-import { repos, parseJsonValue, type UserRow } from "@forge/store";
+import { repos, parseJsonValue, type UserRow, type SsoRoleSnapshot } from "@forge/store";
 
 /** What the server keeps per session: only the user id (plus CSRF token and expiry), never a principal snapshot. */
 export interface StoredSession {
@@ -36,6 +38,9 @@ export interface Session extends StoredSession {
 export function toPrincipal(user: UserRow): Principal {
   return {
     type: "user",
+    permissions: readAuthorization(user.authorization_json).permissions,
+    grantedPermissions: readAuthorization(user.authorization_json).grantedPermissions,
+    revision: user.revision,
     id: user.id,
     name: user.display_name,
     role: user.role as Role,
@@ -61,7 +66,8 @@ export async function loadActivePrincipal(userId: string): Promise<Principal | n
 async function identityLookup<T>(lookup: () => Promise<T>): Promise<T> {
   try {
     return await lookup();
-  } catch {
+  } catch (error) {
+    if (error instanceof ForgeError && error.code === "AUTH-1001") throw error;
     throw errors.unavailable("身份校验暂时不可用，请稍后重试");
   }
 }
@@ -89,7 +95,7 @@ export async function createSession(principal: Principal): Promise<Session> {
     expiresAt: now + config.SESSION_TTL_SECONDS * 1000, // N-01 (default 8h), absolute
   };
   await identityLookup(() =>
-    repos.createAuthSession({ tokenHash: sha256Hex(token), userId: principal.id, csrfToken, now: new Date(now), expiresAt: new Date(stored.expiresAt) }),
+    repos.createAuthSession({ tokenHash: sha256Hex(token), userId: principal.id, csrfToken, now: new Date(now), expiresAt: new Date(stored.expiresAt), authenticationRevision: principal.authenticationRevision }),
   );
   return { ...stored, principal };
 }
@@ -155,31 +161,37 @@ export async function sessionWithPrincipal(stored: StoredSession | null): Promis
 
 /** Well-formed scrypt hash of a random secret, made once on first use; only ever compared against, never matched. */
 let dummyPasswordHash: string | null = null;
-const SCRYPT_HASH = /^scrypt\$[0-9a-f]+\$[0-9a-f]+$/;
 
 /**
  * S-32: exactly one scrypt verification per login attempt whatever the account state, so response time does not reveal
  * an unknown email, an SSO-only user (no password_hash), a malformed stored hash, or a disabled user (getUserByEmail
  * returns active users only). Without a usable hash the dummy is checked and the result is always false.
  */
-function checkPassword(password: string, stored: string | null | undefined): boolean {
-  const usable = typeof stored === "string" && SCRYPT_HASH.test(stored);
+export function checkPassword(password: string, stored: string | null | undefined): boolean {
+  const usable = isPasswordHash(stored);
   dummyPasswordHash ??= hashPassword(randomBytes(32).toString("hex"));
   const matches = verifyPassword(password, usable ? stored : dummyPasswordHash);
   return usable && matches;
 }
 
-export async function loginLocal(email: string, password: string): Promise<Principal> {
+export async function loginLocal(email: string, password: string, sourceIp?: string): Promise<Principal> {
   if (!config.ALLOW_LOCAL_LOGIN) throw errors.forbidden("本地登录已关闭，请使用统一 SSO");
-  const user = await identityLookup(() => repos.getUserByEmail(email));
+  const user = await identityLookup(() => repos.getUserByLogin(email));
+  const digest = (value: string) => createHmac("sha256", config.SESSION_SECRET).update(value).digest("hex");
+  const accountKey = digest(`login-account:${user?.id ?? email.trim().toLowerCase()}`);
+  await repos.reserveLoginAttempts([
+    { key: accountKey, maximum: 10, windowMs: 15 * 60_000 },
+    ...(sourceIp ? [{ key: digest(`login-ip:${sourceIp}`), maximum: 60, windowMs: 60_000 }] : []),
+  ]);
   if (!checkPassword(password, user?.password_hash)) {
-    throw errors.unauthorized("邮箱或密码错误");
+    throw errors.unauthorized("登录名、邮箱或密码错误");
   }
-  if (!user) throw errors.unauthorized("邮箱或密码错误"); // unreachable (checkPassword is false without a user); narrows the type
+  if (!user) throw errors.unauthorized("登录名、邮箱或密码错误");
   // A user whose department chain is disabled cannot log in either (same answer as a wrong password).
   const principal = await loadActivePrincipal(user.id);
-  if (!principal) throw errors.unauthorized("邮箱或密码错误");
-  return principal;
+  if (!principal) throw errors.unauthorized("登录名、邮箱或密码错误");
+  await repos.clearLoginAttempts(accountKey);
+  return { ...principal, authenticationRevision: user.revision };
 }
 
 export async function authenticateApiKey(rawKey: string): Promise<Principal> {
@@ -190,7 +202,7 @@ export async function authenticateApiKey(rawKey: string): Promise<Principal> {
   const expected = String(keyRow.key_hash);
   const actual = hashApiKey(rawKey, config.API_KEY_PEPPER);
   if (!safeEqual(expected, actual)) throw errors.unauthorized("API Key 无效");
-  if (keyRow.expires_at && new Date(keyRow.expires_at as string).getTime() < Date.now()) {
+  if (keyRow.expires_at && new Date(keyRow.expires_at as string).getTime() <= Date.now()) {
     throw errors.unauthorized("API Key 已过期");
   }
   await repos.touchApiKey(String(keyRow.id));
@@ -219,7 +231,7 @@ interface Discovery {
 const discoveryCache = new Map<string, Discovery>();
 
 export function oidcConfigured(): boolean {
-  return Boolean(config.OIDC_ISSUER && config.OIDC_CLIENT_ID && config.OIDC_CLIENT_SECRET);
+  return config.SSO_MODE !== "disabled" && Boolean(config.OIDC_ISSUER && config.OIDC_CLIENT_ID && config.OIDC_CLIENT_SECRET);
 }
 
 /**
@@ -230,7 +242,7 @@ async function oidcFetch(url: string, init?: Parameters<typeof safeFetch>[1]): P
   try {
     return await safeFetch(url, init);
   } catch (error) {
-    if (error instanceof ForgeError && error.code === OUTBOUND_BLOCKED_CODE) throw new ForgeError(OUTBOUND_BLOCKED_CODE, error.message, 502, undefined, false);
+    if (error instanceof ForgeError && error.code === OUTBOUND_BLOCKED_CODE) throw new ForgeError(OUTBOUND_BLOCKED_CODE, { message: error.message, httpStatus: 502, retryable: false });
     throw error;
   }
 }
@@ -251,13 +263,14 @@ export async function pendingOidcReturnTo(state: string): Promise<string | null>
 }
 
 async function discovery(): Promise<Discovery> {
-  if (!config.OIDC_ISSUER) throw new ForgeError("SSO-1201", "SSO 尚未配置", 503);
+  if (!config.OIDC_ISSUER || !oidcConfigured()) throw new ForgeError("SSO-1201", { message: "SSO 尚未配置或已关闭", httpStatus: 503, retryable: false });
   const cached = discoveryCache.get(config.OIDC_ISSUER);
   if (cached) return cached;
   // Outbound guard (S-46): issuer, token endpoint and JWKS all go through safeFetch.
   const response = await oidcFetch(`${config.OIDC_ISSUER.replace(/\/$/, "")}/.well-known/openid-configuration`);
-  if (!response.ok) throw new ForgeError("SSO-1202", "无法获取 OIDC discovery", 502);
+  if (!response.ok) throw new ForgeError("SSO-1202", { message: "无法获取 OIDC discovery", httpStatus: 502, retryable: false });
   const doc = (await response.json()) as Discovery;
+  if (doc.issuer !== config.OIDC_ISSUER) throw new ForgeError("SSO-1202", { message: "OIDC issuer与配置不一致" });
   discoveryCache.set(config.OIDC_ISSUER, doc);
   return doc;
 }
@@ -289,7 +302,7 @@ export async function buildOidcAuthorizeUrl(returnTo = "/"): Promise<string> {
 export async function handleOidcCallback(code: string, state: string): Promise<{ principal: Principal; returnTo: string }> {
   // One-time, cross-instance consumption before the token exchange (a replay or a concurrent twin gets SSO-1203).
   const row = await identityLookup(() => repos.consumeOidcState(sha256Hex(state), new Date()));
-  if (!row) throw new ForgeError("SSO-1203", "登录状态已过期，请重试", 400);
+  if (!row) throw new ForgeError("SSO-1203", { message: "登录状态已过期，请重试", httpStatus: 400, retryable: false });
   const saved = { verifier: row.verifier, nonce: row.nonce, returnTo: row.return_to };
   const doc = await discovery();
   const redirectUri = config.OIDC_REDIRECT_URI ?? `${config.FORGE_PUBLIC_URL}/auth/oidc/callback`;
@@ -306,62 +319,72 @@ export async function handleOidcCallback(code: string, state: string): Promise<{
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
   });
-  if (!tokenResponse.ok) throw new ForgeError("SSO-1204", "OIDC 令牌交换失败", 401);
+  if (!tokenResponse.ok) throw new ForgeError("SSO-1204", { message: "OIDC 令牌交换失败", httpStatus: 401, retryable: false });
   const tokens = (await tokenResponse.json()) as { id_token?: string; access_token?: string };
-  if (!tokens.id_token) throw new ForgeError("SSO-1205", "OIDC 未返回 id_token", 401);
+  if (!tokens.id_token) throw new ForgeError("SSO-1205", { message: "OIDC 未返回 id_token", httpStatus: 401, retryable: false });
   const jwksResponse = await oidcFetch(doc.jwks_uri);
-  if (!jwksResponse.ok) throw new ForgeError("SSO-1202", "无法获取 OIDC JWKS", 502);
+  if (!jwksResponse.ok) throw new ForgeError("SSO-1202", { message: "无法获取 OIDC JWKS", httpStatus: 502, retryable: false });
   const jwks = createLocalJWKSet((await jwksResponse.json()) as JSONWebKeySet);
   const { payload } = await jwtVerify(tokens.id_token, jwks, {
     issuer: doc.issuer,
     audience: config.OIDC_AUDIENCE ?? config.OIDC_CLIENT_ID,
   });
-  if (payload.nonce && payload.nonce !== saved.nonce) throw new ForgeError("SSO-1206", "nonce 校验失败", 401);
+  if (payload.nonce !== saved.nonce) throw new ForgeError("SSO-1206", { message: "nonce 校验失败", httpStatus: 401, retryable: false });
+  if (typeof payload.sub !== "string" || !payload.sub.trim() || Array.from(payload.sub).length > 255 || /[\u0000-\u001f\u007f]/u.test(payload.sub)) throw new ForgeError("SSO-1209");
 
   let principalPayload: JWTPayload = payload;
   if (config.SSO_TOKEN_VALIDATION_MODE === "agent-principal" || config.SSO_TOKEN_VALIDATION_MODE === "both") {
-    if (!tokens.access_token) throw new ForgeError("SSO-1207", "未返回 access_token", 401);
+    if (!tokens.access_token) throw new ForgeError("SSO-1207", { message: "未返回 access_token", httpStatus: 401, retryable: false });
     const publicKey = await connectorPublicKey();
     const verified = await jwtVerify(tokens.access_token, publicKey, {
       issuer: config.CONNECTOR_PRINCIPAL_ISSUER ?? doc.issuer,
       audience: config.CONNECTOR_PRINCIPAL_AUDIENCE ?? config.OIDC_AUDIENCE ?? config.OIDC_CLIENT_ID,
     });
-    if (payload.sub && verified.payload.sub && payload.sub !== verified.payload.sub) {
-      throw new ForgeError("SSO-1208", "access_token 与 id_token 主体不一致", 401);
+    const accessSub = verified.payload.sub;
+    const accessSubject = verified.payload.subject;
+    if ((accessSub !== undefined && typeof accessSub !== "string") || (accessSubject !== undefined && typeof accessSubject !== "string") || (accessSub !== undefined && accessSubject !== undefined && accessSub !== accessSubject) || (accessSub ?? accessSubject) !== payload.sub) {
+      throw new ForgeError("SSO-1208", { message: "access_token 与 id_token 主体不一致", httpStatus: 401, retryable: false });
     }
-    principalPayload = { ...payload, ...verified.payload };
+    principalPayload = { ...payload, ...verified.payload, sub: payload.sub };
   }
 
   const nonceOk = !principalPayload.nonce || principalPayload.nonce === saved.nonce;
-  if (!nonceOk) throw new ForgeError("SSO-1206", "nonce 校验失败", 401);
+  if (!nonceOk) throw new ForgeError("SSO-1206", { message: "nonce 校验失败", httpStatus: 401, retryable: false });
   const email = typeof principalPayload.email === "string" ? principalPayload.email : undefined;
-  const subject = String(principalPayload.sub ?? principalPayload.subject ?? "");
-  if (!subject) throw new ForgeError("SSO-1209", "OIDC 主体缺失", 401);
+  const subject = payload.sub;
+  if (!subject) throw new ForgeError("SSO-1209", { message: "OIDC 主体缺失", httpStatus: 401, retryable: false });
   const displayName = String(principalPayload.name ?? principalPayload.preferred_username ?? email ?? subject);
   const roles = extractRoles(principalPayload);
-  const localRole = await mapRoles(roles);
-  if (!localRole) throw new ForgeError("SSO-1201", "当前账号没有 Forge 访问角色，请联系管理员", 403);
+  const roleSnapshot=await repos.getSsoRoleSnapshot();
+  const localRole = await mapRoles(roles,roleSnapshot);
+  if (!localRole) throw new ForgeError("SSO-1201", { message: "当前账号没有 Forge 访问角色，请联系管理员", httpStatus: 403, retryable: false });
 
-  let user = await repos.getUserByIdpSubject(subject);
-  if (!user && email) user = await repos.getUserByEmail(email);
+  let user = await repos.getUserByIdpSubject(subject, doc.issuer);
   if (!user) {
-    if (!email) throw new ForgeError("SSO-1210", "用户缺少邮箱，无法创建本地账号", 403);
-    const userId = await repos.createUser({
+    if (!email) throw new ForgeError("SSO-1210", { message: "用户缺少邮箱，无法创建本地账号", httpStatus: 403, retryable: false });
+    try {
+      const userId = await repos.createUser({
       email,
       username: String(principalPayload.preferred_username ?? subject).slice(0, 64),
       displayName,
       role: localRole,
-      dataScope: defaultDataScope(localRole),
+      dataScope: "self",
       orgUnitId: null,
       idpSubject: subject,
-    });
-    user = await repos.getUserById(userId);
-  } else {
-    await repos.updateUser(user.id, { role: localRole, dataScope: defaultDataScope(localRole), displayName });
-    if (!user.idp_subject) await repos.setIdpSubject(user.id, subject);
+      idpIssuer: doc.issuer,
+      }, { expectedRevision: "system", roleMappingRevision:roleSnapshot.revision, audit: { actorType: "system", actorId: null, action: "user.create", resourceType: "user", resourceId: null, details: { source: "sso" }, orgUnitId: null } });
+      user = await repos.getUserById(userId);
+    } catch (error) {
+      if (!(error instanceof ForgeError && error.code === "CFG-8503") && (error as { code?: string }).code !== "ER_DUP_ENTRY") throw error;
+      // Another callback for this exact identity may have won JIT. Email alone never proves ownership.
+      user = await repos.getUserByIdpSubject(subject, doc.issuer);
+      if (!user) throw new ForgeError("SSO-1213");
+    }
   }
-  if (!user) throw new ForgeError("SSO-1211", "用户创建失败", 500);
-  return { principal: toPrincipal(user), returnTo: saved.returnTo };
+  if (!user) throw new ForgeError("SSO-1211", { message: "用户创建失败", httpStatus: 500, retryable: false });
+  const principal = await loadActivePrincipal(user.id);
+  if (!principal) throw errors.unauthorized("账号已停用或不可用");
+  return { principal: { ...principal, authenticationRevision: user.revision }, returnTo: saved.returnTo };
 }
 
 function extractRoles(payload: JWTPayload): Array<{ code: string; name: string }> {
@@ -387,9 +410,11 @@ function extractRoles(payload: JWTPayload): Array<{ code: string; name: string }
  * Highest-priority local role among the mapped IdP roles. P2 (QA 714b3f3): a mapping whose local_role is not a known
  * role (legacy / hand-edited row) is ignored; before, its priority index -1 beat every valid mapping. Exported for tests.
  */
-export async function mapRoles(roles: Array<{ code: string; name: string }>): Promise<Role | null> {
-  const mappings = await repos.listRoleMappings();
-  const priority: Role[] = ["platform_admin", "org_admin", "builder", "operator", "auditor", "user"];
+export async function mapRoles(roles: Array<{ code: string; name: string }>,provided?:SsoRoleSnapshot): Promise<Role | null> {
+  const snapshot=provided??await repos.getSsoRoleSnapshot();
+  const mappings = snapshot.mappings;
+  const activeRoles = snapshot.roles.filter(role=>role.status==="active").map(role=>role.key);
+  const priority: Role[] = [...BUILTIN_ROLES.filter(key=>activeRoles.includes(key)),...activeRoles.filter(key=>!(BUILTIN_ROLES as readonly string[]).includes(key)).sort()];
   let best: Role | null = null;
   for (const role of roles) {
     const mapping = mappings.find((row) => {
@@ -419,7 +444,7 @@ export type ConnectorConfig = Pick<
 >;
 
 async function connectorPublicKey(cfg: ConnectorConfig = config): Promise<CryptoKey> {
-  if (!cfg.AGENT_CONNECTOR_CONFIG_PUBLIC_KEY_B64) throw new ForgeError("CON-4702", "Connector 验签公钥未配置", 503);
+  if (!cfg.AGENT_CONNECTOR_CONFIG_PUBLIC_KEY_B64) throw new ForgeError("CON-4702", { message: "Connector 验签公钥未配置", httpStatus: 503, retryable: false });
   const pem = Buffer.from(cfg.AGENT_CONNECTOR_CONFIG_PUBLIC_KEY_B64, "base64").toString("utf8");
   return importSPKI(pem, "RS256");
 }
@@ -438,10 +463,10 @@ export interface ConnectorPrincipal {
 
 export async function verifyConnectorPrincipal(token: string, cfg: ConnectorConfig = config): Promise<ConnectorPrincipal> {
   if (!cfg.AGENT_CONNECTOR_ENABLED || !cfg.AGENT_CONNECTOR_INBOUND_ENABLED) {
-    throw new ForgeError("CON-4703", "Connector 入站未启用", 503);
+    throw new ForgeError("CON-4703", { message: "Connector 入站未启用", httpStatus: 503, retryable: false });
   }
   if (cfg.AGENT_CONNECTOR_LEGACY_FALLBACK_ENABLED) {
-    throw new ForgeError("CON-4704", "Connector legacy fallback 必须关闭", 503);
+    throw new ForgeError("CON-4704", { message: "Connector legacy fallback 必须关闭", httpStatus: 503, retryable: false });
   }
   const publicKey = await connectorPublicKey(cfg);
   let rawPayload: JWTPayload;
@@ -452,11 +477,11 @@ export async function verifyConnectorPrincipal(token: string, cfg: ConnectorConf
     }));
   } catch {
     // Bad signature, expired, wrong issuer/audience or malformed token: a client error, not a 500.
-    throw new ForgeError("CON-4707", "Connector 令牌无效或已过期", 401);
+    throw new ForgeError("CON-4707", { message: "Connector 令牌无效或已过期", httpStatus: 401, retryable: false });
   }
   const payload = rawPayload as unknown as ConnectorPrincipal;
-  if (!payload.subject || !payload.principalType) throw new ForgeError("CON-4701", "Principal 缺少主体", 401);
-  if (payload.environment !== cfg.AGENT_CONNECTOR_ENVIRONMENT) throw new ForgeError("CON-4705", "运行环境不匹配", 401);
+  if (!payload.subject || !payload.principalType) throw new ForgeError("CON-4701", { message: "Principal 缺少主体", httpStatus: 401, retryable: false });
+  if (payload.environment !== cfg.AGENT_CONNECTOR_ENVIRONMENT) throw new ForgeError("CON-4705", { message: "运行环境不匹配", httpStatus: 401, retryable: false });
   return payload;
 }
 
@@ -465,6 +490,6 @@ export async function principalForConnector(payload: ConnectorPrincipal): Promis
   // Same check as session authentication (loadActivePrincipal). Disabled/deleted users and users of a disabled or
   // missing department (or disabled parent) get exactly the same error as an unregistered subject.
   const principal = user ? await loadActivePrincipal(user.id) : null;
-  if (!principal) throw new ForgeError("CON-4706", "Connector 主体未在 Forge 登记", 403);
+  if (!principal) throw new ForgeError("CON-4706", { message: "Connector 主体未在 Forge 登记", httpStatus: 403, retryable: false });
   return principal;
 }

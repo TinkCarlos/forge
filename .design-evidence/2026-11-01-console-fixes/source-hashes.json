@@ -1,0 +1,20 @@
+{
+  "apps/console/public/app.js": "8a1e22f9e3f96018de6b7c6e4ae0f35ff997ad85cd7f9e722174780d3d816da1",
+  "apps/console/public/styles.css": "fd5769209f756cbf984f323890b2b87438fa200f73a7d4216d82d1ce14aad942",
+  "apps/console/src/lib/legacy-link.ts": "109851946ef6a3095d1e42263f8810e2fe69082684c63683ac8cc60cf953e9cd",
+  "apps/console/src/lib/legacy-link.test.ts": "871ca80c316bb734210d393991eef37f13cba3c1ed524ae0d11e558458982977",
+  "apps/console/src/features/agents/index.tsx": "2a7026de689bec9e7b614098cdcb7195c997bcb81ba1eb6396bb6c67749c0dd1",
+  "apps/console/src/features/approvals/index.tsx": "86c51851cdc5e5129ae124d111fb45551f181dfd5bc6ba75e9ab63ba2583f4d8",
+  "apps/console/src/components/layout/nav-group.tsx": "b8fcc9d9b6a78597d0194431826f451931334743dba9de2ecc099d549a855a04",
+  "apps/console/src/legacy/app-agent-deeplink.test.ts": "f37e80c3fc5437e69498697ade31217f6caa08723d9d6a6460c18b7acd00f622",
+  "apps/console/src/legacy/app-agent-run-required.test.ts": "db7e841f34ee2c7554c029bb48c9cbef305d6ae8996ed9d86b5bbf1dc54c039a",
+  "apps/console/src/legacy/app-cancel-requested.test.ts": "3074eb6845afab81ed137727f882b28a9d2ffc14177baf0ae879889bd65ab5d9",
+  "apps/console/src/legacy/agent-draft-workflow.test.ts": "4db00dbbbe55f4df3bf1b31963d34e320afefbb4785f70dffd940a62b5a1eaec",
+  "apps/console/src/legacy/agent-spec-editor.test.ts": "41d32ab6460f40c6695114fd3706664b3be3dd593ea44e50d4bb34cd8165c080",
+  "apps/console/DESIGN.md": "a607f0043f32ae821c440d4df5bacb444b8c24fc9ab2b171746fd42cc73badc8",
+  "docs/02-architecture/admin-console.md": "d852945e0a8a566aa00b70a223f7e24daf0be555778ca3c1d432b0133c369d5b",
+  "apps/console/src/components/layout/app-sidebar.tsx": "907458b36287f0fb3383d4b97932398f04dd7e864b9cd685734cdad578053d60",
+  "apps/console/src/legacy/app-takeover-approvals.test.ts": "e193369b4c495424997a559d4a5cecc0821496a47116eafae8923958d1e9ce97",
+  "apps/console/src/legacy/roles-forms.test.ts": "82c6db7bf1fbbd93ff2c0bc75045017cfba258b96d40ab771d799d12a1071d6c",
+  "apps/console/src/legacy/run-list-sync.test.ts": "e03cf2eb345b5c36b19c37e24db6f6be096e5108a9dd0e15174f51625e51b1ce"
+}

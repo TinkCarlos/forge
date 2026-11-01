@@ -61,14 +61,14 @@ beforeAll(async () => {
     spec: { model: { provider: "mock", model: "mock-1" }, toolsets: [{ builtin: ["current_time"] }], limits: { maxSteps: 2, maxCostUsd: 1 } },
     status: "published",
     createdBy: ADMIN_ID,
-  });
+  }, { expectedRevision: "system" });
   created.versions.push(versionId);
-  await repos.publishAgentVersion(agentId, versionId);
+  await repos.publishAgentVersion(agentId, versionId, { expectedRevision: "system" });
   // Service accounts need an existing, active department since schedule identities are re-read live (S-45).
   await execute("INSERT IGNORE INTO org_units (id, parent_id, `key`, name, path) VALUES (?, NULL, ?, 'IT svc org', ?)", [ACCOUNT_ORG, `it-${ACCOUNT_ORG.slice(-4).toLowerCase()}-${suffix}`, `/it-${ACCOUNT_ORG.slice(-4).toLowerCase()}-${suffix}/`]);
   activeAccountId = await repos.createServiceAccount({ key: `it-sch-svc-${suffix}`, name: "IT Svc Active", orgUnitId: ACCOUNT_ORG, role: "operator", dataScope: "org", createdBy: ADMIN_ID });
   disabledAccountId = await repos.createServiceAccount({ key: `it-sch-svc-off-${suffix}`, name: "IT Svc Disabled", orgUnitId: ORG, createdBy: ADMIN_ID });
-  await repos.updateServiceAccount(disabledAccountId, { status: "disabled" });
+  await repos.updateServiceAccount(disabledAccountId, { status: "disabled" }, { expectedRevision: "system" });
   created.accounts.push(activeAccountId, disabledAccountId);
 });
 
@@ -179,7 +179,8 @@ describe("concurrency_policy = skip", () => {
 
 describe("platform_admin service account (legacy row)", () => {
   it("trigger pauses the schedule with SCD-4804, failure_count + 1, no run", async () => {
-    const adminAccount = await repos.createServiceAccount({ key: `it-sch-svc-pa-${suffix}`, name: "IT legacy PA", orgUnitId: ORG, role: "platform_admin", dataScope: "all", createdBy: ADMIN_ID });
+    const adminAccount = await repos.createServiceAccount({ key: `it-sch-svc-pa-${suffix}`, name: "IT legacy PA", orgUnitId: ORG, role: "user", dataScope: "all", createdBy: ADMIN_ID });
+    await execute("UPDATE service_accounts SET role='platform_admin' WHERE id=?",[adminAccount]);
     created.accounts.push(adminAccount);
     const id = await makeSchedule(agentId, { serviceAccountId: adminAccount });
     const result = await triggerSchedule((await repos.getSchedule(id))!);

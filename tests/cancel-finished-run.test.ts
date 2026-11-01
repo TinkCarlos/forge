@@ -36,7 +36,7 @@ const entries: Array<{ name: string; cancel: (runId: string) => Promise<LightMyR
   { name: "open", cancel: (id) => app.inject({ method: "POST", url: `/open/v1/runs/${id}/cancel`, headers: { authorization: `Bearer ${openKey}` }, payload: {} }) },
   { name: "integration", cancel: async (id) => connectorApp.inject({ method: "POST", url: `/integration/v1/runs/${id}/cancel`, headers: { authorization: `Bearer ${await token()}` }, payload: {} }) },
 ];
-const cancelAudits = async (runId: string) => (await query<{ n: number }>("SELECT COUNT(*) AS n FROM audit_logs WHERE action = 'run.cancel' AND resource_id = ?", [runId]))[0]!.n;
+const cancelAudits = async (runId: string) => (await query<{ n: number }>("SELECT COUNT(*) AS n FROM audit_logs WHERE outcome = 'success' AND action = 'run.cancel' AND resource_id = ?", [runId]))[0]!.n;
 
 beforeAll(async () => {
   app = await buildApp({ logger: false });
@@ -55,7 +55,7 @@ beforeAll(async () => {
   const admin = await realSession({ role: "platform_admin", orgUnitId: ROOT, dataScope: "all" });
   headers = sessionHeaders(admin, sessionCookieValue(admin));
   agentId = await repos.createAgent({ key: `it-cancel-${suffix}`, name: "IT cancel", ownerOrgUnitId: ROOT, createdBy: ADMIN_ID });
-  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID });
+  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID }, { expectedRevision: "system" });
   appId = await repos.createApiApp({ key: `it-cancel-${suffix}`, name: "IT cancel", ownerOrgUnitId: ROOT, scopes: ["runs:cancel", "runs:read"] });
   openKey = `fsk_${randomBytes(32).toString("base64url")}`;
   await repos.createApiKey({ appId, name: "it", prefix: openKey.slice(0, 16), keyHash: hashApiKey(openKey, config.API_KEY_PEPPER), scopes: ["runs:cancel", "runs:read"] });

@@ -1,0 +1,35 @@
+{
+  "scope": "Supplement only; mobile is not current formal scope",
+  "old": {
+    "url": "http://127.0.0.1:3100/#agents",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "documentWidth": 390,
+    "clientWidth": 390,
+    "tables": [
+      {
+        "width": 640,
+        "wrapperWidth": 356,
+        "wrapperScrollWidth": 640
+      }
+    ]
+  },
+  "next": {
+    "url": "http://127.0.0.1:3100/next/agents",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "documentWidth": 390,
+    "clientWidth": 390,
+    "tables": [
+      {
+        "width": 356,
+        "wrapperWidth": 356,
+        "wrapperScrollWidth": 356
+      }
+    ]
+  }
+}

@@ -1,3 +1,4 @@
+import { configurationHeaders } from "./helpers/configuration-headers.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance } from "fastify";
@@ -76,12 +77,12 @@ describe("orgSubtreeIds is literal (AB, I-SCOPE-13 / I-SCOPE-14)", () => {
 
 describe("I-SCOPE-13: org_admin of a_b cannot read axb users", () => {
   it("PATCH axb user -> 404, same as a missing user; own user -> 200", async () => {
-    const res = await app.inject({ method: "PATCH", url: `/admin/api/users/${users.axb}`, headers: adminHeaders.a_b!, payload: { status: "disabled" } });
+    const res = await app.inject({ method: "PATCH", url: `/admin/api/users/${users.axb}`, headers: await configurationHeaders(`/admin/api/users/${users.axb}`, adminHeaders.a_b!), payload: { status: "disabled" } });
     expect(res.statusCode, res.body).toBe(404);
-    const missing = await app.inject({ method: "PATCH", url: "/admin/api/users/usr_nonexistent00000000000", headers: adminHeaders.a_b!, payload: { status: "disabled" } });
+    const missing = await app.inject({ method: "PATCH", url: "/admin/api/users/usr_nonexistent00000000000", headers: await configurationHeaders("/admin/api/users/usr_nonexistent00000000000", adminHeaders.a_b!), payload: { status: "disabled" } });
     expect(res.body.replace(/"requestId":"[^"]+"/, "")).toBe(missing.body.replace(/"requestId":"[^"]+"/, ""));
     expect((await repos.getUserById(users.axb!))!.status).toBe("active");
-    const own = await app.inject({ method: "PATCH", url: `/admin/api/users/${users.a_b}`, headers: adminHeaders.a_b!, payload: { status: "active" } });
+    const own = await app.inject({ method: "PATCH", url: `/admin/api/users/${users.a_b}`, headers: await configurationHeaders(`/admin/api/users/${users.a_b}`, adminHeaders.a_b!), payload: { status: "active" } });
     expect(own.statusCode, own.body).toBe(200);
   });
 
@@ -106,8 +107,8 @@ describe("I-SCOPE-13: org_admin of a_b cannot read axb users", () => {
     expect(siblingIds).toContain(users.bc);
     expect(siblingIds).not.toContain(users.b);
     expect(siblingIds).not.toContain(users.bChild);
-    expect((await app.inject({ method: "PATCH", url: `/admin/api/users/${users.bc}`, headers: adminHeaders.b!, payload: { status: "active" } })).statusCode).toBe(404);
-    expect((await app.inject({ method: "PATCH", url: `/admin/api/users/${users.bChild}`, headers: adminHeaders.b!, payload: { status: "active" } })).statusCode).toBe(200);
+    expect((await app.inject({ method: "PATCH", url: `/admin/api/users/${users.bc}`, headers: await configurationHeaders(`/admin/api/users/${users.bc}`, adminHeaders.b!), payload: { status: "active" } })).statusCode).toBe(404);
+    expect((await app.inject({ method: "PATCH", url: `/admin/api/users/${users.bChild}`, headers: await configurationHeaders(`/admin/api/users/${users.bChild}`, adminHeaders.b!), payload: { status: "active" } })).statusCode).toBe(200);
   });
 });
 

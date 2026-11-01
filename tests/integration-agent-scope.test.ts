@@ -33,9 +33,9 @@ const startRun = async (name: string) =>
 async function agent(name: string, owner: string | null, status = "active") {
   const key = `it-is-${name}-${suffix}`;
   const id = await repos.createAgent({ key, name: `IT ${name}`, ownerOrgUnitId: owner, createdBy: ADMIN_ID });
-  const versionId = await repos.createAgentVersion({ agentId: id, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID });
-  await repos.publishAgentVersion(id, versionId);
-  if (status !== "active") await repos.updateAgent(id, { status });
+  const versionId = await repos.createAgentVersion({ agentId: id, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID }, { expectedRevision: "system" });
+  await repos.publishAgentVersion(id, versionId, { expectedRevision: "system" });
+  if (status !== "active") await repos.updateAgent(id, { status }, { expectedRevision: "system" });
   agents[name] = { id, key };
 }
 

@@ -67,6 +67,8 @@ export function createGuard(getSession: () => unknown) {
  * '/audit' 目前还没有页面，先把规则定下来：审计只看 audit.view（后端方案 C 会去掉 OA 的 audit.view）。
  */
 export const ROUTE_PERMISSIONS = {
+  '/jobs': 'job.view',
+  '/messages': 'message.view',
   '/agents': 'agent.view',
   '/approvals': 'approval.view',
   '/audit': 'audit.view',
@@ -84,17 +86,50 @@ export const LEGACY_PAGE_PERMISSIONS = {
   schedules: 'schedule.view',
   apps: 'apikey.view',
   users: 'user.view',
-  sso: 'sso.manage',
   audit: 'audit.view',
+  sso: 'sso.manage',
+  secrets: 'secret.manage',
 } as const satisfies Record<string, Permission>
 
+/** Existing React pages first; other modules keep their real legacy entry point. */
+export function defaultLanding(perms: readonly string[]): string {
+  if (can(perms, 'agent.view')) return '/agents'
+  if (can(perms, 'job.view')) return '/jobs'
+  if (can(perms, 'message.view')) return '/messages'
+  if (can(perms, 'approval.view')) return '/approvals'
+  for (const [page, permission] of Object.entries(LEGACY_PAGE_PERMISSIONS)) {
+    if (page === 'users' && can(perms, 'role.view')) return can(perms, 'user.view') ? '/#users' : '/#users/roles'
+    if (can(perms, permission)) return `/#${page}`
+  }
+  return '/agents'
+}
+
+/** The caller sanitizes the path; unknown safe paths retain the existing 404/deep-link behavior. */
+export function loginDestination(perms: readonly string[], requested: string | null): string {
+  if (!requested || requested === '/') return defaultLanding(perms)
+  const path = new URL(requested, 'http://forge.invalid')
+  const permission = path.pathname === '/agents' ? 'agent.view' : path.pathname === '/approvals' ? 'approval.view' : path.pathname === '/jobs' ? 'job.view' : path.pathname === '/messages' ? 'message.view' : undefined
+  if (permission && !can(perms, permission)) return defaultLanding(perms)
+  if (path.pathname === '/' && path.hash) {
+    const page = path.hash.slice(1).split('/')[0] as keyof typeof LEGACY_PAGE_PERMISSIONS
+    if (page === 'users') {
+      if (path.hash.split('/')[1] === 'roles') return can(perms, 'role.view') ? requested : can(perms, 'user.view') ? '/#users' : defaultLanding(perms)
+      if (can(perms, 'user.view')) return requested
+      return can(perms, 'role.view') ? '/#users/roles' : defaultLanding(perms)
+    }
+    const required = LEGACY_PAGE_PERMISSIONS[page]
+    if (required && !can(perms, required)) return defaultLanding(perms)
+  }
+  return requested
+}
+
 /** 侧栏过滤：去掉没权限的入口，再去掉因此变空的分组。 */
-export function filterNavGroups<G extends { items: readonly { permission?: Permission }[] }>(
+export function filterNavGroups<G extends { items: readonly { permission?: Permission; anyPermissions?: readonly Permission[] }[] }>(
   groups: readonly G[],
   perms: readonly string[] | null | undefined
 ): G[] {
   return groups
-    .map((g) => ({ ...g, items: g.items.filter((i) => !i.permission || can(perms, i.permission)) }) as G)
+    .map((g) => ({ ...g, items: g.items.filter((i) => i.anyPermissions ? i.anyPermissions.some(permission => can(perms, permission)) : !i.permission || can(perms, i.permission)) }) as G)
     .filter((g) => g.items.length > 0)
 }
 

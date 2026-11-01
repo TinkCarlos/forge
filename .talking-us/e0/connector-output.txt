@@ -1,0 +1,3 @@
+PASS signed config retains dataScopeType/dataScope through LKG and inbound/outbound policy selection; tampered scope rejected
+PASS real SDK: signature/expiry/environment, monotonic config, LKG reload, cache0600, outbound grant preflight
+CONFIRMED: per-request dataScope option is unsupported; trusted scope comes from signed call policy, not normalized Principal

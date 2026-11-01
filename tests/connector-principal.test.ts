@@ -24,7 +24,7 @@ let privateKey: CryptoKey;
 const sub = (tag: string) => `it-cp-${tag}-${suffix}`;
 async function makeUser(tag: string, orgUnitId: string | null, status = "active"): Promise<string> {
   const id = await repos.createUser({ email: `${sub(tag)}@forge.local`, username: sub(tag), displayName: tag, role: "user", dataScope: "self", orgUnitId, idpSubject: sub(tag) });
-  if (status !== "active") await repos.updateUser(id, { status });
+  if (status !== "active") await repos.updateUser(id, { status }, { expectedRevision: "system" });
   users.push(id);
   return id;
 }

@@ -1,3 +1,4 @@
+import { configurationHeaders } from "./helpers/configuration-headers.js";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance } from "fastify";
@@ -41,7 +42,7 @@ async function makeSchedule(kind: "account" | "user" | "legacy-created-by"): Pro
 }
 const runsOf = async (scheduleId: string) => (await repos.listRuns({ limit: 300 })).filter((r) => r.trigger_ref === scheduleId);
 const fire = async (scheduleId: string) => triggerSchedule((await repos.getSchedule(scheduleId))!);
-const manual = (scheduleId: string) => app.inject({ method: "POST", url: `/admin/api/schedules/${scheduleId}/run`, headers, payload: {} });
+const manual = async (scheduleId: string) => app.inject({ method: "POST", url: `/admin/api/schedules/${scheduleId}/run`, headers: await configurationHeaders(`/admin/api/schedules/${scheduleId}/run`, headers), payload: {} });
 const setOrg = (id: string, status: string) => execute("UPDATE org_units SET status = ? WHERE id = ?", [status, id]);
 const setUser = (status: string) => execute("UPDATE users SET status = ? WHERE id = ?", [status, userId]);
 
@@ -57,8 +58,8 @@ beforeAll(async () => {
     agentId, version: "1.0.0", instructions: "Reply briefly.",
     spec: { model: { provider: "mock", model: "mock-1" }, toolsets: [{ builtin: ["current_time"] }], limits: { maxSteps: 2, maxCostUsd: 1 } },
     status: "published", createdBy: ADMIN_ID,
-  });
-  await repos.publishAgentVersion(agentId, versionId);
+  }, { expectedRevision: "system" });
+  await repos.publishAgentVersion(agentId, versionId, { expectedRevision: "system" });
   accountId = await repos.createServiceAccount({ key: `it-sl-svc-${suffix}`, name: "IT sl svc", orgUnitId: ORG_C, role: "operator", dataScope: "org", createdBy: ADMIN_ID });
   userId = await repos.createUser({ email: `it-sl-${suffix}@forge.local`, username: `it-sl-${suffix}`, displayName: "IT sl user", role: "operator", dataScope: "org", orgUnitId: ORG_C });
 });

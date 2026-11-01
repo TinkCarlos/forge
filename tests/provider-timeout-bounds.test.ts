@@ -1,3 +1,4 @@
+import { configurationHeaders } from "./helpers/configuration-headers.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance } from "fastify";
@@ -43,7 +44,7 @@ describe("I-MDL-04 provider timeoutMs bounds", () => {
   });
 
   it.each(BAD.map((v) => [JSON.stringify(v), v]))("PATCH timeoutMs=%s -> 400, stored value unchanged", async (_l, value) => {
-    const res = await app.inject({ method: "PATCH", url: `/admin/api/providers/${providerId}`, headers, payload: { timeoutMs: value } });
+    const res = await app.inject({ method: "PATCH", url: `/admin/api/providers/${providerId}`, headers: await configurationHeaders(`/admin/api/providers/${providerId}`, headers), payload: { timeoutMs: value } });
     expect(res.statusCode, res.body).toBe(400);
     expect(await stored()).toBe(120000);
   });
@@ -52,7 +53,7 @@ describe("I-MDL-04 provider timeoutMs bounds", () => {
     expect((await create(k("min"), { timeoutMs: 1000 })).statusCode).toBe(200);
     const dflt = await create(k("dflt"));
     expect(await stored(dflt.json().id)).toBe(120000);
-    expect((await app.inject({ method: "PATCH", url: `/admin/api/providers/${providerId}`, headers, payload: { timeoutMs: 600000 } })).statusCode).toBe(200);
+    expect((await app.inject({ method: "PATCH", url: `/admin/api/providers/${providerId}`, headers: await configurationHeaders(`/admin/api/providers/${providerId}`, headers), payload: { timeoutMs: 600000 } })).statusCode).toBe(200);
     expect(await stored()).toBe(600000);
   });
 });

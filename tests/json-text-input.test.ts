@@ -1,3 +1,4 @@
+import { configurationHeaders } from "./helpers/configuration-headers.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance } from "fastify";
@@ -44,7 +45,7 @@ afterAll(async () => {
   await app.close();
 });
 
-const send = (method: "POST" | "PATCH", url: string, payload: object) => app.inject({ method, url, headers, payload });
+const send = async (method: "POST" | "PATCH", url: string, payload: object) => app.inject({ method, url, headers: await configurationHeaders(url, headers), payload });
 const count = async (table: string, key: string) => Number((await query<{ n: number }>(`SELECT COUNT(*) AS n FROM ${table} WHERE \`key\` = ?`, [key]))[0]!.n);
 const expect400 = (res: { statusCode: number; body: string; json: () => unknown }, field: string) => {
   expect(res.statusCode, res.body).toBe(400);
@@ -71,7 +72,10 @@ describe("item 7: spec / headers JSON text that is not a JSON object -> 400", ()
     expect400(await send("POST", "/admin/api/mcp", { key, url: "https://mcp.example.com/x", headers: bad }), "headers");
     expect(await count("mcp_servers", key)).toBe(0);
     expect400(await send("PATCH", `/admin/api/mcp/${mcpId}`, { headers: bad }), "headers");
-    expect(JSON.stringify((await query<{ headers_json: unknown }>("SELECT headers_json FROM mcp_servers WHERE id = ?", [mcpId]))[0]!.headers_json)).toContain("X-A");
+    const row = (await query<{ headers_json: unknown; header_secret_refs_json: Record<string,string> }>("SELECT headers_json, header_secret_refs_json FROM mcp_servers WHERE id = ?", [mcpId]))[0]!;
+    expect(row.headers_json).toEqual({});
+    expect(Object.keys(row.header_secret_refs_json)).toEqual(["x-a"]);
+    expect(await repos.resolveCredentialValues("mcp_server", mcpId, {"header:x-a":row.header_secret_refs_json["x-a"]!})).toEqual({"header:x-a":"1"});
   });
 
   it.each(BAD)("POST /providers and PATCH /providers/{id} headers=%j -> 400, nothing written", async (bad) => {
@@ -79,7 +83,10 @@ describe("item 7: spec / headers JSON text that is not a JSON object -> 400", ()
     expect400(await send("POST", "/admin/api/providers", { key, baseUrl: "https://llm.example.com/v1", headers: bad }), "headers");
     expect(await count("llm_providers", key)).toBe(0);
     expect400(await send("PATCH", `/admin/api/providers/${providerId}`, { headers: bad }), "headers");
-    expect(JSON.stringify((await query<{ headers_json: unknown }>("SELECT headers_json FROM llm_providers WHERE id = ?", [providerId]))[0]!.headers_json)).toContain("X-A");
+    const row = (await query<{ headers_json: unknown; header_secret_refs_json: Record<string,string> }>("SELECT headers_json, header_secret_refs_json FROM llm_providers WHERE id = ?", [providerId]))[0]!;
+    expect(row.headers_json).toEqual({});
+    expect(Object.keys(row.header_secret_refs_json)).toEqual(["x-a"]);
+    expect(await repos.resolveCredentialValues("llm_provider", providerId, {"header:x-a":row.header_secret_refs_json["x-a"]!})).toEqual({"header:x-a":"1"});
   });
 
   it.each(BAD)("POST /tool-sources/import headers=%j -> 400, no source", async (bad) => {
@@ -99,8 +106,9 @@ describe("item 7: spec / headers JSON text that is not a JSON object -> 400", ()
     const key = k("ok");
     const res = await send("POST", "/admin/api/mcp", { key, url: "https://mcp.example.com/ok", headers: "{\"X-Ok\":\"1\"}" });
     expect(res.statusCode, res.body).toBe(200);
-    const row = (await query<{ headers_json: unknown }>("SELECT headers_json FROM mcp_servers WHERE `key` = ?", [key]))[0]!;
-    const stored = typeof row.headers_json === "string" ? JSON.parse(row.headers_json) : row.headers_json;
-    expect(stored).toEqual({ "X-Ok": "1" });
+    const row = (await query<{ id:string; headers_json: unknown; header_secret_refs_json:Record<string,string> }>("SELECT id, headers_json, header_secret_refs_json FROM mcp_servers WHERE `key` = ?", [key]))[0]!;
+    expect(row.headers_json).toEqual({});
+    expect(Object.keys(row.header_secret_refs_json)).toEqual(["x-ok"]);
+    expect(await repos.resolveCredentialValues("mcp_server", row.id, {"header:x-ok":row.header_secret_refs_json["x-ok"]!})).toEqual({"header:x-ok":"1"});
   });
 });

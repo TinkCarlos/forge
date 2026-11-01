@@ -1,0 +1,2 @@
+{"at":"2026-11-01T06:12:01.608Z","path":"/wecom","bodyHash":"7978c21e9dc77b09c493aececc2548ea80faca5faf52e61810a85b2257843463","type":"text","test":true}
+{"at":"2026-11-01T07:19:34.501Z","path":"/webhook","signatureValid":true,"bodyHash":"5102ccbe2f0b5abde202c4f322fb3b7be1f700d2df8b3252ceda7497a221a844","type":"test.webhook","test":true}

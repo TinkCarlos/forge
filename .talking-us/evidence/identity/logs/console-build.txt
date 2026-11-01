@@ -1,0 +1,36 @@
+$ pnpm --filter @forge/console build
+$ tsc -p tsconfig.json && NODE_ENV=production vite build
+vite v8.3.4 building client environment for production...
+transforming...
+✓ 2767 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                             1.35 kB │ gzip:  0.58 kB
+dist/assets/index-CgnEd-_z.css            103.11 kB │ gzip: 17.99 kB
+dist/assets/404-B1LtvUR1.js                 0.07 kB │ gzip:  0.08 kB
+dist/assets/500-yCc22QNd.js                 0.07 kB │ gzip:  0.08 kB
+dist/assets/agents-BRsKBgn7.js              0.08 kB │ gzip:  0.09 kB
+dist/assets/approvals-BRsKBgn7.js           0.08 kB │ gzip:  0.09 kB
+dist/assets/back-button-B-Xgyf6F.js         0.47 kB │ gzip:  0.36 kB
+dist/assets/label-B6MoyDef.js               0.51 kB │ gzip:  0.33 kB
+dist/assets/api-Cth7mVlU.js                 0.58 kB │ gzip:  0.35 kB
+dist/assets/rolldown-runtime-B0Z9INg1.js    0.90 kB │ gzip:  0.51 kB
+dist/assets/route-error-BEMU_W8U.js         0.90 kB │ gzip:  0.57 kB
+dist/assets/input-Bkp18VD0.js               0.91 kB │ gzip:  0.50 kB
+dist/assets/password-input-DbrPf8AM.js      1.11 kB │ gzip:  0.65 kB
+dist/assets/badge-Clna7pGf.js               1.23 kB │ gzip:  0.60 kB
+dist/assets/sign-in-wk_96K0i.js             6.36 kB │ gzip:  2.66 kB
+dist/assets/approvals-CzOJhUsc.js           9.42 kB │ gzip:  3.94 kB
+dist/assets/table-states-By096QLv.js       10.94 kB │ gzip:  4.32 kB
+dist/assets/route-FAEv8LpI.js              11.45 kB │ gzip:  4.11 kB
+dist/assets/agents-0CvtNMmI.js             16.80 kB │ gzip:  5.53 kB
+dist/assets/index-BakXLeKp.js              19.96 kB │ gzip:  8.09 kB
+dist/assets/sidebar-C59SoZwV.js            29.49 kB │ gzip:  7.96 kB
+dist/assets/vendor-zod-CFrsbf52.js         78.62 kB │ gzip: 22.66 kB
+dist/assets/vendor-radix-CutTX6pR.js       86.14 kB │ gzip: 25.61 kB
+dist/assets/vendor-motion-DmrM-t1V.js     125.23 kB │ gzip: 40.79 kB
+dist/assets/vendor-misc-CLb_AJyo.js       151.22 kB │ gzip: 51.31 kB
+dist/assets/vendor-tanstack-CAq58AhN.js   157.59 kB │ gzip: 48.19 kB
+dist/assets/vendor-react-PBQ6A6yD.js      206.76 kB │ gzip: 64.80 kB
+
+✓ built in 281ms

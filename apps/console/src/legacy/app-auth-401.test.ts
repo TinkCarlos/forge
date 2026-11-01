@@ -102,10 +102,10 @@ function harness(routes: Record<string, Resp | ((n: number) => Resp)> = {}) {
     addEventListener(t: string, f: (e: unknown) => void) { (this.listeners[t] ??= []).push(f) }
     close() { this.closed = true; this.readyState = 2 }
   }
-  const state: Record<string, unknown> = { session: { csrfToken: 'c', user: { name: 'A', role: 'platform_admin', dataScope: 'all' } }, apps: [{ id: 'app_1', name: 'A', status: 'active', scopes: ['agents:read'], webhookUrl: '' }], runView: null, eventSource: null }
+  const state: Record<string, unknown> = { session: { csrfToken: 'c', user: { name: 'A', role: 'platform_admin', dataScope: 'all' } }, apps: [{ revision: 1, id: 'app_1', name: 'A', status: 'active', scopes: ['agents:read'], webhookUrl: '' }], runView: null, eventSource: null }
   const winListeners: string[] = []
   let switched = 0
-  const deps: Record<string, unknown> = {
+  const deps: Record<string, unknown> = { bindConfigurationFields: () => {},
     $, document, fetch, EventSource: EventSourceStub, state,
     setTimeout: () => 0, clearTimeout: () => {}, setInterval: () => 0, clearInterval: () => {},
     window: { addEventListener: (t: string) => winListeners.push(t) },
@@ -116,10 +116,10 @@ function harness(routes: Record<string, Resp | ((n: number) => Resp)> = {}) {
     idSeg: (s: string) => encodeURIComponent(s), renderApps: async () => {}, fmt: (v: unknown) => String(v ?? '—'),
   }
   const names = Object.keys(deps)
-  const fnNames = ['esc', 'errorText', 'toast', 'api', 'showLogin', 'showApp', 'init', 'enterApp', 'statusPill', 'field', 'select',
+  const fnNames = ['revisionHeaders', 'esc', 'errorText', 'toast', 'api', 'showLogin', 'showApp', 'init', 'enterApp', 'statusPill', 'field', 'select',
     'openModal', 'runMessagesHtml', 'runToolsHtml', 'runFailureText', 'toolInterruptedText', 'runEventText', 'runToolbarHtml', 'renderRunView', 'renderStreamStatus', 'listenRun', 'connectRunStream',
     'syncRunFromRest', 'endRunStream', 'closeStream']
-  const optional = ['handleSessionExpired', 'appScopesHint'].filter(hasFn)
+  const optional = ['handleSessionExpired', 'appScopeFields', 'appScopesHint', 'credentialReferenceField', 'credentialReferenceChange', 'canManageSecrets'].filter(hasFn)
   const consts = ['RUN_TERMINAL_EVENTS', 'RUN_ACTIVE_STATUSES', 'STREAM_MAX_RETRIES', 'RUN_APPROVAL_EXPIRED_CODE', 'RUN_APPROVAL_EXPIRED_TEXT', 'SESSION_EXPIRED_TEXT', 'APP_SCOPES_HINT_ID'].map(constLine).join('\n')
   const src = `${consts}\n${[...fnNames, ...optional].map(fnSource).join('\n')}\nreturn { api, init, enterApp, openModal, listenRun, syncRunFromRest, closeStream, ${method('openAppEdit')} };`
   const app = new Function(...names, src)(...names.map((n) => deps[n])) as {

@@ -1,0 +1,306 @@
+{
+  "status": {
+    "title": "[Human] Forge Console — B evidence",
+    "url": "http://127.0.0.1:5175/next/agents",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "loaded": "true",
+    "annotations": [
+      "✦ nested cards",
+      "overused fontPrimary font: inter (98% of text)◉×"
+    ]
+  },
+  "events": [
+    {
+      "method": "Runtime.consoleAPICalled",
+      "params": {
+        "type": "startGroup",
+        "args": [
+          {
+            "type": "string",
+            "value": "%c[impeccable] 2 anti-patterns found"
+          },
+          {
+            "type": "string",
+            "value": "color: oklch(84% 0.19 80.46); font-weight: bold"
+          }
+        ],
+        "executionContextId": 27,
+        "timestamp": 1793510652819.632,
+        "stackTrace": {
+          "callFrames": [
+            {
+              "functionName": "printSummary",
+              "scriptId": "93",
+              "url": "http://localhost:8400/detect.js",
+              "lineNumber": 4215,
+              "columnNumber": 12
+            },
+            {
+              "functionName": "renderBrowserFindings",
+              "scriptId": "93",
+              "url": "http://localhost:8400/detect.js",
+              "lineNumber": 4439,
+              "columnNumber": 25
+            },
+            {
+              "functionName": "scan",
+              "scriptId": "93",
+              "url": "http://localhost:8400/detect.js",
+              "lineNumber": 4461,
+              "columnNumber": 24
+            },
+            {
+              "functionName": "runAutoScan",
+              "scriptId": "93",
+              "url": "http://localhost:8400/detect.js",
+              "lineNumber": 4534,
+              "columnNumber": 10
+            }
+          ]
+        }
+      },
+      "sessionId": "BC48E022B8D76D495C99DA6CEB48A626"
+    },
+    {
+      "method": "Runtime.consoleAPICalled",
+      "params": {
+        "type": "log",
+        "args": [
+          {
+            "type": "string",
+            "value": "%coverused-font%c Primary font: inter (98% of text)"
+          },
+          {
+            "type": "string",
+            "value": "color: oklch(84% 0.19 80.46); font-weight: bold"
+          },
+          {
+            "type": "string",
+            "value": "color: inherit"
+          },
+          {
+            "type": "object",
+            "subtype": "node",
+            "className": "HTMLBodyElement",
+            "description": "body",
+            "objectId": "4111773860988252929.27.2",
+            "preview": {
+              "type": "object",
+              "subtype": "node",
+              "description": "body",
+              "overflow": true,
+              "properties": [
+                {
+                  "name": "text",
+                  "type": "string",
+                  "value": ""
+                },
+                {
+                  "name": "link",
+                  "type": "string",
+                  "value": ""
+                },
+                {
+                  "name": "vLink",
+                  "type": "string",
+                  "value": ""
+                },
+                {
+                  "name": "aLink",
+                  "type": "string",
+                  "value": ""
+                },
+                {
+                  "name": "bgColor",
+                  "type": "string",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        ],
+        "executionContextId": 27,
+        "timestamp": 1793510652819.741,
+        "stackTrace": {
+          "callFrames": [
+            {
+              "functionName": "printSummary",
+              "scriptId": "93",
+              "url": "http://localhost:8400/detect.js",
+              "lineNumber": 4221,
+              "columnNumber": 16
+            },
+            {
+              "functionName": "renderBrowserFindings",
+              "scriptId": "93",
+              "url": "http://localhost:8400/detect.js",
+              "lineNumber": 4439,
+              "columnNumber": 25
+            },
+            {
+              "functionName": "scan",
+              "scriptId": "93",
+              "url": "http://localhost:8400/detect.js",
+              "lineNumber": 4461,
+              "columnNumber": 24
+            },
+            {
+              "functionName": "runAutoScan",
+              "scriptId": "93",
+              "url": "http://localhost:8400/detect.js",
+              "lineNumber": 4534,
+              "columnNumber": 10
+            }
+          ]
+        }
+      },
+      "sessionId": "BC48E022B8D76D495C99DA6CEB48A626"
+    },
+    {
+      "method": "Runtime.consoleAPICalled",
+      "params": {
+        "type": "log",
+        "args": [
+          {
+            "type": "string",
+            "value": "%cnested-cards%c Card inside card"
+          },
+          {
+            "type": "string",
+            "value": "color: oklch(84% 0.19 80.46); font-weight: bold"
+          },
+          {
+            "type": "string",
+            "value": "color: inherit"
+          },
+          {
+            "type": "object",
+            "subtype": "node",
+            "className": "HTMLDivElement",
+            "description": "div.table-cards.overflow-hidden.rounded-lg.border.bg-card",
+            "objectId": "4111773860988252929.27.3",
+            "preview": {
+              "type": "object",
+              "subtype": "node",
+              "description": "div.table-cards.overflow-hidden.rounded-lg.border.bg-card",
+              "overflow": true,
+              "properties": [
+                {
+                  "name": "__reactFiber$b8qj1ufznuo",
+                  "type": "object",
+                  "value": "FiberNode"
+                },
+                {
+                  "name": "__reactProps$b8qj1ufznuo",
+                  "type": "object",
+                  "value": "Object"
+                },
+                {
+                  "name": "_impeccableOverlay",
+                  "type": "object",
+                  "value": "div.impeccable-overlay",
+                  "subtype": "node"
+                },
+                {
+                  "name": "align",
+                  "type": "string",
+                  "value": ""
+                },
+                {
+                  "name": "title",
+                  "type": "string",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        ],
+        "executionContextId": 27,
+        "timestamp": 1793510652819.872,
+        "stackTrace": {
+          "callFrames": [
+            {
+              "functionName": "printSummary",
+              "scriptId": "93",
+              "url": "http://localhost:8400/detect.js",
+              "lineNumber": 4221,
+              "columnNumber": 16
+            },
+            {
+              "functionName": "renderBrowserFindings",
+              "scriptId": "93",
+              "url": "http://localhost:8400/detect.js",
+              "lineNumber": 4439,
+              "columnNumber": 25
+            },
+            {
+              "functionName": "scan",
+              "scriptId": "93",
+              "url": "http://localhost:8400/detect.js",
+              "lineNumber": 4461,
+              "columnNumber": 24
+            },
+            {
+              "functionName": "runAutoScan",
+              "scriptId": "93",
+              "url": "http://localhost:8400/detect.js",
+              "lineNumber": 4534,
+              "columnNumber": 10
+            }
+          ]
+        }
+      },
+      "sessionId": "BC48E022B8D76D495C99DA6CEB48A626"
+    },
+    {
+      "method": "Runtime.consoleAPICalled",
+      "params": {
+        "type": "endGroup",
+        "args": [
+          {
+            "type": "string",
+            "value": "console.groupEnd"
+          }
+        ],
+        "executionContextId": 27,
+        "timestamp": 1793510652819.955,
+        "stackTrace": {
+          "callFrames": [
+            {
+              "functionName": "printSummary",
+              "scriptId": "93",
+              "url": "http://localhost:8400/detect.js",
+              "lineNumber": 4225,
+              "columnNumber": 12
+            },
+            {
+              "functionName": "renderBrowserFindings",
+              "scriptId": "93",
+              "url": "http://localhost:8400/detect.js",
+              "lineNumber": 4439,
+              "columnNumber": 25
+            },
+            {
+              "functionName": "scan",
+              "scriptId": "93",
+              "url": "http://localhost:8400/detect.js",
+              "lineNumber": 4461,
+              "columnNumber": 24
+            },
+            {
+              "functionName": "runAutoScan",
+              "scriptId": "93",
+              "url": "http://localhost:8400/detect.js",
+              "lineNumber": 4534,
+              "columnNumber": 10
+            }
+          ]
+        }
+      },
+      "sessionId": "BC48E022B8D76D495C99DA6CEB48A626"
+    }
+  ]
+}

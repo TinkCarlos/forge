@@ -34,9 +34,9 @@ beforeAll(async () => {
   await app.ready();
   agentKey = `it-ra-${suffix}`;
   agentId = await repos.createAgent({ key: agentKey, name: "IT ra", ownerOrgUnitId: ROOT, createdBy: ADMIN_ID });
-  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID });
-  await repos.publishAgentVersion(agentId, versionId);
-  await repos.updateAgent(agentId, { api_enabled: 1 });
+  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID }, { expectedRevision: "system" });
+  await repos.publishAgentVersion(agentId, versionId, { expectedRevision: "system" });
+  await repos.updateAgent(agentId, { api_enabled: 1 }, { expectedRevision: "system" });
 });
 
 afterAll(async () => {

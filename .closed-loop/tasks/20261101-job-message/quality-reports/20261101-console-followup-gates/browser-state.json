@@ -1,0 +1,74 @@
+{
+  "validation": {
+    "nameInvalid": "true",
+    "focused": "job-name",
+    "error": "长度须为1–128个Unicode码点",
+    "key": "gates-check-job",
+    "budget": "0.25",
+    "created": false
+  },
+  "savedJob": {
+    "id": "01M6AY271G1RSMZ7SFFXMWJG5J",
+    "key": "gates-check-job",
+    "status": "disabled",
+    "revision": 1,
+    "budget": "0.250000",
+    "targetVersion": "01J00000000000000000000007"
+  },
+  "publishedAndRevisited": {
+    "url": "/next/jobs?status=disabled&cursor=",
+    "versionCount": 1,
+    "publishedVersionId": "01M6AY71KKFZ5CNPZZ20SNBKXW",
+    "status": "disabled"
+  },
+  "actualConnectionFailure": {
+    "tableError": true,
+    "retryButtons": 1,
+    "targetError": true,
+    "canCancel": true
+  },
+  "recovered": {
+    "targetDraftRetained": true,
+    "targetErrorCleared": true,
+    "listRecovered": true,
+    "recovery": "automatic query refresh after service restoration"
+  },
+  "messageTabs": [
+    {
+      "name": "渠道配置",
+      "url": "/next/messages?tab=channels&status=&cursor=&channelId=&eventType=&sourceType=&sourceId=&from=&to=",
+      "panel": "刷新创建渠道名称类型状态目标地址引用数操作暂无渠道下一页"
+    },
+    {
+      "name": "消息规则",
+      "url": "/next/messages?tab=rules&status=&cursor=&channelId=&eventType=&sourceType=&sourceId=&from=&to=",
+      "panel": "刷新创建规则名称事件范围状态操作暂无规则下一页"
+    },
+    {
+      "name": "消息模板",
+      "url": "/next/messages?tab=templates&status=&cursor=&channelId=&eventType=&sourceType=&sourceId=&from=&to=",
+      "panel": "刷新创建模板名称状态版本操作暂无模板下一页"
+    },
+    {
+      "name": "发送记录",
+      "url": "/next/messages?tab=deliveries&status=&cursor=&channelId=&eventType=&sourceType=&sourceId=&from=&to=",
+      "panel": "刷新事件状态发送轮次总尝试创建时间操作暂无发送记录下一页"
+    }
+  ],
+  "finalNode24BuildReadback": {
+    "path": "/next/jobs?status=disabled&cursor=&businessType=&orgUnitId=",
+    "key": "gates-check-job",
+    "status": "disabled",
+    "publishedVersionId": "01M6AY71KKFZ5CNPZZ20SNBKXW",
+    "budget": "0.250000",
+    "tablePresent": true
+  },
+  "handoffBuildReadback": {
+    "key": "gates-check-job",
+    "status": "disabled",
+    "publishedVersionId": "01M6AY71KKFZ5CNPZZ20SNBKXW",
+    "budget": "0.250000",
+    "pageWidth": 1800,
+    "viewport": 1800
+  }
+}

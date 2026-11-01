@@ -1,3 +1,4 @@
+import { configurationHeaders } from "./helpers/configuration-headers.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance } from "fastify";
@@ -43,7 +44,7 @@ const pkg = (extraSkill = false) => ({
     skills: [{ key: k("skill"), content: "# s" }, ...(extraSkill ? [{ key: k("skill2"), content: "# s2" }] : [])],
   },
 });
-const install = (payload: unknown) => app.inject({ method: "POST", url: "/admin/api/plugins/install", headers, payload: payload as object });
+const install = async (payload: unknown) => app.inject({ method: "POST", url: "/admin/api/plugins/install", headers: await configurationHeaders("/admin/api/plugins/install", headers), payload: payload as object });
 const parse = (v: unknown) => (typeof v === "string" ? JSON.parse(v) : v) as Record<string, string[]>;
 
 describe("P2 plugin reinstall keeps the pkg_ id", () => {
@@ -55,7 +56,7 @@ describe("P2 plugin reinstall keeps the pkg_ id", () => {
     const original = parse((await repos.getPlugin(id))!.resources_json);
     expect(original.agents).toHaveLength(1);
 
-    const un = await app.inject({ method: "POST", url: `/admin/api/plugins/${id}/uninstall`, headers });
+    const un = await app.inject({ method: "POST", url: `/admin/api/plugins/${id}/uninstall`, headers: await configurationHeaders(`/admin/api/plugins/${id}/uninstall`, headers) });
     expect(un.statusCode).toBe(200);
 
     const again = await install(pkg(true));

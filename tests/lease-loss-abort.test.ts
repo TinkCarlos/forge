@@ -6,21 +6,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // heartbeat that errors (DB down) aborts once LEASE_TTL_SECONDS - heartbeat interval has passed since the last
 // confirmed renewal (architect ruling 1: before another worker can reclaim the lease); a transient error followed by
 // a successful renewal does not abort. Every write of the execution runs inside the lease fence (store withRunLease).
-class StubForgeError extends Error {
-  retryable = false;
-  constructor(public readonly code: string, message: string, public readonly httpStatus = 400) {
-    super(message);
-  }
-}
+import { ForgeError as StubForgeError } from "../packages/core/src/errors/forge-error.js";
 vi.mock("@forge/core", async () => ({
   ForgeError: StubForgeError,
   // Item 7: the pure stored-JSON reader used by the loop for spec_json (no other core dependency).
   storedJsonObject: (await import("../packages/core/src/stored-json")).storedJsonObject,
   config: { LEASE_TTL_SECONDS: 30, MAX_RUN_STEPS: 10, DEFAULT_MAX_COST_USD: 100, DEFAULT_MAX_CONTEXT_TOKENS: 100000, MODEL_MAX_ATTEMPTS: 1, TOOL_MAX_ATTEMPTS: 1, DEFAULT_MAX_PARALLEL_TOOLS: 2 },
   errors: {
-    notFound: (m: string) => new StubForgeError("RUN-7001", m, 404),
-    model: (m: string) => new StubForgeError("MDL-3001", m, 502),
-    invalid: (m: string) => new StubForgeError("CFG-8501", m, 400),
+    notFound: (m: string) => new StubForgeError("RUN-7001", { message: m, httpStatus: 404, retryable: false }),
+    model: (m: string) => new StubForgeError("MDL-3001", { message: m, httpStatus: 502, retryable: false }),
+    invalid: (m: string) => new StubForgeError("CFG-8501", { message: m, httpStatus: 400, retryable: false }),
   },
   OUTPUT_REPAIR_PREFIX: "",
 }));

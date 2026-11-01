@@ -1,0 +1,22 @@
+{
+  "pid": 56637,
+  "port": 8400,
+  "cwd": "/Users/libo/projects/forge/apps/console",
+  "stopCommand": [
+    "/Users/libo/.agents/skills/impeccable/scripts/impeccable",
+    "live-server",
+    "stop",
+    "--keep-inject"
+  ],
+  "exitCode": 0,
+  "stdout": "Stopped live server on port 8400.\n",
+  "stderr": "",
+  "pidExistsAfterStop": true,
+  "portOpenAfterStop": true,
+  "timestampUTC": "2026-11-01T05:25:10.352919+00:00",
+  "rawConnectionTokenFileRemoved": true,
+  "portOpenAfterGracePeriod": false,
+  "psAfterGracePeriod": "",
+  "psExitCodeAfterGracePeriod": 1,
+  "cleanupVerified": true
+}

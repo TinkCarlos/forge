@@ -74,10 +74,11 @@ minio:9000/9001
 | `S3_REGION` | 是 | `ap-shanghai` |
 | `S3_BUCKET` | 是 | `forge-prod` |
 | `S3_ACCESS_KEY` / `S3_SECRET_KEY` | 是 | Secret 注入 |
-| `FORGE_MASTER_KEY` | 是 | base64 解码后必须正好 32 字节（`openssl rand -base64 32`），否则拒绝启动；信封加密主密钥，单独托管。**更换主密钥会导致库里已有密文（Provider 凭据等）无法解密**，没有重新加密流程前不要轮换 |
+| `FORGE_MASTER_KEYRING_FILE` | 否 | 当前用户所有的0600普通文件；JSON含activeVersion和版本化base64 keys，热读无旧缓存回退，禁止symlink |
+| `FORGE_MASTER_KEY` | 是 | base64 解码后必须正好 32 字节（`openssl rand -base64 32`），否则拒绝启动；legacy兼容主密钥，单独托管；不得直接覆盖。可使用下列keyring及独立维护命令轮换，见[凭据维护](secrets.md) |
 | `API_KEY_PEPPER` | 是 | API Key 哈希用的 pepper。非 development/test 环境下去掉首尾空白后至少 32 个字符，否则拒绝启动；更换后已有 API Key 全部失效 |
 | `SESSION_TTL_SECONDS` | 否 | 会话有效期（秒），300–86400 的整数，默认 28800（8 小时）；超出范围拒绝启动 |
-| `FORGE_ADMIN_EMAIL` / `FORGE_ADMIN_PASSWORD` / `FORGE_ADMIN_NAME` | 是（密码） | 应急管理员，`pnpm db:seed` 时写入，**必须在 migrate/seed 之前设好**。密码没有默认值；非 development/test 环境下使用 `.env.example` 里的示例密码会拒绝启动 |
+| `FORGE_ADMIN_EMAIL` / `FORGE_ADMIN_PASSWORD` / `FORGE_ADMIN_NAME` | 是（密码） | 首次引导管理员，`pnpm db:seed` 只按固定身份ID首次创建；重跑不会重置密码、角色、状态或将同邮箱新账号提权，**必须在 migrate/seed 之前设好**。密码没有默认值；非 development/test 环境下使用 `.env.example` 里的示例密码会拒绝启动 |
 | `SESSION_SECRET` | 是 | BFF 会话签名。非 development/test 环境下去掉首尾空白后至少 32 个字符，否则拒绝启动。只含空白（空格、制表符、换行）的密钥一律视为未设置（P3-18）：`FORGE_MASTER_KEY` / `SESSION_SECRET` / `API_KEY_PEPPER` 在 development/test 下改用内置开发密钥并打 warn（列出变量名），其他环境按上面的规则拒绝启动；`FORGE_ADMIN_PASSWORD` 没有默认值，只含空白时任何环境都拒绝启动并写出变量名；`OIDC_CLIENT_SECRET`、`AGENT_CONNECTOR_CLIENT_SECRET` 只含空白时按未配置处理 |
 | `LOG_LEVEL` | 否 | `info` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | 否 | OTel Collector |
@@ -140,7 +141,7 @@ minio:9000/9001
 4b. 首次上线前先轮换所有沿用过示例值或曾经在别处出现过的密码和密钥（K-25），再对外开放。
 5. 启动 API → Worker → doc-parser/browser；检查 `/readyz`。
 6. 配置 Nginx：`/` 静态控制台，`/admin` `/open` `/integration` `/auth` `/sse` 反代 API；SSE 关闭缓冲。
-7. 使用应急管理员登录，配置 SSO；未拿到三方参数时先保持 SSO 不对外开放，用应急管理员完成初始配置，不得用本地账号对普通用户开放。完成 OIDC 登录验收后再启用。
+7. 使用应急管理员登录，配置 SSO；未拿到三方参数时先保持 SSO 不对外开放，用应急管理员完成初始配置，完成本地账号权限验收后可开放本地登录；SSO入口须完成OIDC验收后再开放。
 8. 配置模型 Provider（自定义 OpenAI-compatible）。
 9. 安装示例能力包，运行第一个 Agent。
 10. 按 [sso-and-connector.md](../02-architecture/sso-and-connector.md) 第 8 节完成 Connector 灰度；未批准前保持关闭。
@@ -286,7 +287,7 @@ DELETE FROM auth_oidc_states;
 - 全链路 TLS；Nginx HSTS；仅暴露统一入口。
 - K8s NetworkPolicy：API 仅访问 MySQL/Redis/Temporal/S3/模型端点；Worker 按需；MCP 服务限制出站。
 - 容器非 root、只读根 FS、seccomp/AppArmor；不挂 Docker socket。
-- Secret 不落盘、不进日志；Connector 缓存 `0600`。
+- 明文业务凭据不持久化、不进日志；部署密钥仅通过受控Secret/环境变量或0600私有keyring文件注入；Connector缓存`0600`。
 - DB 账户最小权限；迁移账户仅 Job 使用。
 - 管理端 CSRF、CSP、安全 Cookie；开放 API 仅服务端调用。
 - CSP 例外：只有旧版控制台 `/` 和 `/index.html` 允许属性级内联（`script-src-attr` / `style-src-attr 'unsafe-inline'`），`script-src` 仍是 `'self'`。这是架构书面批准的临时例外（S-10，见 permissions.md 4.5），`/next/`、API 和静态资源不放宽；旧版控制台下线后移除。Nginx 不要再叠加或改写 CSP 头。
@@ -384,3 +385,13 @@ API 收到 SIGTERM 或 SIGINT 后，每走完一步就记一行 info 日志，�
 - **工具执行期间的取消不生效**：Run 正在执行工具调用时发起的取消不会生效，Run 可能以 succeeded 结束；修复见后续版本。
 - **二分查找要跳过两个提交**：`425aef5` 和 `6146e37` 单独检出时类型检查不通过（后面的提交已修好），`git bisect` 时请用 `git bisect skip 425aef5 6146e37`。这是个别情况，以后的提交都要求单独能通过检查。
 - **测试依赖的已知漏洞（1.2 已解决）**：1.1 用的 vitest 3 依赖链上有 tinypool（GHSA-5gmw-xhrv-c9v3、GHSA-85c8-ppgw-ccpr）和 vitest / @vitest/mocker（GHSA-82fw-gwwq-j7x9、GHSA-qxg6-89mg-rqv8）的漏洞，都是 devDependencies，不进生产运行时。1.2 升级到 vitest 4.1.12 后不再依赖 tinypool，`pnpm audit --dev` 没有已知漏洞。还停在 1.1 的环境不要对不可信分支直接跑测试。
+
+## 15. E1 revision迁移与回退
+
+本轮本地只验证MySQL 8.4.13，目标MySQL 8.0.30+仍按发布流程演练。先备份，再由迁移Job执行`pnpm db:migrate`的009；它只加18个revision列，部分DDL中断可重跑，不删数据。应用账户仍不授DDL；Drizzle只生成SQL，不另跑push/migrate。
+
+009兼容旧读写的列结构，但旧进程不会递增revision。必须排空旧API/Worker及维护写进程，再整体启用新配置写入口；不要让新旧配置写者混跑。控制台与自动化客户端一并升级为先读revision、携带If-Match。只读流量可保留，具体摘流遵循现有发布流程。
+
+失败回退保留新列和009记录，恢复先前已记录的镜像及匹配控制台；旧版本不提供并发编辑保证。重新启用新版本前再次排空旧写者。禁止为了回退删除revision列、恢复旧快照覆盖新业务数据，或把Drizzle基线0000当作待执行迁移。
+
+010凭据库升级、新旧写者排空、密文回填、DEK重包裹及旧key最终退役条件见[凭据维护](secrets.md)。在线统计为零不能替代排空在途写事务。

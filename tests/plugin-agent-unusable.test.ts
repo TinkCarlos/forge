@@ -1,3 +1,4 @@
+import { configurationHeaders } from "./helpers/configuration-headers.js";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
@@ -52,11 +53,11 @@ const http = (res: LightMyRequestResponse) => {
   return { ok: res.statusCode < 300, status: res.statusCode, code };
 };
 const entries: Entry[] = [
-  { name: "admin POST /admin/api/agents/:id/run", call: async (tag) => http(await app.inject({ method: "POST", url: `/admin/api/agents/${agents[tag]!.id}/run`, headers, payload: { text: "hi" } })) },
+  { name: "admin POST /admin/api/agents/:id/run", call: async (tag) => http(await app.inject({ method: "POST", url: `/admin/api/agents/${agents[tag]!.id}/run`, headers: await configurationHeaders(`/admin/api/agents/${agents[tag]!.id}/run`, headers), payload: { text: "hi" } })) },
   { name: "open POST /open/v1/agents/:key/runs", call: async (tag) => http(await app.inject({ method: "POST", url: `/open/v1/agents/${agents[tag]!.key}/runs`, headers: { authorization: `Bearer ${openKey}` }, payload: { text: "hi" } })) },
   { name: "open POST /open/v1/agents/:key/invoke", call: async (tag) => http(await app.inject({ method: "POST", url: `/open/v1/agents/${agents[tag]!.key}/invoke?wait=0`, headers: { authorization: `Bearer ${openKey}` }, payload: { text: "hi" } })) },
   { name: "integration POST /integration/v1/runs", call: async (tag) => http(await connectorApp.inject({ method: "POST", url: "/integration/v1/runs", headers: { authorization: `Bearer ${await connectorToken()}` }, payload: { agentKey: agents[tag]!.key, text: "hi" } })) },
-  { name: "admin POST /admin/api/schedules/:id/run", call: async (tag) => http(await app.inject({ method: "POST", url: `/admin/api/schedules/${await makeSchedule(agents[tag]!.id)}/run`, headers, payload: {} })) },
+  { name: "admin POST /admin/api/schedules/:id/run", call: async (tag) => http(await app.inject({ method: "POST", url: `/admin/api/schedules/${await makeSchedule(agents[tag]!.id)}/run`, headers: await configurationHeaders(`/admin/api/schedules/${await makeSchedule(agents[tag]!.id)}/run`, headers), payload: {} })) },
   {
     name: "schedule tick (triggerSchedule)",
     call: async (tag) => {
@@ -87,9 +88,9 @@ beforeAll(async () => {
   headers = sessionHeaders(admin, sessionCookieValue(admin));
   for (const tag of ["broken", "healthy", "plain"]) {
     const id = await repos.createAgent({ key: k(tag), name: `IT pau ${tag}`, ownerOrgUnitId: ROOT, createdBy: ADMIN_ID });
-    const versionId = await repos.createAgentVersion({ agentId: id, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID });
-    await repos.publishAgentVersion(id, versionId);
-    await repos.updateAgent(id, { api_enabled: 1 });
+    const versionId = await repos.createAgentVersion({ agentId: id, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID }, { expectedRevision: "system" });
+    await repos.publishAgentVersion(id, versionId, { expectedRevision: "system" });
+    await repos.updateAgent(id, { api_enabled: 1 }, { expectedRevision: "system" });
     agents[tag] = { id, key: k(tag), versionId };
   }
   for (const tag of ["broken", "healthy"]) {

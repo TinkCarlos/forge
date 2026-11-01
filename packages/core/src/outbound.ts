@@ -5,7 +5,7 @@ import { BlockList, isIP, type LookupFunction } from "node:net";
 import { Readable } from "node:stream";
 import { allowlistProblems } from "./allowlist-format";
 import { config } from "./config";
-import { ForgeError } from "./index";
+import { ForgeError } from "./errors/forge-error.js";
 
 /**
  * Outbound request guard (S-46 ~ S-49). Every server-side HTTP request (MCP, model providers, OpenAPI tools, web_fetch,
@@ -26,7 +26,7 @@ const MAX_REDIRECTS = 5;
 const CROSS_ORIGIN_SAFE_HEADERS = new Set(["accept", "accept-encoding", "accept-language", "user-agent", "content-type"]);
 
 export function outboundBlockedError(): ForgeError {
-  return new ForgeError(OUTBOUND_BLOCKED_CODE, OUTBOUND_BLOCKED_MESSAGE, 400, undefined, false);
+  return new ForgeError(OUTBOUND_BLOCKED_CODE, { message: OUTBOUND_BLOCKED_MESSAGE, httpStatus: 400, retryable: false });
 }
 
 /** Why a target was refused (server log only). "redirect" = a redirect hop was refused; see targetReason. */
@@ -182,7 +182,7 @@ export function parseOutboundAllowlist(raw: string | undefined | null): string[]
   const entries: string[] = [];
   // Exact host:port only (AD). Invalid entries already fail config loading at startup; same per-entry messages here.
   const problems = allowlistProblems(raw);
-  if (problems.length) throw new Error(problems.join("\n"));
+  if (problems.length) throw new ForgeError("CFG-8501", { message: problems.join("\n") });
   for (const part of String(raw ?? "").split(",")) {
     const entry = part.trim().toLowerCase();
     if (entry) entries.push(entry);
@@ -270,7 +270,7 @@ async function checkOutbound(raw: string | URL, options: OutboundOptions, hop: n
   }
   if (isLocalHostname(target.host)) throw refuse(where, "local_hostname", [], hop);
   const addresses = await resolver(target.host);
-  if (!addresses.length) throw new ForgeError("HTP-4002", "目标地址无法解析", 502, undefined, true);
+  if (!addresses.length) throw new ForgeError("HTP-4002", { message: "目标地址无法解析", httpStatus: 502, retryable: true });
   const bad = addresses.find((a) => isBlockedAddress(a.address));
   if (bad) throw refuse(where, classifyBlockedAddress(bad.address), addresses.map((a) => a.address), hop);
   return { url: target.url, addresses, allowlisted: false };
@@ -359,8 +359,8 @@ export async function safeFetch(input: string | URL, init: SafeFetchInit = {}): 
     const location = response.headers.get("location");
     if (![301, 302, 303, 307, 308].includes(response.status) || !location || init.redirect === "manual") return response;
     await response.body?.cancel().catch(() => undefined);
-    if (init.redirect === "error") throw new ForgeError("HTP-4001", "目标地址返回了重定向", 502);
-    if (hop >= maxRedirects) throw new ForgeError("HTP-4001", "重定向次数过多", 502);
+    if (init.redirect === "error") throw new ForgeError("HTP-4001", { message: "目标地址返回了重定向", httpStatus: 502, retryable: false });
+    if (hop >= maxRedirects) throw new ForgeError("HTP-4001", { message: "重定向次数过多", httpStatus: 502, retryable: false });
     const next = new URL(location, url);
     if (next.origin !== url.origin) {
       // P2-04c: a new origin (scheme, host or port changed) only gets the safe headers; credentials and every

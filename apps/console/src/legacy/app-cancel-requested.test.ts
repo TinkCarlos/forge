@@ -67,7 +67,7 @@ function harness(routes: Record<string, Resp>, { modalRunId }: { modalRunId?: st
     return { status: resp.status, ok: resp.status >= 200 && resp.status < 300, text: async () => (resp.body === undefined ? '' : JSON.stringify(resp.body)) }
   }
   const view = modalRunId ? { runId: modalRunId, source: null, attempts: 0, link: 'live', finished: false, sync: 0 } : null
-  const state: Record<string, unknown> = { session: { csrfToken: 'c' }, runs: [], runView: view, eventSource: null }
+  const state: Record<string, unknown> = { session: { permissions:['*'], csrfToken: 'c' }, tab: 'runs', runs: [], runView: view, eventSource: null }
   const deps: Record<string, unknown> = {
     $: (sel: string) => els[sel] ?? null, fetch, state,
     setTimeout: () => 0, clearTimeout: () => {},
@@ -76,7 +76,7 @@ function harness(routes: Record<string, Resp>, { modalRunId }: { modalRunId?: st
   }
   const names = Object.keys(deps)
   const consts = ['RUN_TERMINAL_EVENTS', 'RUN_ACTIVE_STATUSES', 'STREAM_MAX_RETRIES', 'RUN_APPROVAL_EXPIRED_CODE', 'RUN_APPROVAL_EXPIRED_TEXT'].map(constLine).join('\n')
-  const fns = ['esc', 'toast', 'errorText', 'api', 'empty', 'statusPill', 'renderRuns', 'runMessagesHtml', 'runToolsHtml', 'runToolbarHtml',
+  const fns = ['canPermission', 'esc', 'toast', 'errorText', 'api', 'empty', 'statusPill', 'renderRuns', 'runMessagesHtml', 'runToolsHtml', 'runToolbarHtml',
     'renderRunView', 'renderStreamStatus', 'syncRunFromRest', 'endRunStream', 'closeStream']
   const optional = ['runFailureText'].filter(hasFn)
   const src = `${consts}\n${[...fns, ...optional].map(fnSource).join('\n')}\nreturn { ${method('cancelRun')} };`
@@ -119,14 +119,14 @@ describe('旧版 cancelRun：200「已请求取消」', () => {
     expect(h.calls).toContain(`GET ${DETAIL}`)
     expect(h.calls).toContain(`GET ${LIST}`)
     expect(h.calls[0]).toBe(`POST ${CANCEL}`)
-    expect(h.els['#run-toolbar'].innerHTML).toContain('running')
+    expect(h.els['#run-toolbar'].innerHTML).toContain('运行中')
   })
 
   it('Run 弹窗里刷新到已取消：状态栏显示 cancelled，不再有「取消 Run」按钮', async () => {
     const h = harness({ [CANCEL]: { status: 200, body: {} }, [DETAIL]: { status: 200, body: runBody('cancelled') }, [LIST]: LIST_OK }, { modalRunId: RUN_ID })
     await h.app.cancelRun(RUN_ID)
     expect(h.modal.open).toBe(true)
-    expect(h.els['#run-toolbar'].innerHTML).toContain('cancelled')
+    expect(h.els['#run-toolbar'].innerHTML).toContain('已取消')
     expect(h.els['#run-toolbar'].innerHTML).not.toContain('取消 Run')
   })
 })

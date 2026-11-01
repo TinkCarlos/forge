@@ -14,21 +14,22 @@
         <h1>Forge</h1>
         <p class="muted">企业级 Agent 开发框架</p>
         <form id="login-form">
-          <label>邮箱<input name="email" type="email" autocomplete="username" placeholder="name@company.com" required /></label>
+          <label>登录名或邮箱<input name="email" type="text" autocomplete="username" required /></label>
           <label>密码<input name="password" type="password" autocomplete="current-password" required /></label>
           <button class="btn primary block" type="submit">本地登录</button>
         </form>
         <a class="btn ghost block hidden" id="sso-login" href="/auth/oidc/login">使用统一 SSO 登录</a>
-        <p class="hint" id="login-hint">本地账号仅用于初始化和 SSO 故障应急。</p>
+        <p class="hint" id="login-hint"></p>
       </div>
     </div>
 
     <div id="app-view" class="app-shell hidden">
       <aside class="sidebar">
         <div class="sidebar-brand"><span class="brand-mark small">F</span><span>Forge</span></div>
-        <nav id="nav"></nav>
+        <nav id="nav" aria-label="主导航"></nav>
         <div class="sidebar-footer">
           <div id="user-chip" class="user-chip"></div>
+          <button id="password-change" class="btn ghost small">修改密码</button>
           <button id="logout" class="btn ghost small">退出</button>
         </div>
       </aside>
@@ -48,7 +49,7 @@
       </main>
     </div>
 
-    <dialog id="modal">
+    <dialog id="modal" aria-labelledby="modal-title">
       <form method="dialog" id="modal-form">
         <header class="modal-head">
           <h3 id="modal-title"></h3>

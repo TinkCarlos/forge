@@ -4,6 +4,8 @@
 
 ## 1. 文档地图
 
+2026-11-01 已确认增量：统一Job管理、消息管理（Webhook配置归入其中）及四项目共性能力，**已开始基础批次开发，整体尚未实现/验收**。本轮入口：[详细需求](../.talking-us/20261101-113405-Forge后台优化与Job消息管理-详细需求文档.md)、[开发设计](../.talking-us/20261101-113405-Forge后台优化与Job消息管理-开发设计文档.md)、[数据库设计](../.talking-us/20261101-113405-Forge后台优化与Job消息管理-数据库设计文档.md)、[接口设计](../.talking-us/20261101-113405-Forge后台优化与Job消息管理-接口文档.md)。正式需求索引FR-JB/FR-MS；旧E1–E8与未完成能力继续保留。当前实施和未完成项见[闭环进度](../.closed-loop/tasks/20261101-job-message/progress.md)。
+
 | 目录 | 文档 | 内容 | 主要读者 |
 | --- | --- | --- | --- |
 | `01-requirements` | [product-requirements.md](01-requirements/product-requirements.md) | 目标、角色、功能需求编号、非功能需求、验收、路线图 | 产品、架构、开发、AI |
@@ -14,9 +16,12 @@
 | | [permissions.md](02-architecture/permissions.md) | 功能权限、角色矩阵、数据权限、行级过滤、服务账号 | 后端、安全、产品、AI |
 | `03-api` | [open-platform.md](03-api/open-platform.md) | 统一开放平台：鉴权、Run、SSE、Webhook、配额 | 外部开发者、后端、AI |
 | | [admin-api.md](03-api/admin-api.md) | 管理端 API 资源面、约定、权限 | 前端、后端、AI |
+| `reference` | [error-codes.md](reference/error-codes.md) | 从代码生成的错误码、默认状态与恢复建议 | 开发、运维 |
 | `04-data` | [mysql-design.md](04-data/mysql-design.md) | MySQL 表字典、DDL、索引、分区、迁移、备份 | 后端、DBA、AI |
 | `05-development` | [repo-layout.md](05-development/repo-layout.md) | 目标目录、包职责、依赖规则、构建发布 | 开发、AI |
 | | [implementation-status.md](05-development/implementation-status.md) | 已实现/未实现清单、验证证据、与目标架构差异 | 开发、AI、评审 |
+| 补充方案 | [功能补齐与通用执行环境](../.talking-us/2026-10-31-forge-completion-plan.md) | 2026-10-31 需求覆盖、Pi/沙盒、数据/API、实施批次与验收；方案草案，非已实现能力 | 产品、开发、交付 |
+| 开发进度 | [补充功能实施记录](../.talking-us/2026-10-31-forge-development-progress.md) | API Key生命周期增量、验证证据与剩余批次 | 开发、评审 |
 | `06-operations` | [deployment.md](06-operations/deployment.md) | 部署拓扑、环境变量、升级、备份、排障 | 运维、交付、AI |
 | | [release-process.md](06-operations/release-process.md) | 公司 K8s/CI/Nginx 发布规范、迁移与 SSO/Connector 闸门 | 运维、交付、AI |
 | 根目录 | [AGENTS.md](../AGENTS.md) | AI 开发入口、命令、禁止事项、开发配方 | AI、新成员 |
@@ -72,6 +77,8 @@
 | `FR-TR` | 触发器与集成 |
 | `FR-EV` | 评测 |
 | `FR-OB` | 可观测与通知 |
+| `FR-JB` | 统一Job、执行/步骤/批量、恢复与业务交付 |
+| `FR-MS` | 消息渠道/规则/模板/投递及Webhook兼容 |
 | `FR-DLV` | 交付、SSO 发布闸门、发布规范 |
 | `NFR` | 非功能需求 |
 
@@ -111,3 +118,9 @@
 | Data Scope | 数据范围；决定用户在功能内能访问哪些行级数据（组织、本人、应用等） |
 | Schedule | 定时任务；由 Temporal Schedule 驱动，以服务账号身份运行 Agent |
 | Pi | Agent 内核依赖（`@earendil-works/pi-ai`、`pi-mcp`），被适配层隔离 |
+
+E1配置并发编辑：现有写入口/响应见[配置OpenAPI](03-api/configuration.openapi.json)及管理API第20节；009迁移见[MySQL设计](04-data/mysql-design.md)第0节。
+
+- [凭据库升级与密钥轮换](06-operations/secrets.md)：010扩展、旧列回填、私有keyring、重包裹、排空后退役和恢复限制。
+
+- U03全局角色设计：[实施设计](../.talking-us/2026-11-01-forge-roles-design.md)；[内部角色OpenAPI](03-api/roles.openapi.json)。当前交付证据及其余范围以开发进度为准。

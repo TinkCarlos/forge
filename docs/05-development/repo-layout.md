@@ -11,7 +11,7 @@ forge/
 ├── package.json                  workspace 根；scripts 统一入口
 ├── pnpm-workspace.yaml
 ├── tsconfig.base.json
-├── biome.json                    lint + format
+├── eslint.config.js              现有 ESLint 配置
 ├── .env.example                  仅占位符，不含真实密钥
 ├── apps/
 │   ├── api/                      Fastify：/admin /open /integration /auth /sse /static
@@ -34,7 +34,7 @@ forge/
 ├── services/
 │   ├── doc-parser/               Python FastMCP：PDF/OCR/Office
 │   ├── browser/                  Playwright MCP
-│   └── sandbox/                  P2 代码执行隔离
+│   └── executor/                 专用Linux原生执行与会话目录
 ├── plugins/
 │   ├── agents/                   内置/示例 Agent 包
 │   ├── skills/                   内置/示例 Skill
@@ -164,7 +164,7 @@ src/
 | --- | --- | --- | --- |
 | `doc-parser` | Python 3.12 + FastMCP | MCP | 文档解析、OCR；可替换 Docling/MinerU |
 | `browser` | Node/Python + Playwright | MCP | 网页读取；严格并发与网络策略 |
-| `sandbox` | P2 | 内部 API/MCP | 代码执行隔离；不与 Worker 共进程 |
+| `executor` | Node + Linux/systemd | 内部 API | 专用Linux服务器原生执行，workspace账号/目录隔离；网络开放、文件持久；不与API/数据库混部署 |
 
 服务只通过 MCP/HTTP 与主框架交互；不直接访问 MySQL 业务库。凭据由主框架注入或服务自身 Secret 管理，二者择一并在接入文档中声明。
 

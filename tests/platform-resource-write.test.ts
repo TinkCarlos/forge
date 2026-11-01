@@ -1,3 +1,4 @@
+import { configurationHeaders } from "./helpers/configuration-headers.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
@@ -40,26 +41,26 @@ async function snapshot() {
     providers: await query("SELECT `key`, name, base_url, status, updated_at FROM llm_providers WHERE `key` LIKE ? ORDER BY `key`", [like]),
     models: await query("SELECT `key`, display_name, status, updated_at FROM llm_models WHERE provider_id = ? ORDER BY `key`", [ids.provider]),
     plugins: await n("SELECT COUNT(*) AS n FROM plugins WHERE `key` LIKE ?", [like]),
-    audit: await n(`SELECT COUNT(*) AS n FROM audit_logs WHERE actor_id IN (${actors.map(() => "?").join(",")})`, actors),
+    audit: await n(`SELECT COUNT(*) AS n FROM audit_logs WHERE outcome = 'success' AND actor_id IN (${actors.map(() => "?").join(",")})`, actors),
   };
 }
 
 const writes: Record<string, (h: Record<string, string>) => Promise<LightMyRequestResponse>> = {
   "POST /mcp": (h) => app.inject({ method: "POST", url: "/admin/api/mcp", headers: h, payload: { key: k("mcp-new"), name: "x", url: "https://mcp.example.com/mcp" } }),
-  "PATCH /mcp/:id": (h) => app.inject({ method: "PATCH", url: `/admin/api/mcp/${ids.mcp}`, headers: h, payload: { name: "renamed" } }),
-  "POST /mcp/:id/refresh": (h) => app.inject({ method: "POST", url: `/admin/api/mcp/${ids.mcp}/refresh`, headers: h }),
+  "PATCH /mcp/:id": async (h) => app.inject({ method: "PATCH", url: `/admin/api/mcp/${ids.mcp}`, headers: await configurationHeaders(`/admin/api/mcp/${ids.mcp}`, h), payload: { name: "renamed" } }),
+  "POST /mcp/:id/refresh": async (h) => app.inject({ method: "POST", url: `/admin/api/mcp/${ids.mcp}/refresh`, headers: await configurationHeaders(`/admin/api/mcp/${ids.mcp}/refresh`, h) }),
   "POST /skills": (h) => app.inject({ method: "POST", url: "/admin/api/skills", headers: h, payload: { key: k("skill-new"), name: "x", content: "x" } }),
-  "PATCH /skills/:id": (h) => app.inject({ method: "PATCH", url: `/admin/api/skills/${ids.skill}`, headers: h, payload: { name: "renamed" } }),
-  "POST /skills/:id/versions": (h) => app.inject({ method: "POST", url: `/admin/api/skills/${ids.skill}/versions`, headers: h, payload: { version: "9.9.9", content: "y" } }),
+  "PATCH /skills/:id": async (h) => app.inject({ method: "PATCH", url: `/admin/api/skills/${ids.skill}`, headers: await configurationHeaders(`/admin/api/skills/${ids.skill}`, h), payload: { name: "renamed" } }),
+  "POST /skills/:id/versions": async (h) => app.inject({ method: "POST", url: `/admin/api/skills/${ids.skill}/versions`, headers: await configurationHeaders(`/admin/api/skills/${ids.skill}/versions`, h), payload: { version: "9.9.9", content: "y" } }),
   "POST /tool-sources/import": (h) =>
     app.inject({ method: "POST", url: "/admin/api/tool-sources/import", headers: h, payload: { key: k("tls-new"), baseUrl: "https://api.example.com", spec: { openapi: "3.0.0", info: { title: "t", version: "1" }, paths: {} } } }),
-  "POST /plugins/install": (h) =>
-    app.inject({ method: "POST", url: "/admin/api/plugins/install", headers: h, payload: { key: k("plugin-new"), resources: { skills: [{ key: k("skill-plugin"), content: "x" }] } } }),
+  "POST /plugins/install": async (h) =>
+    app.inject({ method: "POST", url: "/admin/api/plugins/install", headers: await configurationHeaders("/admin/api/plugins/install", h), payload: { key: k("plugin-new"), resources: { skills: [{ key: k("skill-plugin"), content: "x" }] } } }),
   "POST /providers": (h) => app.inject({ method: "POST", url: "/admin/api/providers", headers: h, payload: { key: k("prv-new"), name: "x", protocol: "openai-compatible", baseUrl: "https://llm.example.com/v1" } }),
-  "POST /providers/:id/models": (h) => app.inject({ method: "POST", url: `/admin/api/providers/${ids.provider}/models`, headers: h, payload: { key: "m-new", displayName: "x" } }),
-  "PATCH /providers/:id": (h) => app.inject({ method: "PATCH", url: `/admin/api/providers/${ids.provider}`, headers: h, payload: { name: "renamed" } }),
-  "PATCH /models/:id": (h) => app.inject({ method: "PATCH", url: `/admin/api/models/${ids.model}`, headers: h, payload: { displayName: "renamed" } }),
-  "POST /providers/:id/test": (h) => app.inject({ method: "POST", url: `/admin/api/providers/${ids.provider}/test`, headers: h }),
+  "POST /providers/:id/models": async (h) => app.inject({ method: "POST", url: `/admin/api/providers/${ids.provider}/models`, headers: await configurationHeaders(`/admin/api/providers/${ids.provider}/models`, h), payload: { key: "m-new", displayName: "x" } }),
+  "PATCH /providers/:id": async (h) => app.inject({ method: "PATCH", url: `/admin/api/providers/${ids.provider}`, headers: await configurationHeaders(`/admin/api/providers/${ids.provider}`, h), payload: { name: "renamed" } }),
+  "PATCH /models/:id": async (h) => app.inject({ method: "PATCH", url: `/admin/api/models/${ids.model}`, headers: await configurationHeaders(`/admin/api/models/${ids.model}`, h), payload: { displayName: "renamed" } }),
+  "POST /providers/:id/test": async (h) => app.inject({ method: "POST", url: `/admin/api/providers/${ids.provider}/test`, headers: await configurationHeaders(`/admin/api/providers/${ids.provider}/test`, h) }),
 };
 
 beforeAll(async () => {

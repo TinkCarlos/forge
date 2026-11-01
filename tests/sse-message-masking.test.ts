@@ -40,8 +40,9 @@ async function readSse(headers: Record<string, string>, url: string, runId: stri
 }
 async function newRun(text: string, status?: string): Promise<string> {
   const threadId = await repos.createThread({ agentId, orgUnitId: ROOT, subjectType: "user", subjectId: ADMIN_ID });
-  const runId = await repos.createRun({ threadId, agentId, agentVersionId: versionId, appId, orgUnitId: ROOT, subjectType: "user", subjectId: ADMIN_ID, input: { text }, status });
+  const runId = await repos.createRun({ threadId, agentId, agentVersionId: versionId, appId, orgUnitId: ROOT, subjectType: "user", subjectId: ADMIN_ID, input: { text } });
   await repos.addMessage({ threadId, runId, seq: 1, role: "user", content: { text } });
+  if(status)await repos.updateRun(runId,{status});
   runs.push(runId);
   return runId;
 }
@@ -53,7 +54,7 @@ beforeAll(async () => {
   const pa = await realSession({ role: "platform_admin", orgUnitId: ROOT, dataScope: "all" });
   adminHeaders = sessionHeaders(pa, sessionCookieValue(pa));
   agentId = await repos.createAgent({ key: `it-ssem-${suffix}`, name: "IT ssem", ownerOrgUnitId: ROOT, createdBy: ADMIN_ID });
-  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" }, limits: { maxSteps: 2 } }, status: "published", createdBy: ADMIN_ID });
+  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" }, limits: { maxSteps: 2 } }, status: "published", createdBy: ADMIN_ID }, { expectedRevision: "system" });
   appId = await repos.createApiApp({ key: `it-ssem-${suffix}`, name: "IT ssem", ownerOrgUnitId: ROOT, scopes: ["runs:read"] });
   openKey = `fsk_${randomBytes(32).toString("base64url")}`;
   await repos.createApiKey({ appId, name: "it", prefix: openKey.slice(0, 16), keyHash: hashApiKey(openKey, config.API_KEY_PEPPER), scopes: ["runs:read"] });

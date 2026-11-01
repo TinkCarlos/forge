@@ -34,7 +34,7 @@ export function isAdminApiRequest(request: Pick<FastifyRequest, "url" | "routeOp
 // Root-level preHandler: enforces X-CSRF-Token on mutating /admin/api requests that carry a session.
 export function installCsrfHook(app: FastifyInstance): void {
   app.addHook("preHandler", async (request) => {
-    if (isAdminApiRequest(request) && !["GET", "HEAD", "OPTIONS"].includes(request.method)) {
+    if ((isAdminApiRequest(request) || request.routeOptions.url === "/auth/password" || request.routeOptions.url === "/auth/logout") && !["GET", "HEAD", "OPTIONS"].includes(request.method)) {
       const session = await readStoredSession(request);
       if (session && request.headers["x-csrf-token"] !== session.csrfToken) {
         throw errors.forbidden("CSRF Token 缺失或无效");

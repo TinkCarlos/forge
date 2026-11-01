@@ -7,11 +7,14 @@ const state = {
   schedules: [],
   apps: [],
   users: [],
+  userFilters: { q: "", status: "", cursor: "", history: [] },
+  auditFilters: { action: "", resourceType: "", resourceId: "", actorId: "", outcome: "", from: "", to: "", cursor: "", history: [] },
   approvals: [],
   mcp: [],
   skills: [],
   plugins: [],
   toolSources: [],
+  secrets: [],
   sso: null,
   eventSource: null,
   runView: null,
@@ -19,35 +22,37 @@ const state = {
 
 const $ = (selector) => document.querySelector(selector);
 const navGroups = [
-  { label: "概览", items: [{ id: "dashboard", label: "总览", icon: "D" }] },
+  { label: "概览", items: [{ id: "dashboard", label: "总览", icon: "D", permission: "agent.view" }] },
   {
     label: "构建",
     items: [
-      { id: "agents", label: "Agents", icon: "A" },
-      { id: "models", label: "模型", icon: "M" },
-      { id: "mcp", label: "MCP 服务", icon: "C" },
-      { id: "skills", label: "Skills", icon: "S" },
-      { id: "tools", label: "工具源", icon: "T" },
-      { id: "packages", label: "能力包", icon: "P" },
+      { id: "agents", label: "Agents", icon: "A", permission: "agent.view" },
+      { id: "models", label: "模型", icon: "M", permission: "model.view" },
+      { id: "mcp", label: "MCP 服务", icon: "C", permission: "mcp.view" },
+      { id: "skills", label: "Skills", icon: "S", permission: "skill.view" },
+      { id: "tools", label: "工具源", icon: "T", permission: "tool.view" },
+      { id: "packages", label: "能力包", icon: "P", permission: "package.view" },
     ],
   },
   {
     label: "运行",
     items: [
-      { id: "runs", label: "运行中心", icon: "R" },
-      { id: "approvals", label: "审批中心", icon: "!" },
-      { id: "schedules", label: "定时任务", icon: "H" },
+      { id: "runs", label: "运行中心", icon: "R", permission: "run.view" },
+      { id: "approvals", label: "审批中心", icon: "!", permission: "approval.view" },
+      { id: "schedules", label: "定时任务", icon: "H", permission: "schedule.view" },
     ],
   },
   {
     label: "开放平台",
-    items: [{ id: "apps", label: "应用与密钥", icon: "K" }],
+    items: [{ id: "apps", label: "应用与密钥", icon: "K", permission: "apikey.view" }],
   },
   {
     label: "治理",
     items: [
-      { id: "users", label: "用户与权限", icon: "U" },
-      { id: "sso", label: "SSO / Connector", icon: "I" },
+      { id: "users", label: "账号与权限", icon: "U", anyPermissions: ["user.view", "role.view"] },
+      { id: "audit", label: "操作日志", icon: "L", permission: "audit.view" },
+      { id: "secrets", label: "凭据", icon: "V", permission: "secret.manage" },
+      { id: "sso", label: "SSO / Connector", icon: "I", permission: "sso.manage" },
     ],
   },
 ];
@@ -58,12 +63,14 @@ const tabMeta = {
   mcp: ["MCP 服务", "添加远程 MCP，发现工具并测试"],
   skills: ["Skills", "安装、编写与发布技能"],
   tools: ["工具源", "导入 OpenAPI 并生成可调用工具"],
-  packages: ["能力包", "以声明式 JSON 安装 Agent / Skill / MCP / Provider"],
+  packages: ["能力包", "导入能力包，安装 Agent / Skill / MCP / 模型"],
   runs: ["运行中心", "查看执行日志、工具调用与实时事件"],
   approvals: ["审批中心", "处理高风险工具调用"],
-  schedules: ["定时任务", "按 Cron 以绑定的服务账号身份运行"],
+  schedules: ["定时任务", "按计划以选定的服务账号运行"],
   apps: ["应用与密钥", "开放平台 API Key、配额与 Webhook"],
-  users: ["用户与权限", "功能角色与数据范围"],
+  users: ["账号与权限", ""],
+  audit: ["操作日志", ""],
+  secrets: ["凭据", ""],
   sso: ["SSO / Connector", "统一登录与 Agent 平台接入状态"],
 };
 
@@ -113,6 +120,11 @@ function errorText(error) {
   if (!(error instanceof Error)) return String(error ?? "");
   if (error.sessionExpired) return "";
   return error.code ? `${error.message}（错误码 ${error.code}）` : error.message;
+}
+
+function revisionHeaders(resource) {
+  if (!Number.isInteger(resource?.revision) || resource.revision < 1) throw new Error("配置版本已失效，请重新打开后操作");
+  return { "If-Match": `"${resource.revision}"` };
 }
 
 async function api(path, options = {}) {
@@ -170,6 +182,7 @@ async function api(path, options = {}) {
   if (!response.ok) {
     const error = new Error(payload?.error?.message ?? `请求失败 (${response.status})`);
     error.code = payload?.error?.code;
+    error.details = payload?.error?.details;
     error.status = response.status;
     throw error;
   }
@@ -189,6 +202,7 @@ function handleSessionExpired() {
 }
 
 function showLogin() {
+  closeStream();
   state.session = null;
   $("#app-view").classList.add("hidden");
   $("#login-view").classList.remove("hidden");
@@ -219,14 +233,16 @@ async function init() {
         body: { email: data.get("email"), password: data.get("password") },
         auth: "login",
       });
+      location.hash = routeAfterLogin(location.hash.slice(1));
       await enterApp();
     } catch (error) {
       toast(errorText(error), "error");
     }
   });
+  $("#password-change")?.addEventListener("click", () => { app.openPasswordChange().catch(error => toast(errorText(error), "error")); });
   $("#logout").addEventListener("click", async () => {
-    await api("/auth/logout", { method: "POST", auth: "probe" }).catch(() => {});
-    showLogin();
+    try { await api("/auth/logout", { method: "POST", auth: "probe" }); showLogin(); }
+    catch (error) { if (error.status === 401) showLogin(); else toast("退出登录失败，请重试", "error"); }
   });
   $("#refresh").addEventListener("click", () => refreshCurrent());
   bindAgentActions();
@@ -269,25 +285,43 @@ async function enterApp() {
   await switchTab(location.hash.slice(1) || "dashboard");
 }
 
+function navAllowed(item) {
+  return item.anyPermissions ? item.anyPermissions.some(canPermission) : !item.permission || canPermission(item.permission);
+}
+
+function routeAfterLogin(route) {
+  const pages = navGroups.flatMap(group => group.items);
+  const requested = route.split("/")[0];
+  const allowed = pages.find(item => item.id === requested && navAllowed(item)) ?? pages.find(item => navAllowed(item));
+  if (allowed?.id === "users") return route === "users/roles" && canPermission("role.view") || !canPermission("user.view") ? "users/roles" : "users";
+  return allowed?.id === requested ? route : allowed?.id ?? "agents";
+}
+
 function renderNav() {
   const nav = $("#nav");
+  const restoreFocus = nav.contains(document.activeElement);
   nav.innerHTML = navGroups
+    .filter(group => group.items.some(navAllowed))
     .map(
       (group) => `
       <div class="nav-section">${group.label}</div>
       ${group.items
+        .filter(navAllowed)
         .map(
-          (item) => `<button class="nav-item ${state.tab === item.id ? "active" : ""}" onclick="app.switchTab('${item.id}')">
-            <span class="nav-icon">${item.icon}</span><span>${item.label}</span>
+          (item) => `<button class="nav-item ${state.tab === item.id ? "active" : ""}" ${state.tab === item.id ? 'aria-current="page"' : ""} onclick="app.switchTab('${item.id}')">
+            <span class="nav-icon" aria-hidden="true">${item.icon}</span><span>${item.label}</span>
           </button>`,
         )
         .join("")}
     `,
     )
     .join("");
+  const selected = nav.querySelector('[aria-current="page"]');
+  if (restoreFocus) selected?.focus({ preventScroll: true });
+  selected?.scrollIntoView({ block: "nearest", inline: "nearest" });
 }
 
-// K-33：hash 形如 `tab` 或 `agents/<encodeURIComponent(id)>`；只有 Agents 页认 id，渲染完列表后打开该 Agent 详情。
+// 对象深链接保留目标 ID，避免从审批跳转后重新在列表里寻找。
 function parseRoute(route) {
   const raw = String(route ?? "").replace(/^#/, "");
   const slash = raw.indexOf("/");
@@ -309,9 +343,12 @@ function onHashChange() {
 }
 
 async function switchTab(route) {
+  const navigation = (state.navigation ?? 0) + 1; state.navigation = navigation;
   let { tab, id } = parseRoute(route);
   if (!tabMeta[tab]) tab = "dashboard";
-  if (tab !== "agents" || !isEntityId(id)) id = "";
+  if (tab === "users") id = id === "roles" || (!canPermission("user.view") && canPermission("role.view")) ? "roles" : "";
+  else if (!((tab === "agents" && id === "new") || (["agents", "runs"].includes(tab) && isEntityId(id)))) id = "";
+  state.accountSection = id === "roles" ? "roles" : "accounts";
   state.tab = tab;
   state.route = id ? `${tab}/${encodeURIComponent(id)}` : tab;
   location.hash = state.route;
@@ -321,9 +358,13 @@ async function switchTab(route) {
   $("#content").innerHTML = `<div class="card"><div class="card-body muted">加载中…</div></div>`;
   try {
     await renderCurrent();
-    if (id) await app.openAgentDetail(id);
+    if (navigation !== state.navigation) return;
+    if (tab === "agents" && id === "new") {
+      if (canPermission("agent.manage")) app.openAgentCreate();
+    } else if (tab === "agents" && id) await app.openAgentDetail(id, navigation);
+    else if (tab === "runs" && id) await app.openRun(id, navigation);
   } catch (error) {
-    $("#content").innerHTML = errorCard(error);
+    if (navigation === state.navigation) $("#content").innerHTML = errorCard(error);
   }
 }
 
@@ -341,8 +382,10 @@ async function renderCurrent() {
     case "approvals": return renderApprovals();
     case "schedules": return renderSchedules();
     case "apps": return renderApps();
-    case "users": return renderUsers();
+    case "users": return state.accountSection === "roles" ? renderRoles() : renderUsers();
+    case "audit": return renderAudit();
     case "sso": return renderSso();
+    case "secrets": return renderSecrets();
     default: return renderDashboard();
   }
 }
@@ -363,48 +406,49 @@ function empty(title, text, action = "") {
   return `<div class="empty"><strong>${esc(title)}</strong><span>${esc(text)}</span>${action ? `<div style="margin-top:14px">${action}</div>` : ""}</div>`;
 }
 
-function statusPill(status) {
+function statusPill(status, label) {
   const map = {
     active: "ok", succeeded: "ok", approved: "ok",
     queued: "info", running: "info", waiting_approval: "warn", pending: "warn", disabled: "warn",
     failed: "bad", rejected: "bad", cancelled: "bad", expired: "bad", budget_exhausted: "bad",
   };
-  return `<span class="pill ${map[status] ?? ""}">${esc(status)}</span>`;
+  const labels = { active: "启用", succeeded: "成功", approved: "已批准", queued: "排队中", running: "运行中", waiting_approval: "待审批", pending: "待处理", disabled: "停用", failed: "失败", rejected: "已驳回", cancelled: "已取消", expired: "已过期", budget_exhausted: "预算耗尽", draft: "草稿", published: "已发布" };
+  return `<span class="pill ${map[status] ?? ""}">${esc(label ?? labels[status] ?? status)}</span>`;
 }
 
 async function renderDashboard() {
   const data = await api("/admin/api/dashboard");
-  const runs = await api("/admin/api/runs?limit=6");
+  const runs = canPermission("run.view") ? await api("/admin/api/runs?limit=6") : { items: [] };
   const byStatus = data.runsByStatus ?? {};
   $("#content").innerHTML = `
-    <div class="grid cols-4">
-      ${stat("今日运行", data.runsToday, "当前实例")}
+    <div class="grid dashboard-stats">
+      ${canPermission("run.view") ? stat("今日运行", data.runsToday, "当前实例") : ""}
       ${stat("Agents", data.agents, "已配置")}
-      ${stat("待审批", data.pendingApprovals, "需要处理")}
-      ${stat("运行中", (byStatus.running ?? 0) + (byStatus.queued ?? 0), "队列 + 执行中")}
+      ${canPermission("approval.view") ? stat("待审批", data.pendingApprovals, "需要处理") : ""}
+      ${canPermission("run.view") ? stat("运行中", (byStatus.running ?? 0) + (byStatus.queued ?? 0), "队列 + 执行中") : ""}
     </div>
     <div class="grid cols-2">
-      <div class="card">
+      ${canPermission("agent.manage") || (canPermission("model.view") && canPermission("model.manage")) || (canPermission("package.view") && canPermission("plugin.install")) ? `<div class="card">
         <div class="card-head"><div><h3>快速开始</h3><p class="muted">离线 Mock 模型已就绪</p></div></div>
         <div class="card-body actions">
-          <button class="btn primary" onclick="app.openAgentCreate()">新建 Agent</button>
-          <button class="btn ghost" onclick="app.openProviderCreate()">接入自定义模型</button>
-          <button class="btn ghost" onclick="app.switchTab('packages')">安装能力包</button>
+          ${canPermission("agent.manage") ? `<button class="btn primary" onclick="app.openAgentCreate()">新建 Agent</button>` : ""}
+          ${canPermission("model.manage") && canPermission("model.view") ? `<button class="btn ghost" onclick="app.openProviderCreate()">接入自定义模型</button>` : ""}
+          ${canPermission("package.view") && canPermission("plugin.install") ? `<button class="btn ghost" onclick="app.switchTab('packages')">安装能力包</button>` : ""}
         </div>
-      </div>
-      <div class="card">
+      </div>` : ""}
+      ${canPermission("run.view") ? `<div class="card">
         <div class="card-head"><div><h3>运行状态</h3><p class="muted">按状态统计</p></div></div>
         <div class="card-body">
           ${Object.entries(byStatus).length ? Object.entries(byStatus).map(([key, value]) => `<div style="display:flex;justify-content:space-between;padding:5px 0"><span>${statusPill(key)}</span><strong>${value}</strong></div>`).join("") : `<span class="muted">暂无运行</span>`}
         </div>
-      </div>
+      </div>` : ""}
     </div>
-    <div class="card">
+    ${canPermission("run.view") ? `<div class="card">
       <div class="card-head"><div><h3>最近运行</h3><p class="muted">点开查看消息与工具调用</p></div><button class="btn ghost small" onclick="app.switchTab('runs')">全部</button></div>
       ${runs.items?.length ? `<div class="table-wrap"><table><thead><tr><th>Run</th><th>Agent</th><th>状态</th><th>成本</th><th>时间</th><th></th></tr></thead><tbody>
-        ${runs.items.map((run) => `<tr><td class="mono">${esc(run.id)}</td><td>${esc(run.agentName)}</td><td>${statusPill(run.status)}</td><td>$${Number(run.costUsd).toFixed(4)}</td><td>${fmt(run.createdAt)}</td><td><button class="btn ghost small" onclick="app.openRun('${esc(run.id)}')">查看</button></td></tr>`).join("")}
+        ${runs.items.map((run) => `<tr><td class="mono">${esc(run.id)}</td><td>${esc(run.agentName)}</td><td>${statusPill(run.status)}</td><td>$${Number(run.costUsd).toFixed(4)}</td><td>${fmt(run.createdAt)}</td><td>${canPermission("run.view") ? `<button class="btn ghost small" onclick="app.openRun('${esc(run.id)}')">查看</button>` : ""}</td></tr>`).join("")}
       </tbody></table></div>` : empty("还没有运行", "打开 Agents 试运行一次，或调用开放 API。")}
-    </div>`;
+    </div>` : ""}`;
 }
 
 function stat(label, value, sub) {
@@ -421,24 +465,82 @@ async function renderAgents() {
   $("#content").innerHTML = `
     <div class="card">
       <div class="card-head"><div><h3>Agents</h3><p class="muted">发布版本、开启开放 API、试运行</p></div>
-        <div class="actions"><button class="btn ghost" onclick="app.switchTab('packages')">安装能力包</button><button class="btn primary" onclick="app.openAgentCreate()">新建 Agent</button></div>
+        <div class="actions">${canPermission("package.view") && canPermission("plugin.install") ? `<button class="btn ghost" onclick="app.switchTab('packages')">安装能力包</button>` : ""}${canPermission("agent.manage") ? `<button class="btn primary" onclick="app.openAgentCreate()">新建 Agent</button>` : ""}</div>
       </div>
-      ${state.agents.length ? `<div class="table-wrap"><table><thead><tr><th>Key</th><th>名称</th><th>版本</th><th>开放 API</th><th>状态</th><th>操作</th></tr></thead><tbody>
+      ${state.agents.length ? `<div class="table-wrap"><table class="agent-table"><thead><tr><th>Key</th><th>名称</th><th>版本</th><th>开放 API</th><th>状态</th><th>操作</th></tr></thead><tbody>
         ${state.agents.map((agent) => `<tr>
-          <td class="mono">${esc(agent.key)}</td><td><strong>${esc(agent.name)}</strong><div class="muted">${esc(agent.description)}</div></td>
+          <td class="mono">${esc(agent.key)}</td><td><strong><a href="#agents/${esc(encodeURIComponent(agent.id))}" data-action="agent-detail" data-agent-id="${esc(agent.id)}">${esc(agent.name)}</a></strong><div class="muted">${esc(agent.description)}</div></td>
           <td>${esc(agent.publishedVersion ?? "未发布")}</td>
           <td>${agent.apiEnabled ? `<span class="pill ok">已开放</span>` : `<span class="pill">未开放</span>`}</td>
           <td>${statusPill(agent.status)}</td>
           <td><div class="actions">
-            <button class="btn ghost small" type="button" data-action="agent-run" data-agent-id="${esc(agent.id)}">试运行</button>
-            <button class="btn ghost small" type="button" data-action="agent-new-version" data-agent-id="${esc(agent.id)}">新版本</button>
-            ${agent.draft ? `<button class="btn ghost small" onclick="app.publishAgent('${esc(agent.id)}')">发布草稿 ${esc(vLabel(agent.draft.version))}</button>` : ""}
-            <button class="btn ghost small" onclick="app.toggleAgentApi('${esc(agent.id)}',${agent.apiEnabled ? "false" : "true"})">${agent.apiEnabled ? "关闭 API" : "开放 API"}</button>
-            <button class="btn ghost small" onclick="app.openAgentDetail('${esc(agent.id)}')">详情</button>
+            ${canPermission("agent.run") ? `<button class="btn ghost small" type="button" data-action="agent-run" data-agent-id="${esc(agent.id)}">试运行</button>` : ""}
+            <details class="row-menu"><summary class="btn ghost small">更多</summary><div class="row-menu-actions">
+            ${canPermission("agent.publish") ? `<button class="btn ghost small" type="button" data-action="agent-new-version" data-agent-id="${esc(agent.id)}">新版本草稿</button>` : ""}
+            ${agent.draft ? `${canPermission("agent.publish") ? `<button class="btn ghost small" onclick="app.publishAgent('${esc(agent.id)}')">发布草稿 ${esc(vLabel(agent.draft.version))}</button>` : ""}` : ""}
+            ${canPermission("agent.manage") ? `<button class="btn ghost small" onclick="app.toggleAgentApi('${esc(agent.id)}',${agent.apiEnabled ? "false" : "true"})">${agent.apiEnabled ? "关闭 API" : "开放 API"}</button>` : ""}
+            <button class="btn ghost small" onclick="app.openAgentDetail('${esc(agent.id)}')">配置详情</button>
+            </div></details>
           </div></td>
         </tr>`).join("")}
-      </tbody></table></div>` : empty("还没有 Agent", "新建一个 Agent，默认使用离线 Mock 模型即可运行。", `<button class="btn primary" onclick="app.openAgentCreate()">新建 Agent</button>`)}
+      </tbody></table></div>` : empty("还没有 Agent", "新建一个 Agent，默认使用离线 Mock 模型即可运行。", `${canPermission("agent.manage") ? `<button class="btn primary" onclick="app.openAgentCreate()">新建 Agent</button>` : ""}`)}
     </div>`;
+}
+
+function canManageSecrets() {
+  const permissions = state.session?.permissions;
+  return Array.isArray(permissions) && (permissions.includes("*") || permissions.includes("secret.manage"));
+}
+
+function secretScopeText(scope) {
+  if (scope.type === "platform") return "平台";
+  if (scope.type === "org") return `组织 · ${scope.id}`;
+  return `${secretResourceDirectories()[scope.resourceType]?.[0] ?? scope.resourceType} · ${scope.id}`;
+}
+
+async function renderSecrets(cursor = "") {
+  const data = await api(`/admin/api/secrets?limit=50${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`);
+  state.secrets = data.items;
+  state.secretNextCursor = data.nextCursor;
+  $("#content").innerHTML = `<div class="card">
+    <div class="card-head"><h3>凭据</h3><button class="btn primary" onclick="app.openSecretCreate()">新建凭据</button></div>
+    ${data.items.length ? `<div class="table-wrap"><table class="secret-table"><thead><tr><th>名称 / Key</th><th>作用域</th><th>版本</th><th>主密钥版本</th><th>引用数</th><th>状态</th><th>操作</th></tr></thead><tbody>
+      ${data.items.map(secret => `<tr><td><strong>${esc(secret.name)}</strong><div class="mono muted">${esc(secret.key)}</div></td><td class="mono">${esc(secretScopeText(secret.scope))}</td><td>${secret.activeVersion}</td><td class="mono">${esc(secret.keyVersion)}</td><td>${secret.referenceCount}</td><td>${statusPill(secret.status)}</td><td><div class="actions">
+        <button class="btn ghost small" onclick="app.openSecretDetail('${esc(secret.id)}')">详情</button>
+        <button class="btn ghost small" onclick="app.openSecretEdit('${esc(secret.id)}')">编辑</button>
+        <button class="btn ghost small" onclick="app.openSecretRotate('${esc(secret.id)}')">轮换</button>
+        <button class="btn ghost small" onclick="app.setSecretStatus('${esc(secret.id)}')">${secret.status === "active" ? "停用" : "启用"}</button>
+        <button class="btn ghost small" onclick="app.deleteSecret('${esc(secret.id)}')">删除</button>
+      </div></td></tr>`).join("")}</tbody></table></div>` : `<div class="card-body muted">暂无凭据</div>`}
+    ${cursor || data.nextCursor ? `<div class="card-body actions">${cursor ? `<button class="btn ghost small" onclick="app.secretFirstPage()">首页</button>` : ""}${data.nextCursor ? `<button class="btn ghost small" onclick="app.secretNextPage()">下一页</button>` : ""}</div>` : ""}
+  </div>`;
+}
+
+
+function credentialReferenceField(label, name, value = "") {
+  return canManageSecrets() ? `<div class="full"><label>${esc(label.replace(" ID", ""))}<select name="${esc(name)}" data-secret-picker><option value="">不绑定已有凭据</option>${value ? `<option value="${esc(value)}" selected>当前已绑定凭据</option>` : ""}</select></label></div>` : "";
+}
+
+function credentialHeaderFields(resource = {}) {
+  return `<details class="full advanced-config"><summary>请求头设置（选填）</summary><p class="hint">默认保留已有请求头值；需要替换时逐行填写。凭据值不会回显。</p>${recordFields("替换请求头值", "headers", {}, { optional: true, credential: true, header: true })}${canManageSecrets() ? recordFields("请求头凭据", "headerSecretRefs", resource.headerSecretRefs ?? {}, { secret: true, header: true }) : ""}</details>`;
+}
+
+function credentialHeadersChange(data, resource = {}) {
+  const raw = String(data.get("headers") ?? "").trim(), refRaw = data.get("headerSecretRefs");
+  const values = raw ? parseJsonField(data, "headers", {}) : undefined;
+  const refs = refRaw == null ? undefined : parseJsonField(data, "headerSecretRefs", {});
+  const same = refs !== undefined && JSON.stringify(refs) === JSON.stringify(resource.headerSecretRefs ?? {});
+  if (values !== undefined && refs !== undefined) {
+    for (const name of Object.keys(values)) for (const ref of Object.keys(refs)) if (ref.toLowerCase() === name.toLowerCase()) delete refs[ref];
+  }
+  return { ...(values !== undefined ? { headers: values } : {}), ...(refs !== undefined && (!same || values !== undefined) ? { headerSecretRefs: refs } : {}) };
+}
+
+function credentialReferenceChange(data, name, current, rawName) {
+  const ref = data.get(name), value = String(ref ?? "").trim();
+  if (ref == null || value === (current ?? "")) return {};
+  if (data.get(rawName)) throw new Error("凭据值和引用不能同时指定");
+  return { [name]: value || null };
 }
 
 async function renderModels() {
@@ -447,7 +549,7 @@ async function renderModels() {
   $("#content").innerHTML = `
     <div class="card">
       <div class="card-head"><div><h3>模型 Provider</h3><p class="muted">支持内置 Mock 与任意 OpenAI-compatible 端点</p></div>
-        <button class="btn primary" onclick="app.openProviderCreate()">添加 Provider</button></div>
+        ${canPermission("model.manage") && canPermission("model.view") ? `<button class="btn primary" onclick="app.openProviderCreate()">添加 Provider</button>` : ""}</div>
       ${state.providers.length ? `<div class="card-body grid cols-2">${state.providers.map((provider) => `
         <div class="card" style="box-shadow:none">
           <div class="card-body">
@@ -456,12 +558,12 @@ async function renderModels() {
             <div class="mono" style="word-break:break-all">${esc(provider.baseUrl)}</div>
             <div style="margin-top:12px">${provider.models?.length ? provider.models.map((model) => `<div style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid var(--border)"><span class="mono">${esc(model.key)}</span><span class="pill">${esc(model.displayName)}</span></div>`).join("") : `<span class="muted">还没有模型</span>`}</div>
             <div class="actions" style="margin-top:12px">
-              <button class="btn ghost small" onclick="app.openModelCreate('${esc(provider.id)}')">添加模型</button>
-              <button class="btn ghost small" onclick="app.openProviderEdit('${esc(provider.id)}')">编辑 Provider</button>
-              <button class="btn ghost small" onclick="app.testProvider('${esc(provider.id)}')">测试连接</button>
+              ${canPermission("model.manage") ? `<button class="btn ghost small" onclick="app.openModelCreate('${esc(provider.id)}')">添加模型</button>` : ""}
+              ${canPermission("model.manage") ? `<button class="btn ghost small" onclick="app.openProviderEdit('${esc(provider.id)}')">编辑 Provider</button>` : ""}
+              ${canPermission("model.manage") ? `<button class="btn ghost small" onclick="app.testProvider('${esc(provider.id)}')">测试连接</button>` : ""}
             </div>
           </div>
-        </div>`).join("")}</div>` : empty("还没有 Provider", "添加一个 OpenAI-compatible 端点，或使用内置 Mock。", `<button class="btn primary" onclick="app.openProviderCreate()">添加 Provider</button>`)}
+        </div>`).join("")}</div>` : empty("还没有 Provider", "添加一个 OpenAI-compatible 端点，或使用内置 Mock。", `${canPermission("model.manage") && canPermission("model.view") ? `<button class="btn primary" onclick="app.openProviderCreate()">添加 Provider</button>` : ""}`)}
     </div>`;
 }
 
@@ -470,9 +572,9 @@ async function renderMcp() {
   state.mcp = data.items ?? [];
   $("#content").innerHTML = `
     <div class="card">
-      <div class="card-head"><div><h3>MCP 服务</h3><p class="muted">Streamable HTTP；添加后自动发现工具</p></div><button class="btn primary" onclick="app.openMcpCreate()">添加 MCP</button></div>
+      <div class="card-head"><div><h3>MCP 服务</h3><p class="muted">Streamable HTTP；添加后自动发现工具</p></div>${canPermission("mcp.manage") ? `<button class="btn primary" onclick="app.openMcpCreate()">添加 MCP</button>` : ""}</div>
       ${state.mcp.length ? `<div class="table-wrap"><table><thead><tr><th>Key</th><th>名称</th><th>URL</th><th>工具</th><th>状态</th><th>操作</th></tr></thead><tbody>
-        ${state.mcp.map((server) => `<tr><td class="mono">${esc(server.key)}</td><td>${esc(server.name)}</td><td class="mono">${esc(server.url)}</td><td>${server.tools?.length ?? 0}</td><td>${statusPill(server.status)}${server.lastError ? `<div class="muted">${esc(server.lastError)}</div>` : ""}</td><td><div class="actions"><button class="btn ghost small" onclick="app.refreshMcp('${esc(server.id)}')">刷新工具</button><button class="btn ghost small" onclick="app.openMcpEdit('${esc(server.id)}')">编辑</button></div></td></tr>`).join("")}
+        ${state.mcp.map((server) => `<tr><td class="mono">${esc(server.key)}</td><td>${esc(server.name)}</td><td class="mono">${esc(server.url)}</td><td>${server.tools?.length ?? 0}</td><td>${statusPill(server.status)}${server.lastError ? `<div class="muted">${esc(server.lastError)}</div>` : ""}</td><td><div class="actions">${canPermission("mcp.manage") ? `<button class="btn ghost small" onclick="app.refreshMcp('${esc(server.id)}')">刷新工具</button>` : ""}${canPermission("mcp.manage") ? `<button class="btn ghost small" onclick="app.openMcpEdit('${esc(server.id)}')">编辑</button>` : ""}</div></td></tr>`).join("")}
       </tbody></table></div>` : empty("还没有 MCP", "添加一个远程 MCP 服务，Agent 即可使用其工具。")}
     </div>`;
 }
@@ -482,9 +584,9 @@ async function renderSkills() {
   state.skills = data.items ?? [];
   $("#content").innerHTML = `
     <div class="card">
-      <div class="card-head"><div><h3>Skills</h3><p class="muted">SKILL.md 内容会注入 Agent 上下文</p></div><button class="btn primary" onclick="app.openSkillCreate()">新建 Skill</button></div>
+      <div class="card-head"><div><h3>Skills</h3><p class="muted">SKILL.md 内容会注入 Agent 上下文</p></div>${canPermission("skill.manage") ? `<button class="btn primary" onclick="app.openSkillCreate()">新建 Skill</button>` : ""}</div>
       ${state.skills.length ? `<div class="table-wrap"><table><thead><tr><th>Key</th><th>名称</th><th>描述</th><th>状态</th><th></th></tr></thead><tbody>
-        ${state.skills.map((skill) => `<tr><td class="mono">${esc(skill.key)}</td><td>${esc(skill.name)}</td><td>${esc(skill.description)}</td><td>${statusPill(skill.status)}</td><td><button class="btn ghost small" onclick="app.openSkillEdit('${esc(skill.id)}')">编辑</button></td></tr>`).join("")}
+        ${state.skills.map((skill) => `<tr><td class="mono">${esc(skill.key)}</td><td>${esc(skill.name)}</td><td>${esc(skill.description)}</td><td>${statusPill(skill.status)}</td><td>${canPermission("skill.manage") ? `<button class="btn ghost small" onclick="app.openSkillEdit('${esc(skill.id)}')">编辑</button>` : ""}</td></tr>`).join("")}
       </tbody></table></div>` : empty("还没有 Skill", "创建一个 Skill，供 Agent 在 spec.skills 中引用。")}
     </div>`;
 }
@@ -494,50 +596,43 @@ async function renderTools() {
   state.toolSources = data.items ?? [];
   $("#content").innerHTML = `
     <div class="card">
-      <div class="card-head"><div><h3>工具源</h3><p class="muted">导入 OpenAPI 3.x，自动生成工具</p></div><button class="btn primary" onclick="app.openToolImport()">导入 OpenAPI</button></div>
+      <div class="card-head"><div><h3>工具源</h3><p class="muted">导入 OpenAPI 3.x，自动生成工具</p></div>${canPermission("tool.manage") ? `<button class="btn primary" onclick="app.openToolImport()">导入 OpenAPI</button>` : ""}</div>
       ${state.toolSources.length ? `<div class="table-wrap"><table><thead><tr><th>Key</th><th>名称</th><th>Base URL</th><th>工具数</th></tr></thead><tbody>
         ${state.toolSources.map((source) => `<tr><td class="mono">${esc(source.key)}</td><td>${esc(source.name)}</td><td class="mono">${esc(source.baseUrl)}</td><td>${source.tools?.length ?? 0}</td></tr>`).join("")}
-      </tbody></table></div>` : empty("还没有工具源", "导入 OpenAPI 后，在 Agent spec.toolsets 中引用。")}
+      </tbody></table></div>` : empty("还没有工具源", "导入后，可在 Agent 的工具设置中勾选使用。")}
     </div>`;
 }
 
 async function renderPackages() {
   const data = await api("/admin/api/plugins");
   state.plugins = data.items ?? [];
-  const example = {
-    key: "com.example.demo-pack",
-    version: "1.0.0",
-    type: "mixed",
-    name: "示例能力包",
-    resources: {
-      skills: [{ key: "demo-skill", name: "演示技能", description: "示例", content: "# 演示技能\n\n回答要简洁。" }],
-      agents: [{ key: "pack-agent", name: "包安装 Agent", version: "1.0.0", instructions: "你是包安装的演示助手。", spec: { model: { provider: "mock", model: "mock-1" }, toolsets: [{ builtin: ["current_time"] }], limits: { maxSteps: 3 } } }],
-    },
-  };
   $("#content").innerHTML = `
-    <div class="card">
-      <div class="card-head"><div><h3>安装能力包</h3><p class="muted">声明式 JSON；安装 Agent、Skill、MCP、Provider</p></div></div>
+    ${canPermission("plugin.install") ? `<div class="card">
+      <div class="card-head"><div><h3>安装能力包</h3><p class="muted">选择提供方给出的能力包文件，安装其中的 Agent、Skill、MCP 或模型。</p></div></div>
       <div class="card-body">
-        <textarea id="package-json" style="min-height:260px">${esc(JSON.stringify(example, null, 2))}</textarea>
+        <label>能力包文件<input id="package-file" type="file" accept=".json,application/json" /></label><details class="advanced-config"><summary>高级：粘贴能力包配置</summary><label>配置内容<textarea id="package-json" rows="8"></textarea></label></details>
         <div class="actions" style="margin-top:12px"><button class="btn primary" onclick="app.installPackage()">安装</button></div>
       </div>
-    </div>
+    </div>` : ""}
     <div class="card">
       <div class="card-head"><div><h3>已安装</h3><p class="muted">卸载只标记包状态，不删除已创建资源</p></div></div>
       ${state.plugins.length ? `<div class="table-wrap"><table><thead><tr><th>Key</th><th>名称</th><th>版本</th><th>类型</th><th>状态</th><th></th></tr></thead><tbody>
-        ${state.plugins.map((plugin) => `<tr><td class="mono">${esc(plugin.key)}</td><td>${esc(plugin.name)}</td><td>${esc(plugin.version)}</td><td>${esc(plugin.type)}</td><td>${statusPill(plugin.status)}</td><td><button class="btn ghost small" onclick="app.uninstallPackage('${esc(plugin.id)}')">卸载</button></td></tr>`).join("")}
+        ${state.plugins.map((plugin) => `<tr><td class="mono">${esc(plugin.key)}</td><td>${esc(plugin.name)}</td><td>${esc(plugin.version)}</td><td>${esc(plugin.type)}</td><td>${statusPill(plugin.status)}</td><td>${canPermission("plugin.uninstall") ? `<button class="btn ghost small" onclick="app.uninstallPackage('${esc(plugin.id)}')">卸载</button>` : ""}</td></tr>`).join("")}
       </tbody></table></div>` : empty("还没有安装记录", "安装一个能力包后会显示在这里。")}
     </div>`;
 }
 
 async function renderRuns() {
+  const navigation = state.navigation, ticket = (state.runsRequest ?? 0) + 1;
+  state.runsRequest = ticket;
   const data = await api("/admin/api/runs?limit=100");
+  if (navigation !== state.navigation || state.tab !== "runs" || ticket !== state.runsRequest) return;
   state.runs = data.items ?? [];
   $("#content").innerHTML = `
     <div class="card">
       <div class="card-head"><div><h3>运行中心</h3><p class="muted">SSE 实时事件、消息、工具调用与审批</p></div><button class="btn ghost small" onclick="app.renderCurrent()">刷新</button></div>
       ${state.runs.length ? `<div class="table-wrap"><table><thead><tr><th>Run</th><th>Agent</th><th>状态</th><th>触发</th><th>成本</th><th>创建时间</th><th></th></tr></thead><tbody>
-        ${state.runs.map((run) => `<tr><td class="mono">${esc(run.id)}</td><td>${esc(run.agentName)}</td><td>${statusPill(run.status)}</td><td>${esc(run.triggerType)}</td><td>$${Number(run.costUsd).toFixed(4)}</td><td>${fmt(run.createdAt)}</td><td><div class="actions"><button class="btn ghost small" onclick="app.openRun('${esc(run.id)}')">查看</button>${["queued","running","waiting_approval"].includes(run.status) ? `<button class="btn ghost small" onclick="app.cancelRun('${esc(run.id)}')">取消</button>` : ""}</div></td></tr>`).join("")}
+        ${state.runs.map((run) => `<tr><td class="mono">${esc(run.id)}</td><td>${esc(run.agentName)}</td><td>${statusPill(run.status)}</td><td>${esc(run.triggerType)}</td><td>$${Number(run.costUsd).toFixed(4)}</td><td>${fmt(run.createdAt)}</td><td><div class="actions">${canPermission("run.view") ? `<button class="btn ghost small" onclick="app.openRun('${esc(run.id)}')">查看</button>` : ""}${["queued","running","waiting_approval"].includes(run.status) ? `${canPermission("run.cancel") ? `<button class="btn ghost small" onclick="app.cancelRun('${esc(run.id)}')">取消</button>` : ""}` : ""}</div></td></tr>`).join("")}
       </tbody></table></div>` : empty("还没有运行", "在 Agents 页面试运行，或通过开放 API 创建 Run。")}
     </div>`;
 }
@@ -580,7 +675,7 @@ async function renderApprovals({ refetch = true } = {}) {
     <div class="card">
       <div class="card-head"><div><h3>待审批</h3><p class="muted">高风险工具调用会暂停 Run</p></div><button class="btn ghost small" onclick="app.renderCurrent()">刷新</button></div>
       ${state.approvals.length ? `<div class="table-wrap"><table><thead><tr><th>Run</th><th>Agent</th><th>风险</th><th>过期时间</th><th>操作</th></tr></thead><tbody>
-        ${state.approvals.map((approval) => `<tr><td class="mono">${esc(approval.run_id)}</td><td>${esc(approval.agent_name)}</td><td>${statusPill(approval.risk_level)}${approvalReasonHtml(approval)}</td><td>${fmt(approval.expires_at)}</td><td><div class="actions"><button class="btn primary small" onclick="app.decideApproval('${esc(approval.id)}','approved')">批准</button><button class="btn danger small" onclick="app.decideApproval('${esc(approval.id)}','rejected')">驳回</button><button class="btn ghost small" onclick="app.openRun('${esc(approval.run_id)}')">查看 Run</button></div></td></tr>`).join("")}
+        ${state.approvals.map((approval) => `<tr><td class="mono">${esc(approval.run_id)}</td><td>${esc(approval.agent_name)}</td><td>${statusPill(approval.risk_level)}${approvalReasonHtml(approval)}</td><td>${fmt(approval.expires_at)}</td><td><div class="actions">${canPermission("approval.decide") ? `<button class="btn primary small" onclick="app.decideApproval('${esc(approval.id)}','approved')">批准</button>` : ""}${canPermission("approval.decide") ? `<button class="btn danger small" onclick="app.decideApproval('${esc(approval.id)}','rejected')">驳回</button>` : ""}${canPermission("run.view") ? `<button class="btn ghost small" onclick="app.openRun('${esc(approval.run_id)}')">查看 Run</button>` : ""}</div></td></tr>`).join("")}
       </tbody></table></div>` : empty("没有待审批", "高风险工具执行时会出现在这里。")}
     </div>`;
 }
@@ -609,21 +704,22 @@ function onApprovalResolved(data) {
 }
 
 async function renderSchedules() {
-  // 服务账号列表只有平台管理员能取；取不到时表格照常显示，只是身份列退化为 ID。
+  // Associated catalogues are optional; a reader need not have permission to manage execution identities.
   const [data, agents, accounts] = await Promise.all([
     api("/admin/api/schedules"),
-    api("/admin/api/agents"),
-    api("/admin/api/service-accounts").catch(() => null),
+    canPermission("agent.view") ? api("/admin/api/agents") : Promise.resolve({ items: [] }),
+    canPermission("service_account.manage") ? api("/admin/api/service-accounts") : Promise.resolve(null),
   ]);
   state.schedules = data.items ?? [];
   state.agents = agents.items ?? [];
   state.serviceAccounts = accounts?.items ?? null;
+  state.serviceRoleOptions = accounts?.roleOptions ?? [];
   $("#content").innerHTML = `
     <div class="card">
-      <div class="card-head"><div><h3>定时任务</h3><p class="muted">Cron + 时区</p></div><div class="actions">${state.serviceAccounts ? `<button class="btn ghost" onclick="app.openServiceAccountCreate()">新建服务账号</button>` : ""}<button class="btn primary" onclick="app.openScheduleCreate()">新建定时任务</button></div></div>
-      ${state.schedules.length ? `<div class="table-wrap"><table><thead><tr><th>名称</th><th>Agent</th><th>运行身份</th><th>Cron</th><th>时区</th><th>下次运行</th><th>状态</th><th>操作</th></tr></thead><tbody>
-        ${state.schedules.map((schedule) => `<tr><td><strong>${esc(schedule.name)}</strong><div class="muted mono">${esc(schedule.key)}</div></td><td>${esc(schedule.agent_name)}</td><td>${scheduleIdentity(schedule)}</td><td class="mono">${esc(schedule.cron)}</td><td>${esc(schedule.timezone)}</td><td>${fmt(schedule.next_run_at)}</td><td>${statusPill(schedule.status)}${scheduleFailure(schedule)}</td><td><div class="actions">${schedule.status === "active" ? `<button class="btn ghost small" onclick="app.scheduleAction('${esc(schedule.id)}','disable')">停用</button>` : `<button class="btn ghost small" onclick="app.scheduleAction('${esc(schedule.id)}','enable')">启用</button>`}<button class="btn ghost small" onclick="app.openScheduleEdit('${esc(schedule.id)}')">编辑</button><button class="btn ghost small" onclick="app.scheduleAction('${esc(schedule.id)}','run')">立即运行</button></div></td></tr>`).join("")}
-      </tbody></table></div>` : empty("还没有定时任务", "创建一个 Cron 任务，框架会按计划提交 Run。")}
+      <div class="card-head"><div><h3>定时任务</h3><p class="muted">重复周期与时区</p></div><div class="actions">${state.serviceAccounts ? `<button class="btn ghost" onclick="app.openServiceAccountCreate()">新建服务账号</button>` : ""}${canPermission("schedule.manage") && canPermission("agent.view") && canPermission("service_account.manage") ? `<button class="btn primary" onclick="app.openScheduleCreate()">新建定时任务</button>` : ""}</div></div>
+      ${state.schedules.length ? `<div class="table-wrap"><table><thead><tr><th>名称</th><th>Agent</th><th>运行身份</th><th>执行计划</th><th>时区</th><th>下次运行</th><th>状态</th><th>操作</th></tr></thead><tbody>
+        ${state.schedules.map((schedule) => `<tr><td><strong>${esc(schedule.name)}</strong><div class="muted mono">${esc(schedule.key)}</div></td><td>${esc(schedule.agent_name)}</td><td>${scheduleIdentity(schedule)}</td><td title="${esc(schedule.cron)}">${esc(scheduleReadableTime(schedule.cron))}</td><td>${esc(schedule.timezone)}</td><td>${fmt(schedule.next_run_at)}</td><td>${statusPill(schedule.status)}${scheduleFailure(schedule)}</td><td><div class="actions">${schedule.status === "active" ? `${canPermission("schedule.manage") ? `<button class="btn ghost small" onclick="app.scheduleAction('${esc(schedule.id)}','disable')">停用</button>` : ""}` : `${canPermission("schedule.manage") ? `<button class="btn ghost small" onclick="app.scheduleAction('${esc(schedule.id)}','enable')">启用</button>` : ""}`}${canPermission("schedule.manage") ? `<button class="btn ghost small" onclick="app.openScheduleEdit('${esc(schedule.id)}')">编辑</button>` : ""}${canPermission("schedule.run") ? `<button class="btn ghost small" onclick="app.scheduleAction('${esc(schedule.id)}','run')">立即运行</button>` : ""}</div></td></tr>`).join("")}
+      </tbody></table></div>` : empty("还没有定时任务", "选择执行时间和运行身份，定期执行 Agent。")}
     </div>`;
 }
 
@@ -647,40 +743,132 @@ async function renderApps() {
   state.apps = data.items ?? [];
   $("#content").innerHTML = `
     <div class="card">
-      <div class="card-head"><div><h3>开放平台应用</h3><p class="muted">API Key、Scope、配额与 Webhook</p></div><button class="btn primary" onclick="app.openAppCreate()">创建应用</button></div>
+      <div class="card-head"><div><h3>开放平台应用</h3><p class="muted">API Key、Scope、配额与 Webhook</p></div>${data.canCreate ? `<button class="btn primary" onclick="app.openAppCreate()">创建应用</button>` : ""}</div>
       ${state.apps.length ? `<div class="table-wrap"><table><thead><tr><th>Key</th><th>名称</th><th>Scopes</th><th>限额</th><th>状态</th><th>操作</th></tr></thead><tbody>
-        ${state.apps.map((app) => `<tr><td class="mono">${esc(app.key)}</td><td>${esc(app.name)}</td><td class="mono">${esc((app.scopes ?? []).join(", "))}</td><td>${app.rateLimitPerMinute}/min · ${app.dailyQuota}/日</td><td>${statusPill(app.status)}</td><td><div class="actions"><button class="btn primary small" onclick="app.createAppKey('${esc(app.id)}')">新建密钥</button><button class="btn ghost small" onclick="app.listAppKeys('${esc(app.id)}')">查看密钥</button><button class="btn ghost small" onclick="app.openAppEdit('${esc(app.id)}')">编辑</button></div></td></tr>`).join("")}
+        ${state.apps.map((app) => `<tr><td class="mono">${esc(app.key)}</td><td>${esc(app.name)}</td><td class="mono">${esc((app.scopes ?? []).join(", "))}</td><td>${app.rateLimitPerMinute}/min · ${app.dailyQuota}/日</td><td>${statusPill(app.status)}</td><td><div class="actions">${app.canManage ? `<button class="btn primary small" onclick="app.createAppKey('${esc(app.id)}')">新建密钥</button>` : ""}<button class="btn ghost small" onclick="app.listAppKeys('${esc(app.id)}')">查看密钥</button>${app.canManage ? `<button class="btn ghost small" onclick="app.openAppEdit('${esc(app.id)}')">编辑</button>` : ""}</div></td></tr>`).join("")}
       </tbody></table></div>` : empty("还没有应用", "创建应用和 API Key，即可通过 /open/v1 调用 Agent。")}
     </div>`;
 }
 
+function canPermission(permission) {
+  const permissions = state.session?.permissions ?? [];
+  return permissions.includes("*") || permissions.includes(permission);
+}
+const ROLE_LABELS = { platform_admin: "平台管理员", org_admin: "组织管理员", builder: "开发者", operator: "运营人员", auditor: "审计人员", user: "普通用户" };
+const SCOPE_LABELS = { all: "全部", org: "本部门及下级", self: "本人" };
+const PERMISSION_DOMAINS = { agent:"Agent",skill:"Skill",mcp:"MCP",tool:"工具",model:"模型",run:"运行",approval:"审批",schedule:"定时任务",apikey:"应用与密钥",plugin:"能力包",package:"能力包",user:"账号",role:"功能权限",org:"组织部门",service_account:"服务账号",sso:"SSO",secret:"凭据",audit:"操作日志",usage:"用量" };
+const PERMISSION_ACTIONS = { view:"查看",manage:"管理",publish:"发布",run:"运行",cancel:"取消",decide:"处理",install:"安装",uninstall:"卸载" };
+function permissionName(code) {
+  if (code === "*") return "全部权限";
+  const [domain, action] = code.split(".");
+  return `${PERMISSION_DOMAINS[domain] ?? domain} · ${PERMISSION_ACTIONS[action] ?? action}`;
+}
+function accountTabs(section) {
+  return `<nav class="actions account-tabs" aria-label="账号与权限">${canPermission("user.view") ? `<button class="btn ${section === "accounts" ? "primary" : "ghost"}" ${section === "accounts" ? 'aria-current="page"' : ""} onclick="app.switchTab('users')">账号</button>` : ""}${canPermission("role.view") ? `<button class="btn ${section === "roles" ? "primary" : "ghost"}" ${section === "roles" ? 'aria-current="page"' : ""} onclick="app.switchTab('users/roles')">功能权限</button>` : ""}</nav>`;
+}
+function permissionFields(catalog, selected) {
+  const domains = [...new Set(catalog.map(item => item.domain))];
+  return `<div class="permission-matrix">${domains.map(domain => `<fieldset><legend>${esc(PERMISSION_DOMAINS[domain] ?? domain)}</legend>${catalog.filter(item => item.domain === domain).map(item => `<label class="permission-choice"><input type="checkbox" name="permissions" value="${esc(item.key)}" ${selected.includes(item.key) ? "checked" : ""}/><span>${esc(permissionName(item.key))}</span></label>`).join("")}</fieldset>`).join("")}</div>`;
+}
+function additionalRolesField(options, selected, primary) {
+  const choices = options.filter(role => role.key !== "platform_admin");
+  return `<fieldset class="additional-roles"><legend>附加角色</legend>${choices.length ? choices.map(role => `<label class="permission-choice"><input type="checkbox" name="additionalRoleIds" data-role-key="${esc(role.key)}" value="${esc(role.id)}" ${selected.includes(role.id) && role.key !== primary ? "checked" : ""} ${role.key === primary ? "disabled" : ""}/><span>${esc(role.name)}${role.status === "active" ? "" : "（停用）"}</span></label>`).join("") : '<span class="muted">无</span>'}</fieldset>`;
+}
+function bindRoleFields() {
+  const primary = $("#modal-form select[name=role]");
+  if (!primary) return;
+  const sync = () => $("#modal-form").querySelectorAll('[name="additionalRoleIds"]').forEach(input => {
+    input.disabled = input.dataset.roleKey === primary.value;
+    if (input.disabled) input.checked = false;
+  });
+  primary.addEventListener("change", sync); sync();
+}
+async function renderRoles() {
+  const request = (state.roleRequest ?? 0) + 1; state.roleRequest = request;
+  const data = await api("/admin/api/roles");
+  if (state.roleRequest !== request || state.tab !== "users" || state.accountSection !== "roles") return;
+  state.roles = data.items; state.permissionCatalog = data.catalog;
+  $("#content").innerHTML = `${accountTabs("roles")}<div class="card"><div class="card-head"><h3>功能权限</h3>${data.canCreate ? '<button class="btn primary" onclick="app.openRole()">新增角色</button>' : ""}</div>${data.items.length ? `<div class="table-wrap"><table class="roles-table"><thead><tr><th>角色</th><th>类型</th><th>状态</th><th>权限数</th><th>操作</th></tr></thead><tbody>${data.items.map(role => `<tr><td>${esc(role.name)}<div class="muted mono">${esc(role.key)}</div></td><td>${role.builtin ? "内置" : "自定义"}</td><td>${statusPill(role.status, role.status === "active" ? "启用" : "停用")}</td><td>${role.permissions.includes("*") ? "全部" : role.permissions.length}</td><td><div class="actions"><button class="btn ghost small" data-role-action="preview" data-id="${esc(role.id)}">权限预览</button>${role.can_manage ? `<button class="btn ghost small" data-role-action="edit" data-id="${esc(role.id)}">编辑</button>` : ""}${role.can_copy ? `<button class="btn ghost small" data-role-action="copy" data-id="${esc(role.id)}">复制</button>` : ""}${role.can_reset ? `<button class="btn ghost small" data-role-action="reset" data-id="${esc(role.id)}">恢复内置权限</button>` : ""}${role.can_manage && !role.builtin ? `<button class="btn danger small" data-role-action="delete" data-id="${esc(role.id)}">删除</button>` : ""}</div></td></tr>`).join("")}</tbody></table></div>` : '<div class="card-body muted">暂无角色</div>'}</div>`;
+  $("#content").querySelectorAll("[data-role-action]").forEach(button => { button.onclick = () => app.roleAction(button.dataset.id,button.dataset.roleAction).catch(error => toast(errorText(error),"error")); });
+}
+async function afterRoleSave() {
+  try {
+    state.session = await api("/auth/session", { auth:"probe" });
+    await app.switchTab(routeAfterLogin(location.hash.slice(1)));
+  } catch (error) { toast(`配置已保存，刷新失败：${errorText(error)}`, "error"); }
+}
+function listQuery(filters) {
+  return new URLSearchParams(Object.entries(filters).filter(([key, value]) => key !== "history" && value !== "").map(([key,value]) => [key, ["from","to"].includes(key) ? new Date(value).toISOString() : value]).concat([["limit", "50"]])).toString();
+}
+function pagination(kind, result) {
+  const filters = state[`${kind}Filters`];
+  return `<div class="actions list-pagination"><button class="btn ghost small" ${filters.history.length ? "" : "disabled"} data-page="previous">上一页</button><button class="btn ghost small" ${result.nextCursor ? "" : "disabled"} data-page="next">下一页</button></div>`;
+}
+function bindPagination(kind, result, render) {
+  const buttons = [...$("#content").querySelectorAll("[data-page]")];
+  let pending = false;
+  buttons.forEach(button => { button.onclick = async () => {
+    if (pending) return;
+    pending = true;
+    const filters = state[`${kind}Filters`];
+    const before = { cursor: filters.cursor, history: [...filters.history] };
+    const requestKey = `${kind}Request`;
+    const expectedRequest = (state[requestKey] ?? 0) + 1;
+    const disabled = buttons.map(item => item.disabled);
+    buttons.forEach(item => { item.disabled = true; });
+    if (button.dataset.page === "next") { filters.history.push(filters.cursor); filters.cursor = result.nextCursor; }
+    else filters.cursor = filters.history.pop() ?? "";
+    try { await render(); }
+    catch (error) { if (state[requestKey] === expectedRequest) { Object.assign(filters, before); toast(errorText(error), "error"); } }
+    finally { pending = false; buttons.forEach((item, index) => { item.disabled = disabled[index]; }); }
+  }; });
+}
 async function renderUsers() {
-  // K-37：/admin/api/permissions 需要 role.view（org_admin 没有）。403 时只显示用户列表，
-  // 角色下拉和权限矩阵禁用并提示，不让整页失败；其它错误照常整页报错。
-  const [users, permissions] = await Promise.all([
-    api("/admin/api/users"),
-    api("/admin/api/permissions").catch((error) => {
-      if (error?.status === 403) return null;
-      throw error;
-    }),
-  ]);
-  state.users = users.items ?? [];
-  const canViewRoles = permissions !== null;
-  const roles = Object.keys(permissions?.roles ?? {});
-  const noRoleHint = `<span class="muted" id="no-role-hint">无权限查看角色</span>`;
-  $("#content").innerHTML = `
-    <div class="card">
-      <div class="card-head"><div><h3>用户与权限</h3><p class="muted">功能角色决定可用功能，数据范围决定可见数据</p></div><div>${canViewRoles ? "" : noRoleHint} <button class="btn ghost small" ${canViewRoles ? "" : 'disabled aria-describedby="no-role-hint" title="无权限查看角色"'}onclick="app.showPermissionMatrix()">查看权限矩阵</button></div></div>
-      ${state.users.length ? `<div class="table-wrap"><table><thead><tr><th>用户</th><th>邮箱</th><th>角色</th><th>数据范围</th><th>状态</th><th></th></tr></thead><tbody>
-        ${state.users.map((user) => `<tr><td><strong>${esc(user.display_name)}</strong><div class="muted mono">${esc(user.id)}</div></td><td>${esc(user.email)}</td><td>${canViewRoles
-          ? `<select id="role-${esc(user.id)}">${roles.map((role) => `<option ${role === user.role ? "selected" : ""}>${esc(role)}</option>`).join("")}</select>`
-          : `<select id="role-${esc(user.id)}" disabled aria-describedby="no-role-hint" title="无权限查看角色"><option selected>${esc(user.role)}</option></select> <span class="muted">无权限查看角色</span>`}</td><td><select id="scope-${esc(user.id)}">${["all","org","self"].map((scope) => `<option ${scope === user.data_scope ? "selected" : ""}>${scope}</option>`).join("")}</select></td><td>${statusPill(user.status)}</td><td><button class="btn ghost small" onclick="app.saveUser('${esc(user.id)}')">保存</button></td></tr>`).join("")}
-      </tbody></table></div>` : empty("没有用户", "SSO 用户首次登录会自动创建。")}
-    </div>`;
+  const request = (state.userRequest ?? 0) + 1; state.userRequest = request;
+  const data = await api(`/admin/api/users?${listQuery({ ...state.userFilters })}`);
+  if (request !== state.userRequest || state.tab !== "users" || state.accountSection === "roles") return;
+  state.users = data.items ?? [];
+  state.grantableRoles = data.grantableRoles ?? [];
+  state.roleOptions = data.roleOptions ?? [];
+  const f = state.userFilters;
+  $("#content").innerHTML = `${accountTabs("accounts")}<div class="card">
+    <div class="card-head"><h3>账号</h3><div class="actions">${data.canCreate ? '<button class="btn primary" onclick="app.openUser()">新增账号</button>' : ""}</div></div>
+    <form id="user-filters" class="card-body actions"><label>搜索<input name="q" value="${esc(f.q)}" maxlength="255" /></label>${select("状态", "status", [{ value: "", label: "全部" }, { value: "active", label: "启用" }, { value: "disabled", label: "停用" }], f.status)}<button class="btn ghost">查询</button></form>
+    ${state.users.length ? `<div class="table-wrap"><table class="account-table"><thead><tr><th>登录名</th><th>账号</th><th>角色</th><th>数据范围</th><th>状态</th><th>操作</th></tr></thead><tbody>${state.users.map(user => `<tr><td>${esc(user.username)}</td><td>${esc(user.display_name)}<div class="muted">${esc(user.email)}</div></td><td>${esc((user.roles ?? []).map(role => role.name).join("、") || ROLE_LABELS[user.role] || user.role)}</td><td>${esc(SCOPE_LABELS[user.data_scope] ?? user.data_scope)}</td><td>${statusPill(user.status, user.status === "active" ? "启用" : "停用")}</td><td><div class="actions account-actions"><button class="btn ghost small" data-user-action="detail" data-id="${esc(user.id)}">详情</button>${user.can_manage ? `<details class="account-more"><summary class="btn ghost small" aria-label="「${esc(user.username)}」更多操作">更多</summary><div class="account-menu"><button class="btn ghost small" data-user-action="edit" data-id="${esc(user.id)}">编辑</button><button class="btn ghost small" data-user-action="password" data-id="${esc(user.id)}">重置密码</button><button class="btn ghost small" data-user-action="sessions" data-id="${esc(user.id)}">撤销会话</button>${state.session.user.role === "platform_admin" && canPermission("sso.manage") ? `<button class="btn ghost small" data-user-action="binding" data-id="${esc(user.id)}">SSO绑定</button>` : ""}<button class="btn danger small" data-user-action="delete" data-id="${esc(user.id)}">删除</button></div></details>` : ""}</div></td></tr>`).join("")}</tbody></table></div>` : '<div class="card-body muted">没有匹配的账号</div>'}
+    ${pagination("user", data)}</div>`;
+  $("#user-filters").onsubmit = async event => { event.preventDefault(); const form = new FormData(event.target); Object.assign(f, { q: String(form.get("q")).trim(), status: String(form.get("status")), cursor: "", history: [] }); await renderUsers().catch(error => toast(errorText(error), "error")); };
+  $("#content").querySelectorAll(".account-more").forEach(menu => { menu.onkeydown = event => {
+    if (event.key !== "Escape" || !menu.open) return;
+    event.preventDefault();
+    menu.open = false;
+    menu.querySelector("summary").focus();
+  }; });
+  $("#content").querySelectorAll("[data-user-action]").forEach(button => { button.onclick = () => {
+    const menu = button.closest(".account-more");
+    if (menu) { menu.open = false; menu.querySelector("summary").focus(); }
+    return app.userAction(button.dataset.id, button.dataset.userAction).catch(error => toast(errorText(error), "error"));
+  }; });
+  bindPagination("user", data, renderUsers);
+}
+
+async function renderAudit() {
+  const request = (state.auditRequest ?? 0) + 1; state.auditRequest = request;
+  const data = await api(`/admin/api/audit?${listQuery({ ...state.auditFilters })}`);
+  if (request !== state.auditRequest) return;
+  const f = state.auditFilters;
+  $("#content").innerHTML = `<div class="card"><div class="card-head"><h3>操作日志</h3></div>
+    <form id="audit-filters" class="card-body form-grid">${field("操作", "action", f.action, "text", 'maxlength="64"')}${field("资源类型", "resourceType", f.resourceType, "text", 'maxlength="32"')}${field("资源ID", "resourceId", f.resourceId, "text", 'maxlength="26"')}${field("操作人ID", "actorId", f.actorId, "text", 'maxlength="26"')}${select("结果", "outcome", [{value:"",label:"全部"},{value:"success",label:"成功"},{value:"failure",label:"失败"},{value:"denied",label:"拒绝"}], f.outcome)}${field("开始时间", "from", f.from ? f.from.slice(0,16) : "", "datetime-local")}${field("结束时间", "to", f.to ? f.to.slice(0,16) : "", "datetime-local")}<div class="full"><button class="btn ghost">查询</button></div></form>
+    ${data.items.length ? `<div class="table-wrap"><table class="audit-table"><thead><tr><th>时间</th><th>操作人</th><th>操作</th><th>资源</th><th>结果</th><th>操作</th></tr></thead><tbody>${data.items.map(item => `<tr><td>${esc(fmt(item.created_at))}</td><td>${esc(item.actor_name ?? item.actor_id ?? item.actor_type)}</td><td>${esc(item.action)}</td><td>${esc(item.resource_type)}<div class="muted mono">${esc(item.resource_id)}</div></td><td>${esc({success:"成功",failure:"失败",denied:"拒绝"}[item.outcome] ?? item.outcome)}</td><td><button class="btn ghost small" data-audit-id="${esc(item.id)}">详情</button></td></tr>`).join("")}</tbody></table></div>` : '<div class="card-body muted">没有匹配的记录</div>'}${pagination("audit", data)}</div>`;
+  $("#audit-filters").onsubmit = async event => { event.preventDefault(); const form = new FormData(event.target); for (const key of ["action","resourceType","resourceId","actorId","outcome","from","to"]) f[key] = String(form.get(key) ?? "").trim(); f.cursor = ""; f.history = []; await renderAudit().catch(error => toast(errorText(error), "error")); };
+  $("#content").querySelectorAll("[data-audit-id]").forEach(button => { button.onclick = async () => {
+    try { const item = await api(`/admin/api/audit/${idSeg(button.dataset.auditId)}`); openModal("操作日志", `<div class="kv"><span>操作人</span><strong>${esc(item.actor_name ?? item.actor_id ?? item.actor_type)}</strong></div><div class="kv"><span>操作人ID</span><strong class="mono">${esc(item.actor_id)}</strong></div><div class="kv"><span>操作</span><strong>${esc(item.action)}</strong></div><pre class="code-block">${json(item.details_json)}</pre>`, async () => {}, "关闭"); } catch (error) { toast(errorText(error), "error"); }
+  }; });
+  bindPagination("audit", data, renderAudit);
 }
 
 async function renderSso() {
   const data = await api("/admin/api/sso");
+  state.roleMappings = data.mappings ?? [];
   state.sso = data;
   $("#content").innerHTML = `
     <div class="grid cols-2">
@@ -729,11 +917,13 @@ function bindAgentActions() {
     const id = button.dataset.agentId;
     if (button.dataset.action === "agent-run") app.openAgentRun(id);
     else if (button.dataset.action === "agent-new-version") app.openAgentNewVersion(id);
+    else if (button.dataset.action === "agent-detail") { event.preventDefault(); app.switchTab(`agents/${encodeURIComponent(id)}`); }
   });
 }
 
 function openModal(title, body, onSubmit, submitLabel = "保存", danger = false) {
   const dialog = $("#modal");
+  const trigger = dialog.ownerDocument?.activeElement;
   $("#modal-title").textContent = title;
   $("#modal-body").innerHTML = body;
   const submit = $("#modal-submit");
@@ -741,24 +931,197 @@ function openModal(title, body, onSubmit, submitLabel = "保存", danger = false
   submit.className = `btn ${danger ? "danger" : "primary"}`;
   submit.type = "submit";
   const form = $("#modal-form");
-  form.querySelectorAll('button[value="cancel"]').forEach((button) => {
+  let submitting = false;
+  bindConfigurationFields(form);
+  const initialValues = new Map([...form.querySelectorAll("input, textarea, select")].map(input => [input, [input.value, input.checked]]));
+  const requestClose = () => {
+    if (submitting) return;
+    const changed = [...initialValues].some(([input, [value, checked]]) => input.value !== value || input.checked !== checked);
+    if (changed && !confirm("有未保存的修改，确定放弃吗？")) return;
+    dialog.close();
+  };
+  const closeButtons = form.querySelectorAll('button[value="cancel"]');
+  closeButtons.forEach((button) => {
     button.type = "button";
-    button.onclick = () => dialog.close();
+    button.onclick = requestClose;
   });
+  dialog.oncancel = (event) => { event.preventDefault(); requestClose(); };
   form.onsubmit = async (event) => {
     event.preventDefault();
+    if (submitting) return;
+    submitting = true;
     submit.disabled = true;
+    closeButtons.forEach((button) => { button.disabled = true; });
     try {
       // onSubmit 返回 false 表示表单内校验未通过：保持弹窗打开（例如试运行输入为空）。
       if ((await onSubmit(new FormData(form))) === false) return;
       dialog.close();
     } catch (error) {
       toast(errorText(error), "error");
+      const field = error.details?.field;
+      if (typeof field === "string") {
+        const input = form.querySelector(`[name="${CSS.escape(field)}"]`);
+        if (input) { input.setAttribute("aria-invalid", "true"); input.focus(); input.addEventListener("input", () => input.removeAttribute("aria-invalid"), { once: true }); }
+      }
     } finally {
+      submitting = false;
       submit.disabled = false;
+      closeButtons.forEach((button) => { button.disabled = false; });
     }
   };
+  const credentialInputs = form.querySelectorAll("[data-credential-input]");
+  if (credentialInputs.length) dialog.addEventListener("close", () => { form.querySelectorAll("[data-credential-input]").forEach(input => { input.value = ""; }); }, { once: true });
+  dialog.addEventListener("close", () => {
+    if (!dialog.open) initialValues.clear();
+    // A successful save may replace the original trigger when the page re-renders.
+    if (trigger && !trigger.isConnected) ($("#content .card-head button") ?? $("#refresh"))?.focus();
+  }, { once: true });
   dialog.showModal();
+}
+
+function recordValueFields(value, credential = false, secret = false) {
+  if (secret) return `<label>凭据<select data-record-value data-secret-picker required><option value="${esc(value)}">${value ? "当前已绑定凭据" : "请选择凭据"}</option></select></label>`;
+  if (value !== null && typeof value === "object") return `<div data-record-children data-record-array="${Array.isArray(value)}">${Object.entries(value).map(([key, item]) => recordRow(key, item, credential)).join("")}<button type="button" class="btn ghost small" data-record-add>添加${Array.isArray(value) ? "一项" : "字段"}</button></div>`;
+  if (typeof value === "boolean") return `<label>字段值<select data-record-value><option value="true"${value ? " selected" : ""}>是</option><option value="false"${!value ? " selected" : ""}>否</option></select></label>`;
+  if (value === null) return `<span class="hint">空值</span>`;
+  return `<label>字段值<input data-record-value type="${credential ? "password" : typeof value === "number" ? "number" : "text"}"${typeof value === "number" ? ' step="any" required' : ""} value="${esc(value)}"${credential ? ' data-credential-input autocomplete="new-password"' : ""} /></label>`;
+}
+
+function recordRow(key, value, credential = false, secret = false) {
+  const type = value === null ? "null" : Array.isArray(value) ? "array" : typeof value;
+  return `<div data-record-row class="config-row"><div class="config-row-head"><label>字段名称<input data-record-key value="${esc(key)}" required /></label>${!credential && !secret ? `<label>数据格式<select data-record-type>${Object.entries({string:"文本",number:"数字",boolean:"是／否",object:"字段组",array:"列表",null:"空值"}).map(([key,label]) => `<option value="${key}"${key === type ? " selected" : ""}>${label}</option>`).join("")}</select></label>` : `<input type="hidden" data-record-type value="string" />`}<button type="button" class="btn ghost small" data-record-remove aria-label="删除字段">删除</button></div><div data-record-content>${recordValueFields(value, credential, secret)}</div></div>`;
+}
+
+function recordFields(label, name, value = {}, options = {}) {
+  return `<fieldset class="config-fields" data-record-editor data-record-name="${esc(name)}" data-record-credential="${!!options.credential}" data-record-secret="${!!options.secret}" data-record-header="${!!options.header}"><legend>${esc(label)}</legend><input type="hidden" name="${esc(name)}" value="${esc(options.optional ? "" : JSON.stringify(value))}"${options.credential ? " data-credential-input" : ""} />${options.optional ? `<label class="config-check"><input type="checkbox" data-record-replace />替换已有值（空列表表示清除全部值）</label>` : ""}<fieldset data-record-body${options.optional ? " hidden disabled" : ""}><div data-record-children data-record-array="false">${Object.entries(value).map(([key,item]) => recordRow(key,item,options.credential,options.secret)).join("")}<button type="button" class="btn ghost small" data-record-add>添加字段</button></div></fieldset><p class="hint" role="alert" data-record-error hidden></p></fieldset>`;
+}
+
+function readRecordRows(container, header = false) {
+  const rows = [...container.children].filter(node => node.hasAttribute("data-record-row")), seen = new Set();
+  const values = rows.map((row, index) => {
+    const keyInput = row.querySelector("[data-record-key]"), key = keyInput.value.trim(), type = row.querySelector("[data-record-type]").value;
+    const duplicate = header ? key.toLowerCase() : key;
+    if (container.dataset.recordArray !== "true" && (!key || ["__proto__", "prototype", "constructor"].includes(key) || seen.has(duplicate))) throw new Error("字段名称不能为空、重复或使用保留名称");
+    if (header && !/^[!#$%&'*+.^_`|~0-9A-Za-z-]{1,128}$/.test(key)) throw new Error("请求头名称格式不正确");
+    seen.add(duplicate);
+    const content = row.querySelector("[data-record-content]"), input = content.querySelector("[data-record-value]");
+    let value;
+    if (type === "object" || type === "array") value = readRecordRows(content.querySelector("[data-record-children]"));
+    else if (type === "null") value = null;
+    else if (type === "boolean") value = input.value === "true";
+    else if (type === "number") { if (!input.value.trim() || !Number.isFinite(Number(input.value))) throw new Error("请填写有效数字"); value = Number(input.value); }
+    else { value = input.value; if (input.hasAttribute("data-secret-picker") && !value) throw new Error("请选择凭据"); }
+    return [container.dataset.recordArray === "true" ? index : key, value];
+  });
+  return container.dataset.recordArray === "true" ? values.map(([,value]) => value) : Object.fromEntries(values);
+}
+
+function scheduleCronParts(cron) {
+  const match = /^(\d+) (\d+|\*) (\d+|\*) \* (\d+|\*)$/.exec(cron);
+  if (!match) return { period:"custom", time:"09:00", day:"1", weekday:"1" };
+  const [, minute, hour, day, weekday] = match;
+  if (Number(minute)>59 || hour!=="*" && Number(hour)>23 || day!=="*" && (Number(day)<1 || Number(day)>31) || weekday!=="*" && Number(weekday)>6 || day!=="*" && weekday!=="*" || hour==="*" && (day!=="*" || weekday!=="*")) return { period:"custom", time:"09:00", day:"1", weekday:"1" };
+  return { period:hour==="*"?"hourly":day!=="*"?"monthly":weekday!=="*"?"weekly":"daily", time:`${hour==="*"?"00":hour.padStart(2,"0")}:${minute.padStart(2,"0")}`, day:day==="*"?"1":day, weekday:weekday==="*"?"1":weekday };
+}
+
+function scheduleReadableTime(cron) {
+  const part=scheduleCronParts(cron);
+  if(part.period==="custom")return "自定义计划";
+  if(part.period==="hourly")return `每小时第 ${Number(part.time.split(":")[1])} 分钟`;
+  if(part.period==="weekly")return `每周${["日","一","二","三","四","五","六"][Number(part.weekday)]} ${part.time}`;
+  if(part.period==="monthly")return `每月 ${part.day} 日 ${part.time}`;
+  return `每天 ${part.time}`;
+}
+
+function scheduleCronValue(period, time, day, weekday, custom) {
+  if (period === "custom") return custom;
+  const [hour, minute] = time.split(":").map(Number);
+  if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour<0 || hour>23 || minute<0 || minute>59) throw new Error("请选择有效的执行时间");
+  if (period === "monthly" && (!/^\d+$/.test(day) || Number(day)<1 || Number(day)>31)) throw new Error("每月日期须为 1–31");
+  if (period === "weekly" && !/^[0-6]$/.test(weekday)) throw new Error("请选择星期");
+  return `${minute} ${period==="hourly"?"*":hour} ${period==="monthly"?Number(day):"*"} * ${period==="weekly"?weekday:"*"}`;
+}
+
+function scheduleFields(cron = "0 9 * * *", timezone = "Asia/Shanghai") {
+  const parts = scheduleCronParts(cron);
+  return `<fieldset class="full config-schedule"><legend>执行时间</legend><input type="hidden" name="cron" value="${esc(cron)}" /><div class="form-grid">${select("重复周期", "repeatPeriod", [{value:"daily",label:"每天"},{value:"weekly",label:"每周"},{value:"monthly",label:"每月"},{value:"hourly",label:"每小时"},{value:"custom",label:"自定义计划（高级）"}], parts.period)}${field("执行时间", "repeatTime", parts.time, "time", 'required data-cron-time')}${field("每小时第几分钟", "repeatMinute", String(Number(parts.time.split(":")[1])), "number", 'min="0" max="59" required')}${select("星期", "repeatWeekday", [1,2,3,4,5,6,0].map((value,index)=>({value:String(value),label:["星期一","星期二","星期三","星期四","星期五","星期六","星期日"][index]})), parts.weekday)}${field("每月几日", "repeatDay", parts.day, "number", 'min="1" max="31" data-cron-day')}${select("时区", "timezone", [{value:"Asia/Shanghai",label:"北京时间"},{value:"UTC",label:"协调世界时（UTC）"},...([...new Set([timezone,...Intl.supportedValuesOf("timeZone")])]).filter(value=>value!=="Asia/Shanghai"&&value!=="UTC").map(value=>({value,label:value}))], timezone)}</div><div data-cron-custom>${field("Cron 表达式", "customCron", cron)}</div><p class="hint" data-cron-hint></p></fieldset>`;
+}
+
+function bindConfigurationFields(form) {
+  form.querySelectorAll("[data-app-scope-fields]").forEach(group=>{
+    const sync=()=>{group.querySelector('[name="scopes"]').value=[...group.querySelectorAll('[data-app-scope]:checked')].map(input=>input.value).join(",");};
+    group.addEventListener("change",sync);
+    const input=group.querySelector('[data-scope-new]');input.addEventListener("input",()=>input.setCustomValidity(""));
+    group.querySelector('[data-scope-add]').addEventListener("click",()=>{try{const value=validateAppScope(input.value,[...group.querySelectorAll('[data-app-scope]')].map(item=>item.value));group.querySelector('.config-scope-list').insertAdjacentHTML("beforeend",`<label class="config-check"><input type="checkbox" data-app-scope value="${esc(value)}" checked />${esc(value)}</label>`);input.value="";input.setCustomValidity("");sync();}catch(error){input.setCustomValidity(error.message);input.reportValidity();}});
+  });
+  form.querySelectorAll("[data-record-editor]").forEach(editor => {
+    const hidden = editor.querySelector('input[type="hidden"][name]'), body = editor.querySelector("[data-record-body]"), replace = editor.querySelector("[data-record-replace]");
+    const sync = () => {
+      editor.querySelectorAll('[data-record-array="true"]').forEach(container=>[...container.children].filter(node=>node.hasAttribute("data-record-row")).forEach((row,index)=>{const key=row.querySelector("[data-record-key]");key.value=String(index);key.readOnly=true;}));
+      if (replace) { body.hidden = !replace.checked; body.disabled = !replace.checked; }
+      const error = editor.querySelector("[data-record-error]");
+      const control = editor.querySelector("[data-record-key]") ?? replace;
+      try { hidden.value = replace && !replace.checked ? "" : JSON.stringify(readRecordRows(body.querySelector("[data-record-children]"),editor.dataset.recordHeader==="true")); if(control)control.setCustomValidity(""); error.hidden = true; }
+      catch (err) { if(control)control.setCustomValidity(err.message); error.textContent = err.message; error.hidden = false; }
+    };
+    editor.addEventListener("click", event => {
+      const remove = event.target.closest("[data-record-remove]"), add = event.target.closest("[data-record-add]");
+      if (remove) remove.closest("[data-record-row]").remove();
+      if (add) { const container = add.parentElement, key = container.dataset.recordArray==="true"?String(container.querySelectorAll(":scope > [data-record-row]").length):""; add.insertAdjacentHTML("beforebegin",recordRow(key,"",editor.dataset.recordCredential==="true",editor.dataset.recordSecret==="true")); loadSecretPickers(editor); container.querySelector(":scope > [data-record-row]:last-of-type [data-record-key]")?.focus(); }
+      if(remove||add)sync();
+    });
+    editor.addEventListener("change", event => {
+      if(event.target.matches("select[data-record-type]")) { const defaults={string:"",number:0,boolean:false,object:{},array:[],null:null}; event.target.closest("[data-record-row]").querySelector("[data-record-content]").innerHTML=recordValueFields(defaults[event.target.value]); }
+      sync();
+    });
+    editor.addEventListener("input", sync);
+  });
+  form.querySelectorAll(".config-schedule").forEach(editor => {
+    const update = () => {
+      const get = name => editor.querySelector(`[name="${name}"]`), period = get("repeatPeriod").value, time = get("repeatTime"), minute = get("repeatMinute");
+      time.closest("label").hidden=period==="custom"||period==="hourly";time.disabled=period==="custom"||period==="hourly";
+      minute.closest("label").hidden=period!=="hourly";minute.disabled=period!=="hourly";time.setCustomValidity("");minute.setCustomValidity("");
+      get("repeatWeekday").closest("label").hidden=period!=="weekly";get("repeatWeekday").disabled=period!=="weekly";
+      get("repeatDay").closest("label").hidden=period!=="monthly";get("repeatDay").disabled=period!=="monthly";
+      editor.querySelector("[data-cron-custom]").hidden=period!=="custom";get("customCron").disabled=period!=="custom";
+      const hint=editor.querySelector("[data-cron-hint]");
+      try {get("cron").value=scheduleCronValue(period,period==="hourly"?`00:${minute.value.padStart(2,"0")}`:time.value,get("repeatDay").value,get("repeatWeekday").value,get("customCron").value);time.setCustomValidity("");hint.textContent=period==="monthly"?"当月没有所选日期时，当月不执行。":period==="hourly"?`每小时第 ${Number(minute.value)} 分钟执行。`:"按所选时区执行。";}catch(err){(period==="hourly"?minute:time).setCustomValidity(err.message);hint.textContent=err.message;}
+    };
+    editor.addEventListener("input",update);editor.addEventListener("change",update);update();
+  });
+  form.querySelectorAll("[data-import-file]").forEach(input=>{
+    input.addEventListener("change",async()=>{
+      const file=input.files?.[0],target=form.querySelector(`[name="${input.dataset.importFile}"]`),hint=input.parentElement.querySelector("[data-import-hint]");
+      if(!file)return;
+      const submit=form.querySelector('[type="submit"]');submit.disabled=true;
+      try{const content=await configurationFileText(file);target.value=content;input.setCustomValidity("");hint.textContent=`已读取：${file.name}`;}
+      catch(error){target.value="";input.setCustomValidity(error.message);hint.textContent=error.message;}
+      finally{if(input.isConnected)submit.disabled=false;}
+    });
+  });
+  loadSecretPickers(form);
+}
+
+async function configurationFileText(file) {
+  if(file.size>1048576)throw new Error("配置文件不能超过 1 MB");
+  const content=await file.text();
+  try{const parsed=JSON.parse(content);if(!parsed||typeof parsed!=="object"||Array.isArray(parsed))throw new Error();}catch{throw new Error("请选择包含有效配置对象的 JSON 文件");}
+  return content;
+}
+
+function configurationImportField(label,name) {
+  return `<div class="full"><label>${esc(label)}<input type="file" accept=".json,application/json" data-import-file="${esc(name)}" /><span class="hint" data-import-hint>选择提供方给出的 JSON 文件，最大 1 MB。</span></label><details class="advanced-config"><summary>高级：粘贴配置文档</summary>${textarea("配置内容",name,"",8)}</details></div>`;
+}
+
+async function loadSecretPickers(root) {
+  const pickers=[...root.querySelectorAll("[data-secret-picker]")].filter(input=>!input.dataset.loaded);
+  if(!pickers.length || !canManageSecrets())return;
+  pickers.forEach(input=>{input.dataset.loaded="true";});
+  try {
+    const items=[];let cursor="";
+    do {const page=await api(`/admin/api/secrets?limit=200${cursor?`&cursor=${encodeURIComponent(cursor)}`:""}`);items.push(...page.items);cursor=page.nextCursor;}while(cursor && root.isConnected);
+    for(const input of pickers){if(!input.isConnected)continue;const current=input.value;input.innerHTML=`<option value="">${input.required?'请选择凭据':'不绑定已有凭据'}</option>`+items.filter(item=>item.status==="active" || item.id===current).map(item=>`<option value="${esc(item.id)}">${esc(item.name)} · ${esc(item.key)}</option>`).join("");if(current&&!items.some(item=>item.id===current))input.insertAdjacentHTML("beforeend",`<option value="${esc(current)}">当前已绑定凭据（目录不可见）</option>`);input.value=current;}
+  } catch {for(const input of pickers)if(input.isConnected){input.dataset.loaded="";input.insertAdjacentHTML("afterend",'<span class="hint" role="alert">凭据目录加载失败，请重新打开表单重试；已有绑定仍会保留。</span>');}}
 }
 
 function vLabel(version) {
@@ -786,6 +1149,19 @@ function textarea(label, name, value = "", rows = 6, extra = "") {
 const APP_SCOPES_HINT_ID = "app-scopes-hint";
 
 /** 应用 Scopes 输入框下的说明：Key 的有效 scope = Key 的 scopes ∩ 应用当前 scopes；新建 Key 复制应用当时的 scopes；不接受含 * 的 scope。 */
+function validateAppScope(value, existing) {
+  const scope=value.trim();
+  if(!scope || scope.length>64 || scope.includes("*"))throw new Error("权限标识须为 1–64 个字符，不能包含通配符");
+  if(existing.includes(scope))throw new Error("该权限已在列表中");
+  return scope;
+}
+
+function appScopeFields(scopes = []) {
+  const labels = {"agents:read":"查看 Agent","runs:create":"发起运行","runs:read":"查看运行结果","runs:cancel":"取消运行"};
+  const options = [...new Set([...Object.keys(labels),...scopes])];
+  return `<fieldset class="full" data-app-scope-fields aria-describedby="${APP_SCOPES_HINT_ID}"><legend>应用可用权限</legend><input type="hidden" name="scopes" value="${esc(scopes.join(","))}" aria-describedby="${APP_SCOPES_HINT_ID}" /><div class="config-scope-list">${options.map(value=>`<label class="config-check"><input type="checkbox" data-app-scope value="${esc(value)}"${scopes.includes(value)?" checked":""} />${esc(labels[value]??`自定义权限：${value}`)}</label>`).join("")}</div><details class="advanced-config"><summary>高级：自定义权限</summary><label>权限标识<input data-scope-new maxlength="64" /></label><button type="button" class="btn ghost small" data-scope-add>添加权限</button></details>${appScopesHint()}</fieldset>`;
+}
+
 function appScopesHint() {
   return `<p class="hint" id="${APP_SCOPES_HINT_ID}">${esc("收窄会立即对已有 Key 生效；放宽只对之后新建的 Key 生效，已有 Key 需要重新创建。不支持 ")}<code>*</code>${esc(" 通配。")}</p>`;
 }
@@ -793,6 +1169,15 @@ function appScopesHint() {
 /** Key 列表 Scopes 列：GET /admin/api/apps/:id/keys 返回 scopes_json（数组）；缺失或不是数组时显示空。 */
 function keyScopesText(key) {
   return Array.isArray(key?.scopes_json) ? key.scopes_json.join(", ") : "";
+}
+
+function showAppKey(result) {
+  const text = result.secretAvailable === false
+    ? "轮换已完成，明文密钥已在首次响应中返回。如未保存，请轮换新密钥。"
+    : "请立即复制保存，关闭后无法再次查看。";
+  openModal("API Key（只显示一次）", `<p class="muted">${text}</p><p>新密钥 Prefix：<span class="mono">${esc(result.prefix)}</span></p>${result.key ? `<div class="code-block api-key-secret">${esc(result.key)}</div>` : ""}`, async () => {}, result.key ? "已保存" : "关闭");
+  const secret = $(".api-key-secret");
+  if (secret) $("#modal").addEventListener("close", () => { secret.textContent = ""; }, { once: true });
 }
 
 /** 表单内字段提示：文案走 textContent，显示提示、标记 aria-invalid 并聚焦；用户改动输入后提示消失。 */
@@ -826,6 +1211,133 @@ function parseJsonField(data, key, fallback) {
   }
 }
 
+function agentSpecFields(spec) {
+  const fields = [["模型 Provider Key", "model.provider", "text", "required list=agent-providers"], ["模型名称", "model.model", "text", "required list=agent-models"], ["温度（可选）", "model.temperature", "number", 'min="0" max="2" step="0.1"'], ["最多执行步数（可选）", "limits.maxSteps", "number", 'min="1" step="1"'], ["成本上限（美元，可选）", "limits.maxCostUsd", "number", 'min="0" step="0.000001"']];
+  return fields.map(([label,path,type,extra]) => { const [group,key] = path.split("."); return field(label, path, spec[group]?.[key] ?? "", type, `data-spec-path="${path}" ${extra}`); }).join("") + `
+    <datalist id="agent-providers"></datalist><datalist id="agent-models"></datalist>
+    <div class="full" data-agent-capabilities><p class="hint">正在加载有权读取的模型、Skill 和工具目录…</p></div>
+    <details class="full advanced-config"><summary>高级配置 JSON（与上方字段同步）</summary>${textarea("完整 Agent 配置", "spec", JSON.stringify(spec, null, 2), 10)}<p class="hint" id="agent-spec-error" role="alert" hidden></p></details>`;
+}
+
+function agentReadableConfig(spec) {
+  const unsupported = "请查看高级配置";
+  const strings = value => Array.isArray(value) && value.every(item => typeof item === "string") ? value.join("、") || "无" : value == null ? "无" : unsupported;
+  const model = spec.model && typeof spec.model.provider === "string" && typeof spec.model.model === "string" ? `${spec.model.provider} / ${spec.model.model}` : spec.model == null ? "未配置" : unsupported;
+  const skills = strings(spec.skills);
+  const tools = Array.isArray(spec.toolsets) ? spec.toolsets.map(group => {
+    if (!group || typeof group !== "object") return unsupported;
+    if (group.builtin !== undefined) return strings(group.builtin);
+    const key = group.mcp ?? group.openapi ?? group.connector;
+    return typeof key === "string" ? key : unsupported;
+  }).join("；") || "无" : spec.toolsets == null ? "无" : unsupported;
+  const steps = spec.limits?.maxSteps, cost = spec.limits?.maxCostUsd;
+  const budget = [steps,cost].every(value => value == null || typeof value === "number") ? `最多 ${steps ?? "默认"} 步，成本上限 ${cost ?? "默认"} 美元` : unsupported;
+  return { model, skills, tools, budget };
+}
+
+function editAgentSpec(spec, path, value) {
+  if (!["model.provider", "model.model", "model.temperature", "limits.maxSteps", "limits.maxCostUsd"].includes(path)) throw new Error("未知配置字段");
+  const next = structuredClone(spec), [group,key] = path.split(".");
+  next[group] = next[group] && typeof next[group] === "object" && !Array.isArray(next[group]) ? { ...next[group] } : {};
+  if (path === "model.provider" || path === "model.model") next[group][key] = value;
+  else if (value === "") delete next[group][key];
+  else {
+    const number = Number(value);
+    if (!Number.isFinite(number)) throw new Error("请输入有效数值");
+    next[group][key] = number;
+  }
+  return next;
+}
+
+function chooseAgentCapability(spec, kind, key, checked, previous = []) {
+  const next = structuredClone(spec);
+  if (kind === "skills") {
+    next.skills = (next.skills ?? []).filter(value => value !== key);
+    if (checked) next.skills.push(key);
+  } else if (kind === "builtin") {
+    next.toolsets = (next.toolsets ?? []).map(group => group.builtin ? { ...group, builtin: group.builtin.filter(value => value !== key) } : group).filter(group => !group.builtin || group.builtin.length);
+    if (checked) next.toolsets.push({ builtin: [key] });
+  } else if (kind === "mcp" || kind === "openapi") {
+    const existing = (next.toolsets ?? []).filter(group => group?.[kind] === key);
+    next.toolsets = (next.toolsets ?? []).filter(group => group[kind] !== key);
+    if (checked) next.toolsets.push(...(existing.length ? existing : previous.length ? structuredClone(previous) : [{ [kind]: key }]));
+  } else throw new Error("未知能力类型");
+  return next;
+}
+
+function bindAgentSpecEditor() {
+  const body = $("#modal-body"), raw = body.querySelector('[name="spec"]');
+  const controls = [...body.querySelectorAll("[data-spec-path]")];
+  const retainedCapabilities = new Map();
+  const read = () => { const spec = JSON.parse(raw.value); if (!spec || typeof spec !== "object" || Array.isArray(spec)) throw new Error("配置必须是 JSON 对象"); return spec; };
+  const report = error => { raw.setCustomValidity(error ? "请修正高级配置 JSON" : ""); const hint = body.querySelector("#agent-spec-error"); hint.hidden = !error; hint.textContent = error ? error.message : ""; if (error) raw.closest("details").open = true; };
+  const sync = () => {
+    try {
+      const spec = read(); report(null);
+      for (const control of controls) { const [group,key] = control.dataset.specPath.split("."); control.value = spec[group]?.[key] ?? ""; }
+      for (const control of body.querySelectorAll("[data-capability]")) { const { capability: kind, key } = control.dataset; control.checked = kind === "skills" ? Array.isArray(spec.skills) && spec.skills.includes(key) : Array.isArray(spec.toolsets) && spec.toolsets.some(group => kind === "builtin" ? Array.isArray(group?.builtin) && group.builtin.includes(key) : group?.[kind] === key); }
+    } catch (error) { report(error); }
+  };
+  const change = update => { try { raw.value = JSON.stringify(update(read()), null, 2); report(null); } catch (error) { report(error); } };
+  for (const control of controls) control.addEventListener("input", () => change(spec => editAgentSpec(spec, control.dataset.specPath, control.value)));
+  raw.addEventListener("input", sync);
+  const directories = [["model.view", "/admin/api/providers", "models", "模型"], ["skill.view", "/admin/api/skills", "skills", "Skills"], ["mcp.view", "/admin/api/mcp", "mcp", "MCP 服务"], ["tool.view", "/admin/api/tool-sources", "openapi", "OpenAPI 工具源"]].filter(([permission]) => canPermission(permission));
+  Promise.allSettled(directories.map(([,path]) => api(path))).then(results => {
+    if (!raw.isConnected) return;
+    const groups = [{ kind: "builtin", label: "内置工具", items: [{ key: "current_time", name: "当前时间" }, { key: "echo", name: "回显" }] }];
+    const errors = [];
+    results.forEach((result,index) => {
+      const [, , kind, label] = directories[index];
+      if (result.status === "rejected") { errors.push(`${label}目录加载失败，可重开表单重试或使用高级配置。`); return; }
+      const items = result.value.items ?? [];
+      if (kind === "models") {
+        body.querySelector("#agent-providers").innerHTML = items.map(item => `<option value="${esc(item.key)}">${esc(item.name)}</option>`).join("");
+        body.querySelector("#agent-models").innerHTML = items.flatMap(item => item.models ?? []).map(item => `<option value="${esc(item.key)}">${esc(item.displayName ?? item.key)}</option>`).join("");
+      } else groups.push({ kind, label, items });
+    });
+    body.querySelector("[data-agent-capabilities]").innerHTML = `<p class="hint">模型可按 Key 输入或从目录选择；原有工具白名单与高级配置会保留，新绑定的 MCP / OpenAPI 工具源默认使用其全部工具。</p>${groups.map(group => `<fieldset class="capability-group"><legend>${esc(group.label)}</legend>${group.items.length ? group.items.map(item => `<label class="capability-choice"><input type="checkbox" data-capability="${group.kind}" data-key="${esc(item.key)}" />${esc(item.name ?? item.key)} <span class="muted">${esc(item.key)}</span></label>`).join("") : '<p class="hint">当前没有可选资源</p>'}</fieldset>`).join("")}${errors.map(message => `<p class="hint" role="status">${esc(message)}</p>`).join("")}`;
+    for (const control of body.querySelectorAll("[data-capability]")) control.addEventListener("change", () => change(spec => {
+      const { capability: kind, key } = control.dataset, identity = `${kind}:${key}`;
+      if (!control.checked && (kind === "mcp" || kind === "openapi")) retainedCapabilities.set(identity, (spec.toolsets ?? []).filter(group => group?.[kind] === key));
+      return chooseAgentCapability(spec, kind, key, control.checked, retainedCapabilities.get(identity));
+    }));
+    sync();
+  }).catch(error => { if (raw.isConnected) report(error); });
+}
+
+function secretResourceDirectories() {
+  return { agent: ["Agent", "agent.view", "/admin/api/agents"], llm_provider: ["模型 Provider", "model.view", "/admin/api/providers"], mcp_server: ["MCP 服务", "mcp.view", "/admin/api/mcp"], tool_source: ["OpenAPI 工具源", "tool.view", "/admin/api/tool-sources"], api_app: ["API 应用", "apikey.view", "/admin/api/apps"], message_channel: ["消息渠道", "message.view", "/admin/api/message-channels"] };
+}
+
+function bindSecretScopePicker() {
+  const body = $("#modal-body"), type = body.querySelector("[name=scopeType]"), resource = body.querySelector("[name=resourceType]");
+  const select = body.querySelector("[name=scopeId]"), query = body.querySelector("[name=scopeQuery]"), manual = body.querySelector("[name=scopeManualId]"), hint = body.querySelector("[data-scope-hint]");
+  let generation = 0, items = [];
+  const filter = () => { const selected = select.value, text = query.value.toLowerCase(); select.innerHTML = '<option value="">请选择对象</option>' + items.filter(item => `${item.name} ${item.key ?? ""} ${item.id}`.toLowerCase().includes(text)).map(item => `<option value="${esc(item.id)}">${esc(item.name ?? item.key ?? item.id)}${item.key ? ` · ${esc(item.key)}` : ""}</option>`).join(""); select.value = selected; hint.textContent = select.value ? `选定对象 ID：${select.value}` : "按名称或 Key 查找并选择对象。"; };
+  select.onchange = () => { hint.textContent = select.value ? `选定对象 ID：${select.value}` : "按名称或 Key 查找并选择对象。"; if (select.value) manual.value = ""; };
+  query.oninput = filter;
+  const update = async () => {
+    const request = ++generation, platform = type.value === "platform";
+    body.querySelector("[data-secret-resource]").hidden = type.value !== "resource";
+    body.querySelector("[data-secret-target]").hidden = platform;
+    select.value = ""; manual.value = ""; query.value = ""; items = []; filter();
+    select.disabled = true; query.disabled = true; manual.disabled = platform;
+    if (platform) return;
+    const directory = type.value === "org" ? ["组织", "org.view", "/admin/api/org-units"] : secretResourceDirectories()[resource.value];
+    hint.textContent = "正在加载目录…";
+    try {
+      if (!directory || !canPermission(directory[1])) throw new Error("没有读取此目录的权限，可联系管理员或使用高级 ID 输入。");
+      const result = await api(directory[2]);
+      if (request !== generation || !select.isConnected) return;
+      items = result.items ?? []; filter(); select.disabled = false; query.disabled = false;
+      hint.textContent = items.length ? "按名称或 Key 查找并选择对象。" : "目录中没有可选对象，可先创建资源或使用高级 ID 输入。";
+    } catch (error) { if (request === generation && select.isConnected) hint.textContent = `目录未加载：${errorText(error)}`; }
+  };
+  type.onchange = update; resource.onchange = update;
+  body.querySelector("[data-scope-retry]").onclick = update;
+  update();
+}
+
 // ---------- actions ----------
 
 const app = {
@@ -840,8 +1352,8 @@ const app = {
         ${field("Key", "key", "my-agent")}
         ${field("名称", "name", "我的 Agent")}
         <div class="full">${field("描述", "description", "")}</div>
-        <div class="full">${textarea("Instructions", "instructions", "你是一个简洁、可靠的助手。")}</div>
-        <div class="full">${textarea("Spec JSON", "spec", spec, 8)}</div>
+        <div class="full">${textarea("指令", "instructions", "你是一个简洁、可靠的助手。")}</div>
+        ${agentSpecFields(JSON.parse(spec))}
       </div>`, async (data) => {
       const body = {
         key: data.get("key"),
@@ -849,12 +1361,13 @@ const app = {
         description: data.get("description"),
         instructions: data.get("instructions"),
         spec: parseJsonField(data, "spec", {}),
-        publish: true,
+        publish: false,
       };
       await api("/admin/api/agents", { method: "POST", body });
-      toast("Agent 已创建并发布");
+      toast("Agent 草稿已保存，可先试运行，再单独发布");
       await renderAgents();
-    }, "创建并发布");
+    }, "保存草稿");
+    bindAgentSpecEditor();
   },
 
   async openAgentNewVersion(id) {
@@ -866,16 +1379,84 @@ const app = {
       openModal(`新建版本 · ${name}`, `
         <div class="form-grid">
           ${field("版本号", "version", "1.1.0")}
-          <div class="full">${textarea("Instructions", "instructions", latest.instructions ?? "")}</div>
-          <div class="full">${textarea("Spec JSON", "spec", JSON.stringify(latest.spec_json ?? {}, null, 2), 10)}</div>
+          <div class="full">${textarea("指令", "instructions", latest.instructions ?? "")}</div>
+          ${agentSpecFields(latest.spec_json ?? {})}
         </div>`, async (data) => {
-        await api(`/admin/api/agents/${idSeg(id)}/versions`, { method: "POST", body: { version: data.get("version"), instructions: data.get("instructions"), spec: parseJsonField(data, "spec", {}), publish: true } });
-        toast("新版本已创建并发布");
+        await api(`/admin/api/agents/${idSeg(id)}/versions`, { method: "POST", headers: revisionHeaders(detail), body: { version: data.get("version"), instructions: data.get("instructions"), spec: parseJsonField(data, "spec", {}), publish: false } });
+        toast("新版本草稿已保存，线上版本保持不变");
         await renderAgents();
-      }, "创建并发布");
+      }, "保存草稿");
+      bindAgentSpecEditor();
     } catch (error) {
       toast(errorText(error), "error");
     }
+  },
+
+  secretFirstPage() { return renderSecrets().catch(error => toast(errorText(error), "error")); },
+  secretNextPage() { return renderSecrets(state.secretNextCursor).catch(error => toast(errorText(error), "error")); },
+
+  openSecretCreate() {
+    openModal("新建凭据", `<div class="form-grid">
+      ${field("Key", "key", "", "text", 'required minlength="2" maxlength="64" pattern="[a-z0-9][a-z0-9._-]{1,63}"')}
+      ${field("名称", "name", "", "text", 'required maxlength="128"')}
+      <div class="full">${textarea("描述", "description", "", 2, 'maxlength="1024"')}</div>
+      ${select("作用域", "scopeType", [{value:"platform",label:"平台"},{value:"org",label:"组织"},{value:"resource",label:"指定资源"}], "platform")}
+      <div data-secret-resource hidden>${select("资源类型", "resourceType", Object.entries(secretResourceDirectories()).map(([value,[label]]) => ({value,label})))}</div>
+      <div class="full" data-secret-target hidden>${field("搜索组织 / 资源名称或 Key", "scopeQuery", "", "search")}${select("选择组织 / 资源", "scopeId", [{value:"",label:"请选择对象"}])}<p class="hint" data-scope-hint role="status"></p><button type="button" class="btn ghost small" data-scope-retry>重新加载目录</button><details class="advanced-config"><summary>高级：直接输入对象 ID</summary>${field("组织 / 资源 ID", "scopeManualId", "", "text", 'minlength="26" maxlength="26"')}<p class="hint">仅在明确知道目标 ID 时使用，保存仍执行服务端作用域校验。</p></details></div>
+      <div class="full">${textarea("凭据值", "value", "", 5, 'required autocomplete="off" spellcheck="false" data-credential-input')}</div>
+    </div>`, async data => {
+      const type = data.get("scopeType"), selected = data.get("scopeId"), manual = data.get("scopeManualId");
+      if (type !== "platform" && !selected && !manual) throw new Error("请选择组织或资源，或在高级区填写目标 ID");
+      if (selected && manual && selected !== manual) throw new Error("目录选择和高级 ID 不一致，请只保留一个目标");
+      const id = selected || manual, scope = type === "platform" ? {type} : type === "org" ? {type,id} : {type,resourceType:data.get("resourceType"),id};
+      await api("/admin/api/secrets", {method:"POST",body:{key:data.get("key"),name:data.get("name"),description:data.get("description"),scope,value:data.get("value")}});
+      toast("凭据已创建"); await renderSecrets();
+    });
+    bindSecretScopePicker();
+  },
+
+  async openSecretDetail(id) {
+    try {
+      const secret = await api(`/admin/api/secrets/${idSeg(id)}`);
+      openModal(`凭据 · ${secret.name}`, `<dl><dt>ID</dt><dd class="mono">${esc(secret.id)}</dd><dt>作用域</dt><dd>${esc(secretScopeText(secret.scope))}</dd><dt>描述</dt><dd>${esc(secret.description || "—")}</dd><dt>创建时间</dt><dd>${esc(fmt(secret.createdAt))}</dd></dl>
+        <h4>版本</h4><div class="table-wrap"><table><thead><tr><th>版本</th><th>主密钥版本</th><th>状态</th><th>创建时间</th></tr></thead><tbody>${secret.versions.map(v => `<tr><td>${v.version}</td><td class="mono">${esc(v.keyVersion)}</td><td>${v.active ? "当前" : "历史"}</td><td>${esc(fmt(v.createdAt))}</td></tr>`).join("")}</tbody></table></div>
+        <h4>引用资源</h4>${secret.references.length ? `<div class="table-wrap"><table><thead><tr><th>名称</th><th>类型 / ID</th><th>用途</th></tr></thead><tbody>${secret.references.map(r => `<tr><td>${esc(r.name)}</td><td class="mono">${esc(r.resourceType)}<br>${esc(r.resourceId)}</td><td>${esc(r.bindingKey)}</td></tr>`).join("")}</tbody></table></div>` : `<p class="muted">暂无引用</p>`}`, async () => {}, "关闭");
+    } catch (error) { toast(errorText(error), "error"); }
+  },
+
+  async openSecretEdit(id) {
+    try {
+      const secret = await api(`/admin/api/secrets/${idSeg(id)}`);
+      openModal(`编辑凭据 · ${secret.name}`, `<div class="form-grid">${field("名称", "name", secret.name, "text", 'required maxlength="128"')}<div class="full">${textarea("描述", "description", secret.description, 3, 'maxlength="1024"')}</div></div>`, async data => {
+        await api(`/admin/api/secrets/${idSeg(id)}`, {method:"PATCH",headers:revisionHeaders(secret),body:{name:data.get("name"),description:data.get("description")}});
+        toast("凭据已更新"); await renderSecrets();
+      });
+    } catch (error) { toast(errorText(error), "error"); }
+  },
+
+  openSecretRotate(id) {
+    const secret = state.secrets.find(item => item.id === id); if (!secret) return;
+    openModal(`轮换凭据 · ${secret.name}`, textarea("新凭据值", "value", "", 5, 'required autocomplete="off" spellcheck="false" data-credential-input'), async data => {
+      await api(`/admin/api/secrets/${idSeg(id)}/rotate`, {method:"POST",headers:revisionHeaders(secret),body:{value:data.get("value")}});
+      toast("凭据已轮换"); await renderSecrets();
+    }, "轮换");
+  },
+
+  setSecretStatus(id) {
+    const secret = state.secrets.find(item => item.id === id); if (!secret) return;
+    const status = secret.status === "active" ? "disabled" : "active", label = status === "active" ? "启用" : "停用";
+    openModal(`${label}凭据`, `<p>${esc(secret.name)}${status === "disabled" ? "：停用后新请求将无法使用该凭据。" : ""}</p>`, async () => {
+      await api(`/admin/api/secrets/${idSeg(id)}`, {method:"PATCH",headers:revisionHeaders(secret),body:{status}});
+      toast(`凭据已${label}`); await renderSecrets();
+    }, label, status === "disabled");
+  },
+
+  deleteSecret(id) {
+    const secret = state.secrets.find(item => item.id === id); if (!secret) return;
+    openModal("删除凭据", `<p>确认删除「${esc(secret.name)}」？</p>`, async () => {
+      await api(`/admin/api/secrets/${idSeg(id)}`, {method:"DELETE",headers:revisionHeaders(secret)});
+      toast("凭据已删除"); await renderSecrets();
+    }, "删除", true);
   },
 
   openMcpEdit(id) {
@@ -885,10 +1466,11 @@ const app = {
       <div class="form-grid">
         ${field("名称", "name", server.name)}
         <div class="full">${field("HTTP URL", "url", server.url)}</div>
-        <div class="full">${textarea("Headers JSON", "headers", JSON.stringify(server.headers_json ?? {}, null, 2), 4)}</div>
+        ${credentialHeaderFields(server)}
       </div>`, async (data) => {
-      await api(`/admin/api/mcp/${idSeg(id)}`, { method: "PATCH", body: { name: data.get("name"), url: data.get("url"), headers: parseJsonField(data, "headers", {}) } });
-      await api(`/admin/api/mcp/${idSeg(id)}/refresh`, { method: "POST", body: {} }).catch(() => null);
+      const saved = await api(`/admin/api/mcp/${idSeg(id)}`, { method: "PATCH", headers: revisionHeaders(server), body: { name: data.get("name"), url: data.get("url"), ...credentialHeadersChange(data, server) } });
+      server.revision = saved.revision;
+      await api(`/admin/api/mcp/${idSeg(id)}/refresh`, { method: "POST", headers: revisionHeaders(server), body: {} });
       toast("MCP 已更新");
       await renderMcp();
     });
@@ -905,8 +1487,9 @@ const app = {
           <div class="full">${field("描述", "description", skill.description)}</div>
           <div class="full">${textarea("SKILL.md 内容", "content", latest?.content_md ?? "", 12)}</div>
         </div>`, async (data) => {
-        await api(`/admin/api/skills/${idSeg(id)}`, { method: "PATCH", body: { name: data.get("name"), description: data.get("description") } });
-        await api(`/admin/api/skills/${idSeg(id)}/versions`, { method: "POST", body: { version: data.get("version"), content: data.get("content"), publish: true } });
+        const saved = await api(`/admin/api/skills/${idSeg(id)}`, { method: "PATCH", headers: revisionHeaders(skill), body: { name: data.get("name"), description: data.get("description") } });
+        skill.revision = saved.revision;
+        await api(`/admin/api/skills/${idSeg(id)}/versions`, { method: "POST", headers: revisionHeaders(skill), body: { version: data.get("version"), content: data.get("content"), publish: true } });
         toast("Skill 已更新并发布新版本");
         await renderSkills();
       }, "保存并发布");
@@ -922,10 +1505,11 @@ const app = {
       <div class="form-grid">
         ${field("名称", "name", provider.name)}
         ${field("Base URL", "baseUrl", provider.baseUrl)}
-        <div class="full">${field("新 API Key（留空不改）", "apiKey", "", "password")}</div>
-        <div class="full">${textarea("Headers JSON", "headers", "{}", 4)}</div>
+        <div class="full">${field("新 API Key（留空不改）", "apiKey", "", "password", 'data-credential-input autocomplete="new-password"')}</div>
+        ${credentialReferenceField("API Key 凭据 ID", "secretId", provider.secretId)}
+        ${credentialHeaderFields(provider)}
       </div>`, async (data) => {
-      await api(`/admin/api/providers/${idSeg(id)}`, { method: "PATCH", body: { name: data.get("name"), baseUrl: data.get("baseUrl"), apiKey: data.get("apiKey") || undefined, headers: parseJsonField(data, "headers", {}) } });
+      await api(`/admin/api/providers/${idSeg(id)}`, { method: "PATCH", headers: revisionHeaders(provider), body: { name: data.get("name"), baseUrl: data.get("baseUrl"), apiKey: data.get("apiKey") || undefined, ...credentialReferenceChange(data, "secretId", provider.secretId, "apiKey"), ...credentialHeadersChange(data, provider) } });
       toast("Provider 已更新");
       await renderModels();
     });
@@ -941,7 +1525,7 @@ const app = {
           ${field("上下文窗口", "contextWindow", model.contextWindow, "number")}
           ${field("最大输出", "maxOutputTokens", model.maxOutputTokens, "number")}
         </div>`, async (data) => {
-        await api(`/admin/api/models/${idSeg(id)}`, { method: "PATCH", body: { displayName: data.get("displayName"), contextWindow: Number(data.get("contextWindow")), maxOutputTokens: Number(data.get("maxOutputTokens")) } });
+        await api(`/admin/api/models/${idSeg(id)}`, { method: "PATCH", headers: revisionHeaders(model), body: { displayName: data.get("displayName"), contextWindow: Number(data.get("contextWindow")), maxOutputTokens: Number(data.get("maxOutputTokens")) } });
         toast("模型已更新");
         await renderModels();
       });
@@ -956,11 +1540,12 @@ const app = {
       <div class="form-grid">
         ${field("名称", "name", app.name)}
         ${select("状态", "status", [{ value: "active", label: "active" }, { value: "disabled", label: "disabled" }], app.status)}
-        <div class="full">${field("Scopes", "scopes", (app.scopes ?? []).join(","), "text", `aria-describedby="${APP_SCOPES_HINT_ID}"`)}${appScopesHint()}</div>
+        ${appScopeFields(app.scopes ?? [])}
         <div class="full">${field("Webhook URL", "webhookUrl", app.webhookUrl ?? "")}</div>
-        <div class="full">${field("新 Webhook Secret（留空不改）", "webhookSecret", "", "password")}</div>
+        <div class="full">${field("新 Webhook Secret（留空不改）", "webhookSecret", "", "password", 'data-credential-input autocomplete="new-password"')}</div>
+        ${credentialReferenceField("Webhook 凭据 ID", "webhookSecretId", app.webhookSecretId)}
       </div>`, async (data) => {
-      await api(`/admin/api/apps/${idSeg(id)}`, { method: "PATCH", body: { name: data.get("name"), status: data.get("status"), scopes: String(data.get("scopes") ?? "").split(",").map((item) => item.trim()).filter(Boolean), webhookUrl: data.get("webhookUrl"), webhookSecret: data.get("webhookSecret") || undefined } });
+      await api(`/admin/api/apps/${idSeg(id)}`, { method: "PATCH", headers: revisionHeaders(app), body: { name: data.get("name"), status: data.get("status"), scopes: String(data.get("scopes") ?? "").split(",").map((item) => item.trim()).filter(Boolean), webhookUrl: data.get("webhookUrl"), webhookSecret: data.get("webhookSecret") || undefined, ...credentialReferenceChange(data, "webhookSecretId", app.webhookSecretId, "webhookSecret") } });
       toast("应用已更新");
       await renderApps();
     });
@@ -972,32 +1557,43 @@ const app = {
     openModal("编辑定时任务", `
       <div class="form-grid">
         ${field("名称", "name", schedule.name)}
-        ${field("Cron", "cron", schedule.cron)}
-        ${field("时区", "timezone", schedule.timezone)}
-        <div class="full">${textarea("输入 JSON", "input", JSON.stringify(schedule.input_json ?? {}, null, 2), 5)}</div>
+        ${scheduleFields(schedule.cron, schedule.timezone)}
+        <div class="full">${recordFields("任务输入", "input", schedule.input_json ?? {})}</div>
       </div>`, async (data) => {
-      await api(`/admin/api/schedules/${idSeg(id)}`, { method: "PATCH", body: { name: data.get("name"), cron: data.get("cron"), timezone: data.get("timezone"), input: parseJsonField(data, "input", {}) } });
+      await api(`/admin/api/schedules/${idSeg(id)}`, { method: "PATCH", headers: revisionHeaders(schedule), body: { name: data.get("name"), cron: data.get("cron"), timezone: data.get("timezone"), input: parseJsonField(data, "input", {}) } });
       toast("定时任务已更新");
       await renderSchedules();
     });
   },
 
-  openAgentRun(id) {
+  async openAgentRun(id) {
+    try {
+    const navigation = state.navigation;
+    const detail = await api(`/admin/api/agents/${idSeg(id)}`);
+    if (navigation !== state.navigation) return;
+    const versions = detail.versions ?? [];
+    if (!versions.length) { toast("没有可用版本，请先保存一个草稿", "error"); return; }
+    const selected = versions.find(version => version.status === "draft") ?? versions.find(version => version.id === detail.publishedVersionId) ?? versions[0];
     const name = agentNameById(id);
     const errorId = "agent-run-text-error";
-    openModal(`试运行 ${name}`, `${textarea("输入", "text", "你好，介绍一下 Forge。", 5, `aria-required="true" aria-describedby="${errorId}"`)}<p class="hint" id="${errorId}" role="alert" hidden></p>`, async (data) => {
+    openModal(`试运行 ${name}`, `${select("本次试运行版本", "versionId", versions.map(version => ({ value: version.id, label: `${vLabel(version.version)} · ${version.status === "draft" ? "草稿" : "已发布"}` })), selected.id)}<p class="hint">试运行仅使用选定版本，不会发布或切换线上版本。</p>${textarea("输入", "text", "你好，介绍一下 Forge。", 5, `aria-required="true" aria-describedby="${errorId}"`)}<p class="hint" id="${errorId}" role="alert" hidden></p>`, async (data) => {
       // P3：输入必填。空或只有空白时不发请求；有内容时 text 原样发送（不 trim）。
       const text = data.get("text");
       if (typeof text !== "string" || !text.trim()) {
         showFieldError("text", errorId, "请输入内容");
         return false;
       }
-      const result = await api(`/admin/api/agents/${idSeg(id)}/run`, { method: "POST", body: { input: { text } } });
+      const versionId = data.get("versionId");
+      if (!versions.some(version => version.id === versionId)) throw new Error("请选择有效的试运行版本");
+      const result = await api(`/admin/api/agents/${idSeg(id)}/run`, { method: "POST", body: { versionId, input: { text } } });
       toast(`Run 已创建：${result.runId}`);
-      state.tab = "runs";
-      await switchTab("runs");
-      setTimeout(() => app.openRun(result.runId), 300);
+      if (canPermission("run.view")) {
+        await switchTab("runs");
+        const navigation = state.navigation;
+        setTimeout(() => { if (navigation === state.navigation) app.openRun(result.runId, navigation); }, 0);
+      }
     }, "运行");
+    } catch (error) { toast(errorText(error), "error"); }
   },
 
   async publishAgent(id) {
@@ -1011,7 +1607,7 @@ const app = {
       const next = vLabel(draft.version);
       const current = detail.publishedVersion ? `当前线上版本是 ${vLabel(detail.publishedVersion)}` : "这个 Agent 目前还没有线上版本";
       if (!(await confirmAction(`发布「${detail.name}」${next}`, `发布后开放 API 和定时任务会立即改用 ${next}，${current}。`, "确认发布", false))) return;
-      await api(`/admin/api/agents/${idSeg(id)}/publish`, { method: "POST", body: { versionId: draft.id } });
+      await api(`/admin/api/agents/${idSeg(id)}/publish`, { method: "POST", headers: revisionHeaders(detail), body: { versionId: draft.id } });
       toast(`已发布 ${next}`);
       await renderAgents();
     } catch (error) {
@@ -1023,7 +1619,7 @@ const app = {
     try {
       const agent = state.agents.find((item) => item.id === id);
       if (!enabled && !(await confirmAction(`关闭「${agent?.name ?? id}」的开放 API`, "关闭后外部应用无法再发起新调用；已在运行的任务会继续完成，结果仍可查询。之后可以随时重新开放。", "确认关闭"))) return;
-      await api(`/admin/api/agents/${idSeg(id)}`, { method: "PATCH", body: { apiEnabled: enabled } });
+      await api(`/admin/api/agents/${idSeg(id)}`, { method: "PATCH", headers: revisionHeaders(agent), body: { apiEnabled: enabled } });
       toast(enabled ? "已开放 API" : "已关闭 API");
       await renderAgents();
     } catch (error) {
@@ -1031,12 +1627,21 @@ const app = {
     }
   },
 
-  async openAgentDetail(id) {
+  async openAgentDetail(id, navigation = state.navigation) {
     try {
       const agent = await api(`/admin/api/agents/${idSeg(id)}`);
-      openModal(`Agent ${agent.name}`, `<div class="code-block">${json(agent)}</div>`, async () => {}, "关闭");
+      if (navigation !== state.navigation) return;
+      const latest = agent.versions?.find(version => version.status === "draft") ?? agent.versions?.[0];
+      const spec = latest?.spec_json ?? {};
+      const readable = agentReadableConfig(spec);
+      const summary = [["名称 / Key", `${agent.name} / ${agent.key}`], ["当前配置", latest ? `${vLabel(latest.version)} · ${latest.status === "draft" ? "草稿" : "已发布"}` : "暂无版本"], ["线上版本", agent.publishedVersion ?? "未发布"], ["开放 API", agent.apiEnabled ? "已开放" : "未开放"], ["模型", readable.model], ["指令", latest?.instructions ?? "—"], ["Skills", readable.skills], ["工具", readable.tools], ["预算", readable.budget]];
+      openModal(`Agent · ${agent.name}`, `<dl class="config-summary">${summary.map(([label,value]) => `<dt>${esc(label)}</dt><dd>${esc(value)}</dd>`).join("")}</dl>
+        <div class="actions">${canPermission("agent.publish") ? `<button type="button" class="btn ghost" id="agent-detail-version">新版本草稿</button>` : ""}${canPermission("agent.run") ? `<button type="button" class="btn primary" id="agent-detail-run">选择版本试运行</button>` : ""}${canPermission("agent.publish") && agent.versions?.some(version => version.status === "draft") ? `<button type="button" class="btn ghost" id="agent-detail-publish">发布草稿</button>` : ""}</div>
+        <details class="advanced-config"><summary>高级：原始配置与版本记录</summary><pre class="code-block">${json(agent)}</pre></details>`, async () => {}, "关闭");
+      const actions = { "agent-detail-version": () => app.openAgentNewVersion(id), "agent-detail-run": () => app.openAgentRun(id), "agent-detail-publish": () => app.publishAgent(id) };
+      for (const [name, action] of Object.entries(actions)) { const button = $(`#${name}`); if (button) button.onclick = action; }
     } catch (error) {
-      toast(errorText(error), "error");
+      if (navigation === state.navigation) toast(errorText(error), "error");
     }
   },
 
@@ -1047,8 +1652,9 @@ const app = {
         ${field("名称", "name", "Acme 内网模型")}
         ${select("协议", "protocol", [{ value: "openai-compatible", label: "OpenAI-compatible" }, { value: "mock", label: "Mock (离线)" }], "openai-compatible")}
         ${field("Base URL", "baseUrl", "https://api.openai.com/v1")}
-        <div class="full">${field("API Key", "apiKey", "", "password", "placeholder='可留空，使用环境变量头'")}</div>
-        <div class="full">${textarea("额外 Headers JSON", "headers", "{}", 4)}</div>
+        <div class="full">${field("API Key", "apiKey", "", "password", 'data-credential-input autocomplete="new-password"')}</div>
+        ${credentialReferenceField("API Key 凭据 ID", "secretId")}
+        ${credentialHeaderFields()}
       </div>`, async (data) => {
       await api("/admin/api/providers", {
         method: "POST",
@@ -1058,7 +1664,8 @@ const app = {
           protocol: data.get("protocol"),
           baseUrl: data.get("baseUrl"),
           apiKey: data.get("apiKey"),
-          headers: parseJsonField(data, "headers", {}),
+          ...credentialReferenceChange(data, "secretId", null, "apiKey"),
+          ...credentialHeadersChange(data),
         },
       });
       toast("Provider 已添加");
@@ -1103,9 +1710,9 @@ const app = {
         ${field("Key", "key", "docs-mcp")}
         ${field("名称", "name", "文档解析 MCP")}
         <div class="full">${field("HTTP URL", "url", "http://localhost:8090/mcp")}</div>
-        <div class="full">${textarea("Headers JSON (值可写 env:VAR)", "headers", "{}", 4)}</div>
+        ${credentialHeaderFields()}
       </div>`, async (data) => {
-      const result = await api("/admin/api/mcp", { method: "POST", body: { key: data.get("key"), name: data.get("name"), url: data.get("url"), headers: parseJsonField(data, "headers", {}) } });
+      const result = await api("/admin/api/mcp", { method: "POST", body: { key: data.get("key"), name: data.get("name"), url: data.get("url"), ...credentialHeadersChange(data) } });
       toast(result.warning ? `MCP 已保存，但工具发现失败：${result.warning}` : "MCP 已添加并发现工具", result.warning ? "error" : "ok");
       await renderMcp();
     });
@@ -1113,7 +1720,8 @@ const app = {
 
   async refreshMcp(id) {
     try {
-      const result = await api(`/admin/api/mcp/${idSeg(id)}/refresh`, { method: "POST", body: {} });
+      const server = state.mcp.find((item) => item.id === id);
+      const result = await api(`/admin/api/mcp/${idSeg(id)}/refresh`, { method: "POST", headers: revisionHeaders(server), body: {} });
       toast(`已刷新 ${result.tools?.length ?? 0} 个工具`);
       await renderMcp();
     } catch (error) {
@@ -1141,9 +1749,11 @@ const app = {
         ${field("Key", "key", "erp")}
         ${field("名称", "name", "ERP API")}
         <div class="full">${field("Base URL", "baseUrl", "https://erp.example.com/api")}</div>
-        <div class="full">${textarea("OpenAPI JSON", "spec", "{\\n  \\\"openapi\\\": \\\"3.0.0\\\", \\\"paths\\\": {}\\n}", 8)}</div>
+        ${credentialHeaderFields()}
+        ${configurationImportField("OpenAPI 文件", "spec")}
       </div>`, async (data) => {
-      await api("/admin/api/tool-sources/import", { method: "POST", body: { key: data.get("key"), name: data.get("name"), baseUrl: data.get("baseUrl"), spec: parseJsonField(data, "spec", {}) } });
+      if(!String(data.get("spec")??"").trim())throw new Error("请先选择 OpenAPI 文件或在高级配置中粘贴文档");
+      await api("/admin/api/tool-sources/import", { method: "POST", body: { key: data.get("key"), name: data.get("name"), baseUrl: data.get("baseUrl"), ...credentialHeadersChange(data), spec: parseJsonField(data, "spec") } });
       toast("工具源已导入");
       await renderTools();
     }, "导入");
@@ -1151,7 +1761,9 @@ const app = {
 
   async installPackage() {
     try {
-      const raw = $("#package-json").value;
+      const file = $("#package-file").files?.[0];
+      const raw = file ? await configurationFileText(file) : $("#package-json").value;
+      if(!raw.trim())throw new Error("请先选择能力包文件");
       const pack = JSON.parse(raw);
       const result = await api("/admin/api/plugins/install", { method: "POST", body: pack });
       toast(`安装完成：${Object.values(result.created ?? {}).flat().length} 个资源`);
@@ -1165,7 +1777,7 @@ const app = {
     try {
       const plugin = state.plugins.find((item) => item.id === id);
       if (!(await confirmAction(`卸载能力包「${plugin?.name ?? plugin?.key ?? id}」`, "卸载只标记包状态，不会删除已经创建的 Agent、Skill、MCP 等资源。", "确认卸载"))) return;
-      await api(`/admin/api/plugins/${idSeg(id)}/uninstall`, { method: "POST", body: {} });
+      await api(`/admin/api/plugins/${idSeg(id)}/uninstall`, { method: "POST", headers: revisionHeaders(plugin), body: {} });
       toast("已标记卸载");
       await renderPackages();
     } catch (error) {
@@ -1173,20 +1785,23 @@ const app = {
     }
   },
 
-  async openRun(id) {
+  async openRun(id, navigation = state.navigation) {
     closeStream();
     try {
       const run = await api(`/admin/api/runs/${idSeg(id)}`);
+      if (navigation !== state.navigation) return;
       openModal(`Run ${run.id}`, `
         <div id="run-toolbar" class="toolbar">${runToolbarHtml(run)}</div>
         <div id="run-stream" class="muted"></div>
-        <div class="split">
+        <div class="run-detail">
+          <dl class="config-summary"><dt>固定版本 ID</dt><dd>${esc(run.agentVersionId ?? "—")}</dd><dt>原始请求</dt><dd>${esc(run.input?.text ?? JSON.stringify(run.input ?? {}))}</dd></dl>
           <div><h4>消息</h4><div id="run-messages">${runMessagesHtml(run.messages)}</div></div>
-          <div><h4>工具调用</h4><div id="run-tools">${runToolsHtml(run.toolCalls)}</div><h4 style="margin-top:16px">实时事件</h4><div id="event-log" class="event-log"></div></div>
+          <details class="run-diagnostics"><summary>工具调用与实时事件</summary><h4>工具调用</h4><div id="run-tools">${runToolsHtml(run.toolCalls)}</div><h4>实时事件</h4><div id="event-log" class="event-log"></div></details>
         </div>`, async () => {}, "关闭");
       // 弹窗关闭（关闭按钮 / Esc / 取消 Run）一律关流；同一个函数引用重复 addEventListener 不会叠加。
       $("#modal").addEventListener("close", closeStream);
       listenRun(run.id, run.status);
+      if (!RUN_ACTIVE_STATUSES.includes(run.status) && state.tab === "runs") await renderRuns();
     } catch (error) {
       toast(errorText(error), "error");
     }
@@ -1209,7 +1824,8 @@ const app = {
   async decideApproval(id, decision) {
     const approval = (state.approvals ?? []).find((item) => item.id === id);
     const hint = decision === "approved" && approvalReason(approval) === "interrupted" ? `<p class="muted">这次调用${esc(INTERRUPTED_BADGE_TEXT)}，批准会再执行一次。</p>` : "";
-    openModal(decision === "approved" ? "批准工具调用" : "驳回工具调用", `${hint}${textarea("备注", "comment", "")}`, async (data) => {
+    const context = approval ? `<dl class="config-summary"><dt>Agent</dt><dd>${esc(approval.agent_name)}</dd><dt>工具</dt><dd>${esc(approval.tool_name ?? "未知工具")}</dd><dt>审批原因</dt><dd>${approvalReason(approval) === "interrupted" ? "执行中断，结果不确定，需要人工确认" : `按工具风险策略暂停（${esc(approval.risk_level)}）`}</dd><dt>到期时间</dt><dd>${esc(fmt(approval.expires_at))}</dd><dt>调用参数（已脱敏）</dt><dd>${esc(approval.args_preview || "无参数")}</dd></dl>${canPermission("run.view") ? `<a href="/#runs/${esc(encodeURIComponent(approval.run_id))}" target="_blank" rel="noopener noreferrer">在新标签页查看原始请求与执行记录</a>` : ""}<p class="hint">${decision === "approved" ? "批准后将继续执行工具调用" : "驳回后不执行本次工具调用"}，决定后不能撤回。</p>` : '<p class="hint">审批上下文已不可用，请刷新列表后重试。</p>';
+    openModal(decision === "approved" ? "批准工具调用" : "驳回工具调用", `${context}${hint}${textarea("备注", "comment", "")}`, async (data) => {
       try {
         await api(`/admin/api/approvals/${idSeg(id)}/decide`, { method: "POST", body: { decision, comment: data.get("comment") } });
       } catch (error) {
@@ -1235,13 +1851,14 @@ const app = {
       <div class="form-grid">
         ${field("名称", "name", "")}
         ${field("Key", "key", `svc-${Date.now()}`)}
-        ${select("角色", "role", [{ value: "user", label: "user（普通用户）" }, { value: "operator", label: "operator（运营）" }])}
+        ${select("主角色", "role", (state.serviceRoleOptions ?? []).map(role => ({value:role.key,label:role.name})), "user")}
         ${select("数据范围", "dataScope", [{ value: "org", label: "org（本部门）" }])}
-      </div>`, async (data) => {
-      await api("/admin/api/service-accounts", { method: "POST", body: { name: data.get("name"), key: data.get("key"), role: data.get("role"), dataScope: data.get("dataScope") } });
+      </div>${additionalRolesField(state.serviceRoleOptions ?? [], [], "user")}`, async (data) => {
+      await api("/admin/api/service-accounts", { method: "POST", body: { name: data.get("name"), key: data.get("key"), role: data.get("role"), additionalRoleIds:data.getAll("additionalRoleIds").filter(id => state.serviceRoleOptions?.find(role => role.id === id)?.key !== data.get("role")), dataScope: data.get("dataScope") } });
       toast("服务账号已创建");
       await renderSchedules();
     }, "创建");
+    bindRoleFields();
   },
 
   openScheduleCreate() {
@@ -1264,8 +1881,7 @@ const app = {
         ${field("名称", "name", "每日任务")}
         <div class="full">${select("Agent", "agentId", state.agents.map((agent) => ({ value: agent.id, label: `${agent.name} (${agent.key})` })))}</div>
         <div class="full">${select("运行身份（服务账号）", "serviceAccountId", accounts.map((item) => ({ value: item.id, label: `${item.name}（${item.role} · ${item.dataScope}）` })))}</div>
-        ${field("Cron", "cron", "0 9 * * *")}
-        ${field("时区", "timezone", "Asia/Shanghai")}
+        ${scheduleFields()}
         <div class="full">${textarea("输入文本", "text", "执行今天的任务。", 4)}</div>
       </div>`, async (data) => {
       // P2：下拉没有可选值时 FormData 里是 null / 空串，先拦住给中文提示，不把 null 发给后端（否则是 400「agentId 必须是字符串」）。
@@ -1282,16 +1898,16 @@ const app = {
       if (action === "run") {
         const result = await api(`/admin/api/schedules/${idSeg(id)}/run`, { method: "POST", body: {} });
         toast(`Run 已创建：${result.runId}`);
-        await switchTab("runs");
+        if (canPermission("run.view")) await switchTab("runs");
         return;
       }
+      const schedule = state.schedules.find((item) => item.id === id);
       if (action === "disable") {
-        const schedule = state.schedules.find((item) => item.id === id);
         const nextRun = schedule?.next_run_at ? `，下次计划的 ${fmt(schedule.next_run_at)} 会取消` : "";
-        const message = `停用后不会再按 ${schedule?.cron ?? "Cron"}（${schedule?.timezone ?? "默认时区"}）自动运行${nextRun}。之后可以随时重新启用。`;
+        const message = `停用后不会再按 ${schedule ? scheduleReadableTime(schedule.cron) : "执行计划"}（${schedule?.timezone ?? "默认时区"}）自动运行${nextRun}。之后可以随时重新启用。`;
         if (!(await confirmAction(`停用定时任务「${schedule?.name ?? id}」`, message, "确认停用"))) return;
       }
-      await api(action === "enable" ? `/admin/api/schedules/${idSeg(id)}/enable` : `/admin/api/schedules/${idSeg(id)}/disable`, { method: "POST", body: {} });
+      await api(action === "enable" ? `/admin/api/schedules/${idSeg(id)}/enable` : `/admin/api/schedules/${idSeg(id)}/disable`, { method: "POST", headers: revisionHeaders(schedule), body: {} });
       toast(action === "enable" ? "已启用" : "已停用");
       await renderSchedules();
     } catch (error) {
@@ -1305,63 +1921,173 @@ const app = {
         ${field("Key", "key", "partner-app")}
         ${field("名称", "name", "合作方应用")}
         <div class="full">${field("Webhook URL", "webhookUrl", "")}</div>
-        <div class="full">${field("Webhook Secret", "webhookSecret", "", "password")}</div>
-        <div class="full">${field("Scopes", "scopes", "agents:read,runs:create,runs:read,runs:cancel", "text", `aria-describedby="${APP_SCOPES_HINT_ID}"`)}${appScopesHint()}</div>
+        <div class="full">${field("Webhook Secret", "webhookSecret", "", "password", 'data-credential-input autocomplete="new-password"')}</div>
+        ${credentialReferenceField("Webhook 凭据 ID", "webhookSecretId")}
+        ${appScopeFields(["agents:read","runs:create","runs:read","runs:cancel"])}
       </div>`, async (data) => {
-      await api("/admin/api/apps", { method: "POST", body: { key: data.get("key"), name: data.get("name"), webhookUrl: data.get("webhookUrl"), webhookSecret: data.get("webhookSecret"), scopes: String(data.get("scopes") ?? "").split(",").map((item) => item.trim()).filter(Boolean) } });
+      await api("/admin/api/apps", { method: "POST", body: { key: data.get("key"), name: data.get("name"), webhookUrl: data.get("webhookUrl"), webhookSecret: data.get("webhookSecret"), ...credentialReferenceChange(data, "webhookSecretId", null, "webhookSecret"), scopes: String(data.get("scopes") ?? "").split(",").map((item) => item.trim()).filter(Boolean) } });
       toast("应用已创建");
       await renderApps();
     }, "创建");
   },
 
-  async createAppKey(appId) {
-    try {
-      const result = await api(`/admin/api/apps/${idSeg(appId)}/keys`, { method: "POST", body: { name: "default" } });
-      openModal("API Key（只显示一次）", `<p class="muted">请立即复制保存，关闭后无法再次查看。</p><div class="code-block">${esc(result.key)}</div>`, async () => {}, "已保存");
-    } catch (error) {
-      toast(errorText(error), "error");
-    }
+  createAppKey(appId) {
+    openModal("新建密钥", `<div class="form-grid">${field("名称", "name", "default", "text", 'maxlength="128" required')}${field("有效期（可不填）", "expiresAt", "", "datetime-local")}</div>`, async (data) => {
+      const expiresAt = data.get("expiresAt");
+      const result = await api(`/admin/api/apps/${idSeg(appId)}/keys`, { method: "POST", body: { name: data.get("name"), expiresAt: expiresAt ? new Date(String(expiresAt)).toISOString() : null } });
+      showAppKey(result);
+      return false;
+    }, "创建");
   },
 
   async listAppKeys(appId) {
     try {
       const result = await api(`/admin/api/apps/${idSeg(appId)}/keys`);
-      openModal("API Keys", `<div class="table-wrap"><table><thead><tr><th>名称</th><th>Prefix</th><th>Scopes</th><th>状态</th><th>最后使用</th></tr></thead><tbody>${(result.items ?? []).map((key) => `<tr><td>${esc(key.name)}</td><td class="mono">${esc(key.prefix)}</td><td class="mono">${esc(keyScopesText(key))}</td><td>${statusPill(key.status)}</td><td>${fmt(key.last_used_at)}</td></tr>`).join("")}</tbody></table></div>`, async () => {}, "关闭");
+      openModal("API Keys", `<div class="table-wrap"><table class="api-keys-table"><thead><tr><th>名称</th><th>Prefix</th><th>Scopes</th><th>状态</th><th>有效期</th><th>最后使用</th><th>操作</th></tr></thead><tbody>${(result.items ?? []).map((key) => {
+        const expired = key.expires_at && new Date(key.expires_at).getTime() <= Date.now();
+        return `<tr><td>${esc(key.name)}</td><td class="mono">${esc(key.prefix)}</td><td class="mono">${esc(keyScopesText(key))}</td><td>${statusPill(key.status === "active" && expired ? "expired" : key.status)}</td><td>${key.expires_at ? fmt(key.expires_at) : "永久"}</td><td>${fmt(key.last_used_at)}</td><td><div class="actions">${result.canManage && key.status === "active" ? `${!expired ? `<button type="button" class="btn ghost small" onclick="app.rotateAppKey('${esc(key.id)}')">轮换</button>` : ""}<button type="button" class="btn danger small" onclick="app.revokeAppKey('${esc(key.id)}')">吊销</button>` : ""}</div></td></tr>`;
+      }).join("")}</tbody></table></div>`, async () => {}, "关闭");
     } catch (error) {
       toast(errorText(error), "error");
     }
   },
 
-  async saveUser(id) {
-    try {
-      const role = $(`#role-${CSS.escape(id)}`).value;
-      const dataScope = $(`#scope-${CSS.escape(id)}`).value;
-      await api(`/admin/api/users/${idSeg(id)}`, { method: "PATCH", body: { role, dataScope } });
-      toast("用户权限已更新");
-      await renderUsers();
-    } catch (error) {
-      toast(errorText(error), "error");
-    }
+  rotateAppKey(keyId) {
+    const idempotencyKey = crypto.randomUUID();
+    openModal("轮换密钥", field("旧密钥重叠时间（秒）", "overlapSeconds", "0", "number", 'min="0" max="86400" step="1" required'), async (data) => {
+      const result = await api(`/admin/api/api-keys/${idSeg(keyId)}/rotate`, { method: "POST", headers: { "Idempotency-Key": idempotencyKey }, body: { overlapSeconds: Number(data.get("overlapSeconds")) } });
+      showAppKey(result);
+      return false;
+    }, "轮换");
   },
 
-  async showPermissionMatrix() {
-    try {
-      const data = await api("/admin/api/permissions");
-      const roles = Object.keys(data.roles ?? {});
-      openModal("功能权限矩阵", `<div class="table-wrap"><table><thead><tr><th>角色</th><th>权限</th></tr></thead><tbody>${roles.map((role) => `<tr><td><strong>${esc(role)}</strong></td><td class="mono">${esc((data.roles[role] ?? []).join(", "))}</td></tr>`).join("")}</tbody></table></div>`, async () => {}, "关闭");
-    } catch (error) {
-      toast(errorText(error), "error");
+  revokeAppKey(keyId) {
+    openModal("吊销密钥", "<p>吊销后，此密钥将立即失效。</p>", async () => {
+      const result = await api(`/admin/api/api-keys/${idSeg(keyId)}/revoke`, { method: "POST" });
+      toast("密钥已吊销");
+      await this.listAppKeys(result.appId);
+      return false;
+    }, "吊销", true);
+  },
+
+  async openUser(id) {
+    const current = id ? await api(`/admin/api/users/${idSeg(id)}`) : null;
+    const orgs = await api("/admin/api/org-units").catch(error => { if (error.status === 403) return { items: [] }; throw error; });
+    const roles = state.grantableRoles ?? [];
+    const options = [...(state.roleOptions ?? []), ...(current?.roles ?? [])];
+    const roleChoices = [...new Set([...roles, ...(current ? [current.role] : [])])];
+    const additionalOptions = [...new Map(options.map(role => [role.id, role])).values()];
+    const orgChoices = orgs.items.filter(org => org.status === "active").map(org => ({ value: org.id, label: org.name }));
+    if (state.session.user.role === "platform_admin") orgChoices.unshift({ value: "", label: "未分配" });
+    const fallbackOrg = current ? current.org_unit_id : state.session.user.orgUnitId;
+    if (fallbackOrg && !orgChoices.some(org => org.value === fallbackOrg)) orgChoices.push({ value: fallbackOrg, label: fallbackOrg });
+    openModal(current ? "编辑账号" : "新增账号", `<div class="form-grid">${field("登录名", "username", current?.username ?? "", "text", 'required maxlength="64" autocomplete="off"')}${field("邮箱", "email", current?.email ?? "", "email", 'required maxlength="255" autocomplete="off"')}${field("显示名", "displayName", current?.display_name ?? "", "text", 'required maxlength="128"')}${select("主角色", "role", roleChoices.map(role => ({value:role,label:options.find(item => item.key === role)?.name ?? ROLE_LABELS[role] ?? role})), current?.role ?? "user")}${select("数据范围", "dataScope", Object.entries(SCOPE_LABELS).map(([value,label]) => ({value,label})), current?.data_scope ?? "self")}${select("部门", "orgUnitId", orgChoices, current ? (current.org_unit_id ?? "") : (state.session.user.orgUnitId ?? ""))}${select("状态", "status", [{value:"active",label:"启用"},{value:"disabled",label:"停用"}], current?.status ?? "active")}${!current ? field("本地密码", "password", "", "password", 'data-credential-input minlength="8" maxlength="256" autocomplete="new-password"') : ""}</div>${additionalRolesField(additionalOptions, current?.additional_role_ids ?? [], current?.role ?? "user")}`, async data => {
+      const body = Object.fromEntries(["username","email","displayName","role","dataScope","status"].map(key => [key, data.get(key)]));
+      body.orgUnitId = data.get("orgUnitId") || null;
+      body.additionalRoleIds = data.getAll("additionalRoleIds").filter(id => options.find(role => role.id === id)?.key !== body.role);
+      if (!current && data.get("password")) body.password = data.get("password");
+      await api(current ? `/admin/api/users/${idSeg(id)}` : "/admin/api/users", { method: current ? "PATCH" : "POST", headers: current ? revisionHeaders(current) : {}, body });
+      toast(current ? "账号已更新" : "账号已创建");
+      if (current?.id === state.session.user.id) {
+        const session = await api("/auth/session", { auth: "probe" }).catch(error => { if (error.status === 401) return null; throw error; });
+        if (!session) return;
+        state.session = session;
+        location.hash = routeAfterLogin(location.hash.slice(1));
+        await enterApp();
+      } else await renderUsers();
+    }, "保存");
+    bindRoleFields();
+  },
+
+  async userAction(id, action) {
+    if (action === "edit") return this.openUser(id);
+    const current = await api(`/admin/api/users/${idSeg(id)}`);
+    if (action === "detail") {
+      openModal(`账号 · ${current.username}`, `<dl><dt>显示名</dt><dd>${esc(current.display_name)}</dd><dt>邮箱</dt><dd>${esc(current.email)}</dd><dt>角色</dt><dd>${esc((current.roles ?? []).find(role => role.key === current.role)?.name ?? ROLE_LABELS[current.role] ?? current.role)}</dd><dt>附加角色</dt><dd>${esc((current.roles ?? []).filter(role => role.key !== current.role).map(role => `${role.name}${role.status === "active" ? "" : "（停用）"}`).join("、") || "无")}</dd><dt>有效功能权限</dt><dd>${esc((current.effective_permissions ?? []).map(permissionName).join("、") || "无")}</dd><dt>数据范围</dt><dd>${esc(SCOPE_LABELS[current.data_scope] ?? current.data_scope)}</dd><dt>本地密码</dt><dd>${current.has_local_password ? "已设置" : "未设置"}</dd><dt>创建时间</dt><dd>${esc(fmt(current.created_at))}</dd></dl>${canPermission("audit.view") ? '<div class="actions"><button type="button" class="btn ghost" id="user-target-audit">查看该账号变更</button><button type="button" class="btn ghost" id="user-actor-audit">查看该账号操作</button></div>' : ""}`, async () => {}, "关闭");
+      for (const [buttonId, actor] of [["user-target-audit", false], ["user-actor-audit", true]]) {
+        const button = $(`#${buttonId}`);
+        if (button) button.onclick = () => { $("#modal").close(); Object.assign(state.auditFilters, { action: "", resourceType: actor ? "" : "user", resourceId: actor ? "" : id, actorId: actor ? id : "", outcome: "", from: "", to: "", cursor: "", history: [] }); app.switchTab("audit"); };
+      }
+      return;
     }
+    if (action === "password") {
+      openModal(`重置密码 · ${current.username}`, field("新密码", "password", "", "password", 'required data-credential-input minlength="8" maxlength="256" autocomplete="new-password"'), async data => {
+        await api(`/admin/api/users/${idSeg(id)}/password`, { method: "POST", headers: revisionHeaders(current), body: { password: data.get("password") } });
+        toast("密码已重置，原会话已撤销");
+        if (id === state.session.user.id) showLogin(); else await renderUsers();
+      }, "重置密码");
+      return;
+    }
+    if (action === "binding") {
+      const sso = await api("/admin/api/sso");
+      openModal(`SSO绑定 · ${current.username}`, `${field("SSO subject", "subject", current.idp_subject ?? "", "text", 'maxlength="255"')}<div class="kv"><span>身份源</span><strong>${esc(sso.issuer ?? "未配置")}</strong></div>`, async data => {
+        const subject = String(data.get("subject") ?? "");
+        await api(`/admin/api/users/${idSeg(id)}/sso-binding`, { method: subject ? "PUT" : "DELETE", headers: revisionHeaders(current), ...(subject ? { body: { subject } } : {}) });
+        toast(subject ? "SSO已绑定，原会话已撤销" : "SSO已解绑，原会话已撤销");
+        if (id === state.session.user.id) showLogin(); else await renderUsers();
+      }, "保存");
+      return;
+    }
+    const deleting = action === "delete";
+    const message = deleting ? `删除账号“${current.username}”？该账号的全部登录会话将立即失效。` : `撤销“${current.username}”的全部登录会话？`;
+    openModal(deleting ? "删除账号" : "撤销会话", `<p>${esc(message)}</p>`, async () => {
+      await api(`/admin/api/users/${idSeg(id)}${deleting ? "" : "/revoke-sessions"}`, { method: deleting ? "DELETE" : "POST", headers: revisionHeaders(current) });
+      toast(deleting ? "账号已删除" : "会话已撤销");
+      if (id === state.session.user.id) showLogin(); else await renderUsers();
+    }, deleting ? "删除" : "撤销", true);
+  },
+
+  async openPasswordChange() {
+    const session = await api("/auth/session");
+    openModal("修改密码", `<p class="muted">修改后需要重新登录。</p><div class="form-grid">${field("当前密码", "currentPassword", "", "password", 'required data-credential-input maxlength="256" autocomplete="current-password"')}${field("新密码", "newPassword", "", "password", 'required data-credential-input minlength="8" maxlength="256" autocomplete="new-password" aria-describedby="password-rule"')}</div><p class="hint" id="password-rule">新密码为 8–256 个字符。</p>`, async data => {
+      await api("/auth/password", { method: "POST", headers: revisionHeaders({ revision: session.user.revision }), body: { currentPassword: data.get("currentPassword"), newPassword: data.get("newPassword") } });
+      showLogin(); toast("密码已修改，请重新登录");
+    }, "修改密码");
+  },
+
+  async openRole(id, copying = false) {
+    try {
+    const current = id ? await api(`/admin/api/roles/${idSeg(id)}`) : null;
+    const catalog = state.permissionCatalog ?? (await api("/admin/api/roles")).catalog;
+    openModal(copying ? "复制角色" : current ? "编辑角色" : "新增角色", `<div class="form-grid role-editor">${!current || copying ? field("角色代码", "key", "", "text", 'required maxlength="32" pattern="[a-z][a-z0-9_]{0,31}"') : `<div class="kv full"><span>角色代码</span><strong>${esc(current.key)}</strong></div>`}${field("角色名称", "name", copying ? `${current.name}副本` : current?.name ?? "", "text", 'required maxlength="128"')}${textarea("说明", "description", current?.description ?? "", 2, 'maxlength="1024"')}${!copying ? select("状态", "status", [{value:"active",label:"启用"},{value:"disabled",label:"停用"}], current?.status ?? "active") : ""}</div>${copying ? "" : permissionFields(catalog, current?.permissions ?? [])}`, async data => {
+      const body = { name: data.get("name"), description: data.get("description") };
+      if (!current || copying) body.key = data.get("key");
+      if (!copying) Object.assign(body, { permissions: data.getAll("permissions"), status: data.get("status") });
+      await api(current ? copying ? `/admin/api/roles/${idSeg(id)}/copy` : `/admin/api/roles/${idSeg(id)}` : "/admin/api/roles", { method: current && !copying ? "PATCH" : "POST", headers: current ? revisionHeaders(current) : {}, body });
+      toast(copying ? "角色已复制" : "角色已保存");
+      await afterRoleSave();
+    }, copying ? "复制" : "保存");
+    } catch (error) { toast(errorText(error), "error"); }
+  },
+
+  async roleAction(id, action) {
+    if (action === "edit" || action === "copy") return this.openRole(id, action === "copy");
+    const role = await api(`/admin/api/roles/${idSeg(id)}`);
+    if (action === "preview") {
+      const effective = role.status === "active" ? role.permissions : [];
+      const allows = code => effective.includes("*") || effective.includes(code);
+      const menus = navGroups.flatMap(group => group.items).filter(item => item.anyPermissions ? item.anyPermissions.some(allows) : !item.permission || allows(item.permission)).map(item => item.label);
+      openModal(`权限预览 · ${role.name}`, `<dl><dt>状态</dt><dd>${role.status === "active" ? "启用" : "停用"}</dd><dt>可用菜单</dt><dd>${esc(menus.join("、") || "无")}</dd><dt>有效功能权限</dt><dd>${esc(effective.includes("*") ? "全部" : effective.map(permissionName).join("、") || "无")}</dd><dt>关联数量</dt><dd>${esc(Object.values(role.references ?? {}).reduce((sum,count) => sum + count, 0))}</dd></dl>`, async () => {}, "关闭");
+      return;
+    }
+    const deleting = action === "delete";
+    openModal(deleting ? "删除角色" : "恢复内置权限", `<p>${esc(deleting ? `删除角色“${role.name}”？` : `将“${role.name}”的功能权限恢复为内置模板？`)}</p>`, async () => {
+      await api(deleting ? `/admin/api/roles/${idSeg(id)}` : `/admin/api/roles/${idSeg(id)}/reset`, { method: deleting ? "DELETE" : "POST", headers: revisionHeaders(role) });
+      toast(deleting ? "角色已删除" : "内置权限已恢复");
+      await afterRoleSave();
+    }, deleting ? "删除" : "恢复", deleting);
   },
 
   openRoleMapping() {
+    const mappings = [...(state.roleMappings ?? [])];
     openModal("添加 SSO 角色映射", `
       <div class="form-grid">
         ${field("Agent Role Code", "agentRoleCode", "admin")}
         ${field("Agent Role Name", "agentRoleName", "Administrator")}
-        <div class="full">${select("Forge 角色", "localRole", Object.keys({ platform_admin: 1, org_admin: 1, builder: 1, operator: 1, auditor: 1, user: 1 }).map((role) => ({ value: role, label: role })))}</div>
+        <div class="full">${select("Forge 角色", "localRole", (state.sso?.roleOptions ?? []).map(role => ({ value: role.key, label: role.name })))}</div>
       </div>`, async (data) => {
-      await api("/admin/api/role-mappings", { method: "POST", body: { agentRoleCode: data.get("agentRoleCode"), agentRoleName: data.get("agentRoleName"), localRole: data.get("localRole") } });
+      const mapping = mappings.find((item) => item.agent_role_code === data.get("agentRoleCode"));
+      await api("/admin/api/role-mappings", { method: "POST", headers: mapping ? revisionHeaders(mapping) : {}, body: { agentRoleCode: data.get("agentRoleCode"), agentRoleName: data.get("agentRoleName"), localRole: data.get("localRole") } });
       toast("映射已保存");
       await renderSso();
     });
@@ -1415,7 +2141,7 @@ function runToolsHtml(toolCalls) {
 
 function runToolbarHtml(run) {
   const failure = RUN_ACTIVE_STATUSES.includes(run.status) || run.status === "succeeded" ? "" : runFailureText(run.errorCode, run.errorMessage);
-  return `<span>${statusPill(run.status)}</span><span class="muted">成本 $${Number(run.costUsd).toFixed(4)}</span>${failure ? `<span class="muted">失败原因：${esc(failure)}</span>` : ""}${RUN_ACTIVE_STATUSES.includes(run.status) ? `<button class="btn danger small" type="button" onclick="app.cancelRun('${esc(run.id)}')">取消 Run</button>` : ""}`;
+  return `<span>${statusPill(run.status)}</span><span class="muted">成本 $${Number(run.costUsd).toFixed(4)}</span>${failure ? `<span class="muted">失败原因：${esc(failure)}</span>` : ""}${RUN_ACTIVE_STATUSES.includes(run.status) ? `${canPermission("run.cancel") ? `<button class="btn danger small" type="button" onclick="app.cancelRun('${esc(run.id)}')">取消 Run</button>` : ""}` : ""}`;
 }
 
 /** 以 REST 快照为准整体重渲染 Run 弹窗的状态栏、消息区和工具调用区（事件日志不动）。 */
@@ -1529,6 +2255,7 @@ async function syncRunFromRest(view, { notify = false } = {}) {
       endRunStream(view);
     }
     renderStreamStatus(view);
+    if (view.finished && state.tab === "runs") await renderRuns();
   } catch (error) {
     if (notify && state.runView === view) toast(errorText(error), "error");
   }

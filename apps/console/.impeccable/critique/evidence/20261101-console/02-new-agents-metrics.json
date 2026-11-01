@@ -1,0 +1,28 @@
+{
+  "url": "http://127.0.0.1:5175/next/agents",
+  "viewport": {
+    "width": 1280,
+    "height": 800,
+    "dpr": 1
+  },
+  "document": {
+    "scrollWidth": 1280,
+    "clientWidth": 1280
+  },
+  "headings": [
+    {
+      "tag": "H1",
+      "text": "Agents",
+      "size": "28px"
+    },
+    {
+      "tag": "H2",
+      "text": "搜索页面或命令",
+      "size": "18px"
+    }
+  ],
+  "sidebar": {
+    "scrollHeight": 692,
+    "clientHeight": 656
+  }
+}

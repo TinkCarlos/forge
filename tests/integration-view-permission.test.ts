@@ -2,15 +2,13 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { exportSPKI, generateKeyPair, SignJWT } from "jose";
-import { ROLE_PERMISSIONS } from "@forge/core";
 import { execute, repos } from "@forge/store";
 import { buildApp } from "../apps/api/src/app.js";
 
 // F9 (P1, needs a *_test DB): the Connector read routes check the mapped user's functional permission first —
 // GET /integration/v1/agents needs agent.view, GET /integration/v1/runs/:id and /result need run.view (403 POL-2001,
 // before the scope checks agentAccessible / assertRunAccess, which stay). Every built-in role holds both permissions
-// today, so the test removes them from the mapped user's role for the duration of one request (ROLE_PERMISSIONS is
-// the table hasPermission reads) — the situation of a future role without them.
+// today, so the test edits the persisted role matrix for one request and restores it in finally.
 const suffix = `${Date.now().toString(36)}${randomBytes(3).toString("hex")}`;
 const ROOT = "01J00000000000000000000000";
 const ADMIN_ID = "01J00000000000000000000001";
@@ -30,14 +28,12 @@ const auth = async () => ({
 });
 
 async function without<T>(permission: string, fn: () => Promise<T>): Promise<T> {
-  const list = ROLE_PERMISSIONS.auditor;
-  const saved = [...list];
-  list.splice(0, list.length, ...saved.filter((p) => p !== permission));
-  try {
-    return await fn();
-  } finally {
-    list.splice(0, list.length, ...saved);
-  }
+  const role=(await repos.getRoleByKey("auditor"))!;
+  const saved=[...role.permissions_json];
+  await repos.updateRole(role.id,{permissions:saved.filter(code=>code!==permission)},{expectedRevision:"system"});
+  try { return await fn(); }
+  finally { await repos.updateRole(role.id,{permissions:saved},{expectedRevision:"system"}); }
+
 }
 const get = async (url: string) => app.inject({ method: "GET", url, headers: await auth() });
 const codeOf = (res: { json: () => unknown }) => (res.json() as { error?: { code?: string } }).error?.code;
@@ -56,8 +52,8 @@ beforeAll(async () => {
   await app.ready();
   agentKey = `it-iv-${suffix}`;
   agentId = await repos.createAgent({ key: agentKey, name: "IT iv", ownerOrgUnitId: ROOT, createdBy: ADMIN_ID });
-  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID });
-  await repos.publishAgentVersion(agentId, versionId);
+  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID }, { expectedRevision: "system" });
+  await repos.publishAgentVersion(agentId, versionId, { expectedRevision: "system" });
   userId = await repos.createUser({ email: `it-iv-${suffix}@forge.local`, username: `it-iv-${suffix}`, displayName: "IT iv", role: "auditor", dataScope: "org", orgUnitId: ROOT, idpSubject: `it-iv-${suffix}` });
   const threadId = await repos.createThread({ agentId, orgUnitId: ROOT, subjectType: "user", subjectId: userId });
   runId = await repos.createRun({ threadId, agentId, agentVersionId: versionId, orgUnitId: ROOT, subjectType: "user", subjectId: userId, input: { text: "x" }, status: "succeeded" });

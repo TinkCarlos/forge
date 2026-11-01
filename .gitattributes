@@ -1,0 +1,4 @@
+# Saved patches and captured logs retain their original format; source checks stay enabled.
+/.closed-loop/**/quality-reports/**/*.patch -whitespace
+/.design-evidence/**/*.patch -whitespace
+/.talking-us/evidence/**/logs/*.txt -whitespace

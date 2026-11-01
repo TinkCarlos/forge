@@ -1,0 +1,11 @@
+{
+  "cwd": "/Users/libo/projects/forge/apps/console",
+  "command": [
+    "/Users/libo/.agents/skills/impeccable/scripts/impeccable",
+    "detect",
+    "--json",
+    "src",
+    "public/index.html"
+  ],
+  "exitCode": 2
+}

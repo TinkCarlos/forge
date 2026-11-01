@@ -1,3 +1,4 @@
+import { configurationHeaders } from "./helpers/configuration-headers.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance } from "fastify";
@@ -27,7 +28,7 @@ function expect409(res: Res, dupValue: string): void {
   expect((res.json() as { error: { code: string } }).error.code).toBe("CFG-8503");
   for (const leak of ["Duplicate", "uk_", "idx_", "INSERT", "ER_DUP_ENTRY", dupValue]) expect(res.body).not.toContain(leak);
 }
-const post = (url: string, payload: unknown) => app.inject({ method: "POST", url, headers, payload: payload as Record<string, unknown> });
+const post = async (url: string, payload: unknown) => app.inject({ method: "POST", url, headers: await configurationHeaders(url, headers), payload: payload as Record<string, unknown> });
 const count = async (sql: string, params: unknown[]) => Number((await query<{ n: number }>(sql, params))[0]!.n);
 
 beforeAll(async () => {
@@ -35,8 +36,8 @@ beforeAll(async () => {
   const session = await realSession({ name: "IT dup", role: "platform_admin", orgUnitId: ROOT, dataScope: "all" });
   headers = sessionHeaders(session, sessionCookieValue(session));
   agentId = await repos.createAgent({ key: `it-dup-${suffix}`, name: "IT dup", ownerOrgUnitId: ROOT, createdBy: ADMIN_ID });
-  const versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID });
-  await repos.publishAgentVersion(agentId, versionId);
+  const versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID }, { expectedRevision: "system" });
+  await repos.publishAgentVersion(agentId, versionId, { expectedRevision: "system" });
   accountId = await repos.createServiceAccount({ key: `it-dup-svc-${suffix}`, name: "IT dup svc", orgUnitId: ROOT, role: "operator", dataScope: "org", createdBy: ADMIN_ID });
   providerId = await repos.createProvider({ key: `it-dup-${suffix}`, name: "IT dup", protocol: "openai", baseUrl: "https://example.com/v1" });
   skillId = await repos.createSkill({ key: `it-dup-${suffix}`, name: "IT dup", content: "# x", version: "1.0.0", publish: false });

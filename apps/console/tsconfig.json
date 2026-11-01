@@ -18,6 +18,8 @@
       "@/*": [
         "./src/*"
       ],
+      "@forge/sdk/messages": ["../../packages/sdk/src/message-client.ts"],
+      "@forge/sdk/jobs": ["../../packages/sdk/src/job-client.ts"],
       "@forge/core/ids": [
         "../../packages/core/src/ids.ts"
       ],

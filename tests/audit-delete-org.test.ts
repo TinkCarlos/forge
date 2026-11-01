@@ -25,7 +25,7 @@ function auditCalls(): Array<{ file: string; action: string; call: string }> {
   const out: Array<{ file: string; action: string; call: string }> = [];
   for (const file of files(ROOT)) {
     const src = readFileSync(file, "utf8");
-    const re = /\b(writeAudit\(|prepareAudit\(|\.audit\(\{)/g;
+    const re = /\b(writeAudit\(|prepareAudit\(|configurationWrite\(|\.audit\(\{)/g;
     for (let m = re.exec(src); m; m = re.exec(src)) {
       let depth = 0;
       let end = m.index + m[0].length - 1;
@@ -36,7 +36,7 @@ function auditCalls(): Array<{ file: string; action: string; call: string }> {
       }
       const call = src.slice(m.index, end + 1);
       if (/^(writeAudit|prepareAudit)\(\s*session: Session/.test(call)) continue; // the helpers' own declarations
-      const action = /action: "([^"]+)"/.exec(call)?.[1] ?? /(?:writeAudit|prepareAudit)\(\s*\w+,\s*"([^"]+)"/.exec(call)?.[1];
+      const action = /configurationWrite\(\s*\w+,\s*\w+,\s*"([^"]+)"/.exec(call)?.[1] ?? /action: "([^"]+)"/.exec(call)?.[1] ?? /(?:writeAudit|prepareAudit)\(\s*\w+,\s*"([^"]+)"/.exec(call)?.[1];
       if (action) out.push({ file: file.slice(ROOT.length + 1), action, call });
     }
   }
@@ -55,7 +55,7 @@ describe("delete-class audit rows keep the resource department", () => {
     const deletes = auditCalls().filter((c) => DELETE_LIKE.test(c.action));
     // Inventory on this commit: plugin.uninstall is the only delete-class action (there is no agent.delete route).
     // A new delete action shows up here and must follow the same rule.
-    expect(deletes.map((c) => c.action).sort()).toEqual(["plugin.uninstall"]);
-    for (const c of deletes) expect({ action: c.action, file: c.file, explicitOrg: /\borgUnitId\b/.test(c.call) }).toEqual({ action: c.action, file: c.file, explicitOrg: true });
+    expect(deletes.map((c) => c.action).sort()).toEqual(["plugin.uninstall", "role.delete", "secret.delete", "user.delete", "user.sessions.revoke", "user.sso.unbind"]);
+    for (const c of deletes) expect({ action: c.action, file: c.file, explicitOrg: /\borgUnitId\b|target\.org_unit_id|, null\)$/.test(c.call) }).toEqual({ action: c.action, file: c.file, explicitOrg: true });
   });
 });

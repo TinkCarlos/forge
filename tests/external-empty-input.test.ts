@@ -63,9 +63,9 @@ beforeAll(async () => {
   headers = sessionHeaders(admin, sessionCookieValue(admin));
   agentKey = `it-eei-${suffix}`;
   agentId = await repos.createAgent({ key: agentKey, name: "IT eei", ownerOrgUnitId: ROOT, createdBy: ADMIN_ID });
-  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID });
-  await repos.publishAgentVersion(agentId, versionId);
-  await repos.updateAgent(agentId, { api_enabled: 1 });
+  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID }, { expectedRevision: "system" });
+  await repos.publishAgentVersion(agentId, versionId, { expectedRevision: "system" });
+  await repos.updateAgent(agentId, { api_enabled: 1 }, { expectedRevision: "system" });
   appId = await repos.createApiApp({ key: `it-eei-${suffix}`, name: "IT eei", ownerOrgUnitId: ROOT, scopes: ["runs:create", "runs:read"] });
   openKey = `fsk_${randomBytes(32).toString("base64url")}`;
   await repos.createApiKey({ appId, name: "it", prefix: openKey.slice(0, 16), keyHash: hashApiKey(openKey, config.API_KEY_PEPPER), scopes: ["runs:create", "runs:read"] });

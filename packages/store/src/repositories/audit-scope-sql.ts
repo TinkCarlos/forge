@@ -1,3 +1,4 @@
+import { ForgeError } from "@forge/core/errors";
 // I-SCOPE-13/14 plan A: pure SQL helpers for the audit department (no DB import, unit-tested).
 
 export type AuditListScope =
@@ -9,6 +10,13 @@ export type AuditListScope =
  * Evaluated when the audit row is written and stored on the row; never the actor's department.
  */
 export const AUDIT_ORG_SOURCES: Record<string, string> = {
+  job_definition: "SELECT owner_org_unit_id AS org_unit_id FROM job_definitions WHERE id = ?",
+  job_execution: "SELECT owner_org_unit_id AS org_unit_id FROM job_executions WHERE id = ?",
+  message_channel: "SELECT owner_org_unit_id AS org_unit_id FROM message_channels WHERE id = ?",
+  message_template: "SELECT owner_org_unit_id AS org_unit_id FROM message_templates WHERE id = ?",
+  message_rule: "SELECT owner_org_unit_id AS org_unit_id FROM message_rules WHERE id = ?",
+  message_delivery: "SELECT owner_org_unit_id AS org_unit_id FROM message_deliveries WHERE id = ?",
+  secret: "SELECT owner_org_unit_id AS org_unit_id FROM secrets WHERE id = ?",
   agent: "SELECT owner_org_unit_id AS org_unit_id FROM agents WHERE id = ?",
   agent_version: "SELECT a.owner_org_unit_id AS org_unit_id FROM agent_versions v JOIN agents a ON a.id = v.agent_id WHERE v.id = ?",
   run: "SELECT org_unit_id FROM runs WHERE id = ?",
@@ -31,6 +39,7 @@ export const AUDIT_PLATFORM_RESOURCES: readonly string[] = [
   "tool_source",
   "plugin",
   "oidc_role_mapping",
+  "role",
 ];
 
 export function clampAuditLimit(limit: number): number {
@@ -88,6 +97,6 @@ export function isDeleteClassAuditAction(action: string): boolean {
 
 export function assertDeleteAuditOrgUnit(input: { action: string; orgUnitId?: string | null }): void {
   if (input.orgUnitId === undefined && isDeleteClassAuditAction(input.action)) {
-    throw new Error(`audit: delete-class action "${input.action}" requires an explicit orgUnitId (null for platform-level resources)`);
+    throw new ForgeError("SYS-9001", { message: `audit: delete-class action "${input.action}" requires an explicit orgUnitId (null for platform-level resources)` });
   }
 }

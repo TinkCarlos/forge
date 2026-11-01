@@ -1,3 +1,4 @@
+import { configurationHeaders } from "./helpers/configuration-headers.js";
 import { randomBytes } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
@@ -19,7 +20,7 @@ let b: SecondInstance;
 let platform: Record<string, string>;
 const sessionOn = (app: FastifyInstance, session: Session) => app.inject({ method: "GET", url: "/auth/session", headers: sessionHeaders(session, sessionCookieValue(session)) });
 const rowsOf = async (userId: string) => (await query<{ n: number }>("SELECT COUNT(*) AS n FROM auth_sessions WHERE user_id = ?", [userId]))[0]!.n;
-const disable = (userId: string) => appA.inject({ method: "PATCH", url: `/admin/api/users/${userId}`, headers: platform, payload: { status: "disabled" } });
+const disable = async (userId: string) => appA.inject({ method: "PATCH", url: `/admin/api/users/${userId}`, headers: await configurationHeaders(`/admin/api/users/${userId}`, platform), payload: { status: "disabled" } });
 
 beforeAll(async () => {
   appA = await buildApp({ logger: false });

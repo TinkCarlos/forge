@@ -58,3 +58,8 @@ describe('NET-0001 读响应体时断网', () => {
     expect(getApiAvailability().status).toBe('ok')
   })
 })
+
+it('keeps field error details for account forms without discarding the draft', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({error:{code:'CFG-8501',message:'当前密码错误',details:{field:'currentPassword'}}}),{status:400})))
+  await expect(api('/auth/password',{method:'POST',body:{currentPassword:'synthetic',newPassword:'synthetic'}})).rejects.toMatchObject({status:400,code:'CFG-8501',details:{field:'currentPassword'}})
+})

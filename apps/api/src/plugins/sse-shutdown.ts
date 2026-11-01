@@ -44,7 +44,7 @@ export interface SseRegistry {
 
 /** 503 SYS-9003 with Retry-After: 1 for an SSE request that arrives while the API is shutting down. */
 export function sseShuttingDown(): ForgeError {
-  return new ForgeError("SYS-9003", "服务正在停机，请稍后重试", 503, undefined, true, { "Retry-After": "1" });
+  return new ForgeError("SYS-9003", { message: "服务正在停机，请稍后重试", httpStatus: 503, retryable: true, headers: { "Retry-After": "1" } });
 }
 
 // `app` can be undefined: streamRun is also called with a bare request (unit tests, no Fastify instance). Without

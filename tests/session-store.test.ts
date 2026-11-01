@@ -1,3 +1,4 @@
+import { configurationHeaders } from "./helpers/configuration-headers.js";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
 import { createSession, getSession, sessionCookieValue, sha256Hex, SESSION_LAST_SEEN_THROTTLE_MS, type Session } from "@forge/identity";
@@ -37,7 +38,7 @@ describe("session store: shared across instances", () => {
     expect(resB.statusCode).toBe(200);
     expect((resB.json() as { csrfToken: string }).csrfToken).toBe(session.csrfToken);
     const cookie = `forge_session=${sessionCookieValue(session)}`;
-    const patch = (csrf: string) => b.app.inject({ method: "PATCH", url: "/admin/api/users/01J0000000000000000000NONE", headers: { cookie, "x-csrf-token": csrf }, payload: { status: "active" } });
+    const patch = async (csrf: string) => b.app.inject({ method: "PATCH", url: "/admin/api/users/01J0000000000000000000NONE", headers: await configurationHeaders("/admin/api/users/01J0000000000000000000NONE", { cookie, "x-csrf-token": csrf }), payload: { status: "active" } });
     expect((await patch("wrong-token")).statusCode).toBe(403);
     const ok = await patch(session.csrfToken);
     expect(ok.statusCode).not.toBe(403);

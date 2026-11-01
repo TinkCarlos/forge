@@ -1,5 +1,5 @@
 import { type FastifyInstance } from "fastify";
-import { asRecord, assertNoEnvRefs, assertOutboundUrlStatic, config, encryptSecret, errors, ForgeError } from "@forge/core";
+import { asRecord, assertNoEnvRefs, assertOutboundUrlStatic, errors, ForgeError } from "@forge/core";
 import { discoverMcpTools } from "@forge/capabilities";
 import { assertOrgWritable } from "@forge/governance";
 import { repos } from "@forge/store";
@@ -11,7 +11,8 @@ import {
   jsonObjectBody,
   admin,
   writeAudit,
-  prepareAudit,
+  configurationWrite,
+  configurationResult,
   requireBodyString,
 } from "../../plugins/http-helpers.js";
 import { ROUTE_SCHEMAS, assertValidInput } from "../../plugins/input-schema.js";
@@ -90,8 +91,7 @@ export default async function adminPluginRoutes(app: FastifyInstance): Promise<v
         if (await repos.getAgentByKey(agent.key)) continue;
         const agentId = await repos.createAgent({ key: agent.key, name: agent.name, description: agent.description, ownerOrgUnitId: session.principal.orgUnitId, createdBy: session.principal.id });
         created.agents.push(agentId);
-        const versionId = await repos.createAgentVersion({ agentId, version: agent.version, instructions: agent.instructions, spec: agent.spec, status: "published", createdBy: session.principal.id });
-        await repos.publishAgentVersion(agentId, versionId);
+        await repos.createAgentVersion({ agentId, version: agent.version, instructions: agent.instructions, spec: agent.spec, status: "draft", createdBy: session.principal.id }, { expectedRevision: "system" });
       }
       for (const skill of plan.skills) {
         if (await repos.getSkillByKey(skill.key)) continue;
@@ -103,14 +103,17 @@ export default async function adminPluginRoutes(app: FastifyInstance): Promise<v
         created.mcp.push(mcpId);
         try {
           const record = await repos.getMcpServer(mcpId);
-          if (record) await repos.replaceMcpTools(mcpId, await discoverMcpTools(record));
+          if (record) {
+            const tools = await discoverMcpTools(record);
+            await repos.updateMcpServer(mcpId, { last_error: null }, { expectedRevision: Number(record.revision), afterWrite: (conn) => repos.replaceMcpTools(mcpId, tools, conn) });
+          }
         } catch {
           // Package install keeps the server for later refresh.
         }
       }
       for (const provider of plan.providers) {
         if (await repos.getProviderByKey(provider.key)) continue;
-        const providerId = await repos.createProvider({ key: provider.key, name: provider.name, protocol: provider.protocol, baseUrl: provider.baseUrl, apiKeyEncrypted: provider.apiKey ? encryptSecret(provider.apiKey, config.FORGE_MASTER_KEY) : null, headers: provider.headers, createdBy: session.principal.id });
+        const providerId = await repos.createProvider({ key: provider.key, name: provider.name, protocol: provider.protocol, baseUrl: provider.baseUrl, apiKey: provider.apiKey || undefined, headers: provider.headers, createdBy: session.principal.id });
         created.providers.push(providerId);
         for (const model of provider.models) await repos.createModel({ providerId, ...model });
       }
@@ -127,27 +130,22 @@ export default async function adminPluginRoutes(app: FastifyInstance): Promise<v
         request.log.error({ err: logSafeError(cleanupError), created }, "plugin install compensation failed");
       }
       const code = error instanceof ForgeError ? error.code : isDuplicateKey(error) ? errors.conflict().code : "internal";
-      await writeAudit(session, "plugin.install.failed", "plugin", null, { key: plan.plugin.key, error: code, compensated, rolledBack: created }, { orgUnitId: null }).catch((auditError: unknown) => {
+      await writeAudit(session, "plugin.install.failed", "plugin", null, { key: plan.plugin.key, error: code, compensated, rolledBack: created }, { orgUnitId: null, outcome: "failure" }).catch((auditError: unknown) => {
         request.log.error({ err: logSafeError(auditError) }, "plugin.install.failed audit not written");
       });
       throw error;
     }
   });
 
-  app.post("/admin/api/plugins/:id/uninstall", { schema: ROUTE_SCHEMAS.noBody, attachValidation: true }, async (request) => {
+  app.post("/admin/api/plugins/:id/uninstall", { schema: ROUTE_SCHEMAS.noBody, attachValidation: true }, async (request, reply) => {
     const session = await admin(request, "plugin.uninstall");
     await assertOrgWritable(session.principal, null, PLATFORM_WRITE_MESSAGE); // P0-03 / U-15: platform-wide resource (no department column)
     // #68 / I-PLG-04: unknown id -> 404 (no audit). Department scoping waits for an owner-department column.
     const plugin = await repos.getPlugin(param(request, "id"));
     if (!plugin) throw errors.notFound("插件不存在");
     assertValidInput(request);
-    // Delete-class audit: the department is taken before the change and passed explicitly, never re-resolved from a
-    // row that may be gone. Plugins are platform-level (no department column) -> explicit null.
-    // P2: the audit entry is validated before uninstalling (guard failure -> nothing uninstalled).
     const orgUnitId = null;
-    const audit = prepareAudit(session, "plugin.uninstall", "plugin", String(plugin.id), undefined, { orgUnitId });
-    await repos.uninstallPlugin(String(plugin.id));
-    await audit();
-    return { ok: true };
+    const revision = await repos.uninstallPlugin(String(plugin.id), configurationWrite(request, session, "plugin.uninstall", "plugin", String(plugin.id), undefined, orgUnitId));
+    return configurationResult(reply, revision);
   });
 }

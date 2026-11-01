@@ -17,8 +17,8 @@ let paHeaders: Record<string, string> = {};
 let oaHeaders: Record<string, string> = {};
 let userId = "";
 
-const BASE = ["id", "username", "email", "display_name", "role", "data_scope", "org_unit_id", "status", "created_at", "updated_at"].sort();
-const PA_ONLY = ["idp_subject", "is_emergency_admin"];
+const BASE = ["roles","additional_role_ids","effective_permissions","has_local_password", "can_manage", "revision", "id", "username", "email", "display_name", "role", "data_scope", "org_unit_id", "status", "created_at", "updated_at"].sort();
+const PA_ONLY = ["idp_issuer", "idp_subject", "is_emergency_admin"];
 
 async function list(headers: Record<string, string>) {
   const res = await app.inject({ method: "GET", url: "/admin/api/users", headers });

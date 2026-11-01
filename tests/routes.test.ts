@@ -1,3 +1,4 @@
+import { configurationHeaders } from "./helpers/configuration-headers.js";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
@@ -82,7 +83,7 @@ beforeAll(async () => {
 afterAll(async () => {
   if (lowSession) await destroySession(lowSession.token);
   await cleanupRealSessions();
-  if (adminCookie) await app.inject({ method: "POST", url: "/auth/logout", headers: { cookie: adminCookie } });
+  if (adminCookie) await app.inject({ method: "POST", url: "/auth/logout", headers: { cookie: adminCookie, "x-csrf-token": adminCsrf } });
   if (openAppId) {
     await execute("DELETE FROM api_keys WHERE app_id = ?", [openAppId]);
     await execute("DELETE FROM api_apps WHERE id = ?", [openAppId]);
@@ -91,7 +92,7 @@ afterAll(async () => {
 });
 
 describe("route set", () => {
-  it("matches the 86-route baseline (79 pre-split + /next ×2 + service-accounts ×4 + GET /schedules/:id; excluding auto HEAD and /assets/*)", () => {
+  it("matches the 141-route baseline (including API Key rotate/revoke; excluding auto HEAD and /assets/*)", () => {
     const baseline = readFileSync(path.resolve(import.meta.dirname, "fixtures/routes-baseline.txt"), "utf8")
       .split("\n")
       .map((line) => line.trim())
@@ -104,7 +105,7 @@ describe("route set", () => {
           .map((r) => `${r.method} ${r.url}`),
       ),
     ].sort();
-    expect(baseline).toHaveLength(86);
+    expect(baseline).toHaveLength(141);
     expect(actual).toEqual(baseline);
     expect(app.hasRoute({ method: "GET", url: "/assets/*" })).toBe(true);
   });
@@ -173,7 +174,7 @@ describe("auth session", () => {
   });
 
   it("GET /auth/session with admin cookie -> 200 and same csrfToken", async () => {
-    const res = await app.inject({ method: "GET", url: "/auth/session", headers: { cookie: adminCookie } });
+    const res = await app.inject({ method: "GET", url: "/auth/session", headers: { cookie: adminCookie, "x-csrf-token": adminCsrf } });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ csrfToken: adminCsrf, permissions: ["*"] });
   });
@@ -240,7 +241,7 @@ describe("CSRF on /admin/api writes", () => {
     const res = await app.inject({
       method: "PATCH",
       url: `/admin/api/apps/${missingId}`,
-      headers: { cookie: adminCookie, "x-csrf-token": "wrong-token" },
+      headers: await configurationHeaders(`/admin/api/apps/${missingId}`, { cookie: adminCookie, "x-csrf-token": "wrong-token" }),
       payload: {},
     });
     expect(res.statusCode).toBe(403);

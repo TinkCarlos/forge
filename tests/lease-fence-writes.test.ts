@@ -43,7 +43,6 @@ async function snapshot(runId: string) {
 
 function writes(s: Seeded): Array<[string, () => Promise<unknown>]> {
   return [
-    ["updateRun", () => repos.updateRun(s.runId, { status: "succeeded", output: { text: "late" }, completedAt: new Date() })],
     ["addMessage", () => repos.addMessage({ threadId: s.threadId, runId: s.runId, seq: 99, role: "assistant", content: { text: "late" } })],
     ["addRunStep", () => repos.addRunStep({ runId: s.runId, type: "prepare_context", status: "succeeded" })],
     ["finishRunStep", () => repos.finishRunStep(s.stepId, { status: "succeeded" })],
@@ -54,12 +53,13 @@ function writes(s: Seeded): Array<[string, () => Promise<unknown>]> {
     ["rejectOverdueApproval", () => repos.rejectOverdueApproval(s.approvalId, s.runId)],
     ["failRunningSteps", () => repos.failRunningSteps(s.runId, "call_model", "MDL-3001")],
     ["addEvent", () => repos.addEvent(s.runId, "message.completed", { text: "late" })],
+    ["updateRun", () => repos.updateRun(s.runId, { status: "succeeded", output: { text: "late" }, completedAt: new Date() })],
   ];
 }
 
 beforeAll(async () => {
   agentId = await repos.createAgent({ key: `it-fence-${suffix}`, name: "IT fence", ownerOrgUnitId: ROOT, createdBy: ADMIN_ID });
-  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID });
+  versionId = await repos.createAgentVersion({ agentId, version: "1.0.0", instructions: "x", spec: { model: { provider: "mock", model: "mock-1" } }, status: "published", createdBy: ADMIN_ID }, { expectedRevision: "system" });
 });
 
 afterAll(async () => {

@@ -1,0 +1,838 @@
+
+ RUN  v4.1.12 /Users/libo/projects/forge
+
+[2026-10-31 23:28:20.403 +0800] INFO (65840): incoming request
+    reqId: "req-1"
+    req: {
+      "method": "POST",
+      "url": "/admin/api/agents",
+      "host": "localhost:80",
+      "remoteAddress": "127.0.0.1"
+    }
+[2026-10-31 23:28:20.408 +0800] WARN (65840): request rejected
+    reqId: "req-1"
+    code: "CFG-8501"
+    err: {
+      "type": "Object",
+      "message": "name 不能超过 128 个字符",
+      "stack":
+          ForgeError: name 不能超过 128 个字符
+              at Object.invalid (/Users/libo/projects/forge/packages/core/src/index.ts:184:55)
+              at assertValidInput (/Users/libo/projects/forge/apps/api/src/plugins/input-schema.ts:64:16)
+              at Object.<anonymous> (/Users/libo/projects/forge/apps/api/src/routes/admin/agents.ts:50:5)
+              at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      "code": "CFG-8501"
+    }
+[2026-10-31 23:28:20.410 +0800] INFO (65840): request completed
+    reqId: "req-1"
+    res: {
+      "statusCode": 400
+    }
+    responseTime: 6.804290999999978
+[2026-10-31 23:28:20.412 +0800] INFO (65840): incoming request
+    reqId: "req-2"
+    req: {
+      "method": "PATCH",
+      "url": "/admin/api/agents/agt_01M6996XW9YNSPAPGZ0ZGC",
+      "host": "localhost:80",
+      "remoteAddress": "127.0.0.1"
+    }
+[2026-10-31 23:28:20.413 +0800] WARN (65840): request rejected
+    reqId: "req-2"
+    code: "CFG-8501"
+    err: {
+      "type": "Object",
+      "message": "name 不能超过 128 个字符",
+      "stack":
+          ForgeError: name 不能超过 128 个字符
+              at Object.invalid (/Users/libo/projects/forge/packages/core/src/index.ts:184:55)
+              at assertValidInput (/Users/libo/projects/forge/apps/api/src/plugins/input-schema.ts:64:16)
+              at Object.<anonymous> (/Users/libo/projects/forge/apps/api/src/routes/admin/agents.ts:91:5)
+              at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      "code": "CFG-8501"
+    }
+[2026-10-31 23:28:20.414 +0800] INFO (65840): request completed
+    reqId: "req-2"
+    res: {
+      "statusCode": 400
+    }
+    responseTime: 1.462083000000007
+[2026-10-31 23:28:20.415 +0800] INFO (65840): incoming request
+    reqId: "req-3"
+    req: {
+      "method": "PATCH",
+      "url": "/admin/api/schedules/sch_01M6996XWDX7N13RAD2QWD",
+      "host": "localhost:80",
+      "remoteAddress": "127.0.0.1"
+    }
+[2026-10-31 23:28:20.423 +0800] WARN (65840): request rejected
+    reqId: "req-3"
+    code: "CFG-8501"
+    err: {
+      "type": "Object",
+      "message": "只支持 5 段 cron 或 @yearly/@annually/@monthly/@weekly/@daily/@midnight/@hourly",
+      "stack":
+          ForgeError: 只支持 5 段 cron 或 @yearly/@annually/@monthly/@weekly/@daily/@midnight/@hourly
+              at Object.invalid (/Users/libo/projects/forge/packages/core/src/index.ts:184:55)
+              at assertScheduleTiming (/Users/libo/projects/forge/apps/api/src/plugins/input-schema.ts:102:50)
+              at scheduleByIdRoute.schema (/Users/libo/projects/forge/apps/api/src/routes/admin/schedules.ts:145:67)
+              at Object.handler (/Users/libo/projects/forge/apps/api/src/routes/admin/schedules.ts:64:14)
+              at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      "code": "CFG-8501"
+    }
+[2026-10-31 23:28:20.423 +0800] INFO (65840): request completed
+    reqId: "req-3"
+    res: {
+      "statusCode": 400
+    }
+    responseTime: 8.093042000000025
+[2026-10-31 23:28:20.423 +0800] INFO (65840): incoming request
+    reqId: "req-4"
+    req: {
+      "method": "PATCH",
+      "url": "/admin/api/schedules/sch_01M6996XWDX7N13RAD2QWD",
+      "host": "localhost:80",
+      "remoteAddress": "127.0.0.1"
+    }
+[2026-10-31 23:28:20.425 +0800] WARN (65840): request rejected
+    reqId: "req-4"
+    code: "CFG-8501"
+    err: {
+      "type": "Object",
+      "message": "只支持 5 段 cron 或 @yearly/@annually/@monthly/@weekly/@daily/@midnight/@hourly",
+      "stack":
+          ForgeError: 只支持 5 段 cron 或 @yearly/@annually/@monthly/@weekly/@daily/@midnight/@hourly
+              at Object.invalid (/Users/libo/projects/forge/packages/core/src/index.ts:184:55)
+              at assertScheduleTiming (/Users/libo/projects/forge/apps/api/src/plugins/input-schema.ts:102:50)
+              at scheduleByIdRoute.schema (/Users/libo/projects/forge/apps/api/src/routes/admin/schedules.ts:145:67)
+              at Object.handler (/Users/libo/projects/forge/apps/api/src/routes/admin/schedules.ts:64:14)
+              at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      "code": "CFG-8501"
+    }
+[2026-10-31 23:28:20.425 +0800] INFO (65840): request completed
+    reqId: "req-4"
+    res: {
+      "statusCode": 400
+    }
+    responseTime: 1.4605830000000424
+[2026-10-31 23:28:20.425 +0800] INFO (65840): incoming request
+    reqId: "req-5"
+    req: {
+      "method": "PATCH",
+      "url": "/admin/api/schedules/sch_01M6996XWDX7N13RAD2QWD",
+      "host": "localhost:80",
+      "remoteAddress": "127.0.0.1"
+    }
+[2026-10-31 23:28:20.426 +0800] WARN (65840): request rejected
+    reqId: "req-5"
+    code: "CFG-8501"
+    err: {
+      "type": "Object",
+      "message": "时区无效",
+      "stack":
+          ForgeError: 时区无效
+              at Object.invalid (/Users/libo/projects/forge/packages/core/src/index.ts:184:55)
+              at assertScheduleTiming (/Users/libo/projects/forge/apps/api/src/plugins/input-schema.ts:101:48)
+              at scheduleByIdRoute.schema (/Users/libo/projects/forge/apps/api/src/routes/admin/schedules.ts:145:67)
+              at Object.handler (/Users/libo/projects/forge/apps/api/src/routes/admin/schedules.ts:64:14)
+              at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      "code": "CFG-8501"
+    }
+[2026-10-31 23:28:20.426 +0800] INFO (65840): request completed
+    reqId: "req-5"
+    res: {
+      "statusCode": 400
+    }
+    responseTime: 1.0689160000000015
+[2026-10-31 23:28:20.427 +0800] INFO (65840): incoming request
+    reqId: "req-6"
+    req: {
+      "method": "PATCH",
+      "url": "/admin/api/schedules/sch_01M6996XWDX7N13RAD2QWD",
+      "host": "localhost:80",
+      "remoteAddress": "127.0.0.1"
+    }
+[2026-10-31 23:28:20.428 +0800] WARN (65840): request rejected
+    reqId: "req-6"
+    code: "CFG-8501"
+    err: {
+      "type": "Object",
+      "message": "status 不能通过 PATCH 修改，请使用 /enable 或 /disable",
+      "stack":
+          ForgeError: status 不能通过 PATCH 修改，请使用 /enable 或 /disable
+              at Object.invalid (/Users/libo/projects/forge/packages/core/src/index.ts:184:55)
+              at scheduleByIdRoute.schema (/Users/libo/projects/forge/apps/api/src/routes/admin/schedules.ts:135:49)
+              at Object.handler (/Users/libo/projects/forge/apps/api/src/routes/admin/schedules.ts:64:14)
+              at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      "code": "CFG-8501"
+    }
+[2026-10-31 23:28:20.428 +0800] INFO (65840): request completed
+    reqId: "req-6"
+    res: {
+      "statusCode": 400
+    }
+    responseTime: 1.5183329999999842
+[2026-10-31 23:28:20.429 +0800] INFO (65840): incoming request
+    reqId: "req-7"
+    req: {
+      "method": "PATCH",
+      "url": "/admin/api/schedules/sch_01M6996XWDX7N13RAD2QWD",
+      "host": "localhost:80",
+      "remoteAddress": "127.0.0.1"
+    }
+[2026-10-31 23:28:20.430 +0800] WARN (65840): request rejected
+    reqId: "req-7"
+    code: "CFG-8501"
+    err: {
+      "type": "Object",
+      "message": "name 不能超过 128 个字符",
+      "stack":
+          ForgeError: name 不能超过 128 个字符
+              at Object.invalid (/Users/libo/projects/forge/packages/core/src/index.ts:184:55)
+              at assertValidInput (/Users/libo/projects/forge/apps/api/src/plugins/input-schema.ts:64:16)
+              at scheduleByIdRoute.schema (/Users/libo/projects/forge/apps/api/src/routes/admin/schedules.ts:139:5)
+              at Object.handler (/Users/libo/projects/forge/apps/api/src/routes/admin/schedules.ts:64:14)
+              at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      "code": "CFG-8501"
+    }
+[2026-10-31 23:28:20.430 +0800] INFO (65840): request completed
+    reqId: "req-7"
+    res: {
+      "statusCode": 400
+    }
+    responseTime: 1.1115409999999883
+[2026-10-31 23:28:20.431 +0800] INFO (65840): incoming request
+    reqId: "req-8"
+    req: {
+      "method": "PATCH",
+      "url": "/admin/api/schedules/sch_01M6996XWDX7N13RAD2QWD",
+      "host": "localhost:80",
+      "remoteAddress": "127.0.0.1"
+    }
+[2026-10-31 23:28:20.435 +0800] INFO (65840): request completed
+    reqId: "req-8"
+    res: {
+      "statusCode": 200
+    }
+    responseTime: 4.7358749999999645
+[2026-10-31 23:28:20.436 +0800] INFO (65840): incoming request
+    reqId: "req-9"
+    req: {
+      "method": "POST",
+      "url": "/admin/api/users",
+      "host": "localhost:80",
+      "remoteAddress": "127.0.0.1"
+    }
+[2026-10-31 23:28:20.438 +0800] WARN (65840): request rejected
+    reqId: "req-9"
+    code: "CFG-8501"
+    err: {
+      "type": "Object",
+      "message": "缺少字段: email",
+      "stack":
+          ForgeError: 缺少字段: email
+              at Object.invalid (/Users/libo/projects/forge/packages/core/src/index.ts:184:55)
+              at assertValidInput (/Users/libo/projects/forge/apps/api/src/plugins/input-schema.ts:64:16)
+              at Object.<anonymous> (/Users/libo/projects/forge/apps/api/src/routes/admin/identity.ts:64:5)
+              at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      "code": "CFG-8501"
+    }
+[2026-10-31 23:28:20.438 +0800] INFO (65840): request completed
+    reqId: "req-9"
+    res: {
+      "statusCode": 400
+    }
+    responseTime: 1.8018330000000446
+[2026-10-31 23:28:20.438 +0800] INFO (65840): incoming request
+    reqId: "req-a"
+    req: {
+      "method": "POST",
+      "url": "/admin/api/users",
+      "host": "localhost:80",
+      "remoteAddress": "127.0.0.1"
+    }
+[2026-10-31 23:28:20.439 +0800] WARN (65840): request rejected
+    reqId: "req-a"
+    code: "CFG-8501"
+    err: {
+      "type": "Object",
+      "message": "email 格式无效",
+      "stack":
+          ForgeError: email 格式无效
+              at Object.invalid (/Users/libo/projects/forge/packages/core/src/index.ts:184:55)
+              at assertValidInput (/Users/libo/projects/forge/apps/api/src/plugins/input-schema.ts:64:16)
+              at Object.<anonymous> (/Users/libo/projects/forge/apps/api/src/routes/admin/identity.ts:64:5)
+              at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      "code": "CFG-8501"
+    }
+[2026-10-31 23:28:20.439 +0800] INFO (65840): request completed
+    reqId: "req-a"
+    res: {
+      "statusCode": 400
+    }
+    responseTime: 0.8466659999999706
+[2026-10-31 23:28:20.439 +0800] INFO (65840): incoming request
+    reqId: "req-b"
+    req: {
+      "method": "POST",
+      "url": "/admin/api/approvals/01JNOTEXIST000000000000000/decide",
+      "host": "localhost:80",
+      "remoteAddress": "127.0.0.1"
+    }
+[2026-10-31 23:28:20.440 +0800] WARN (65840): request rejected
+    reqId: "req-b"
+    code: "RUN-7001"
+    err: {
+      "type": "Object",
+      "message": "审批不存在",
+      "stack":
+          ForgeError: 审批不存在
+              at Object.notFound (/Users/libo/projects/forge/packages/core/src/index.ts:183:36)
+              at Object.<anonymous> (/Users/libo/projects/forge/apps/api/src/routes/admin/runs.ts:96:90)
+              at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      "code": "RUN-7001"
+    }
+[2026-10-31 23:28:20.441 +0800] INFO (65840): request completed
+    reqId: "req-b"
+    res: {
+      "statusCode": 404
+    }
+    responseTime: 1.0412919999999986
+[2026-10-31 23:28:20.441 +0800] INFO (65840): incoming request
+    reqId: "req-c"
+    req: {
+      "method": "POST",
+      "url": "/admin/api/users",
+      "host": "localhost:80",
+      "remoteAddress": "127.0.0.1"
+    }
+[2026-10-31 23:28:20.441 +0800] WARN (65840): request rejected
+    reqId: "req-c"
+    code: "CFG-8501"
+    err: {
+      "type": "Object",
+      "message": "password 不能超过 256 个字符",
+      "stack":
+          ForgeError: password 不能超过 256 个字符
+              at Object.invalid (/Users/libo/projects/forge/packages/core/src/index.ts:184:55)
+              at assertValidInput (/Users/libo/projects/forge/apps/api/src/plugins/input-schema.ts:64:16)
+              at Object.<anonymous> (/Users/libo/projects/forge/apps/api/src/routes/admin/identity.ts:64:5)
+              at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      "code": "CFG-8501"
+    }
+[2026-10-31 23:28:20.442 +0800] INFO (65840): request completed
+    reqId: "req-c"
+    res: {
+      "statusCode": 400
+    }
+    responseTime: 0.7560419999999795
+[2026-10-31 23:28:20.442 +0800] INFO (65840): incoming request
+    reqId: "req-d"
+    req: {
+      "method": "POST",
+      "url": "/admin/api/agents",
+      "host": "localhost:80",
+      "remoteAddress": "127.0.0.1"
+    }
+[2026-10-31 23:28:20.443 +0800] WARN (65840): request rejected
+    reqId: "req-d"
+    code: "CFG-8501"
+    err: {
+      "type": "Object",
+      "message": "version 不能超过 32 个字符",
+      "stack":
+          ForgeError: version 不能超过 32 个字符
+              at Object.invalid (/Users/libo/projects/forge/packages/core/src/index.ts:184:55)
+              at assertValidInput (/Users/libo/projects/forge/apps/api/src/plugins/input-schema.ts:64:16)
+              at Object.<anonymous> (/Users/libo/projects/forge/apps/api/src/routes/admin/agents.ts:50:5)
+              at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      "code": "CFG-8501"
+    }
+[2026-10-31 23:28:20.443 +0800] INFO (65840): request completed
+    reqId: "req-d"
+    res: {
+      "statusCode": 400
+    }
+    responseTime: 0.6689170000000217
+[2026-10-31 23:28:20.443 +0800] INFO (65840): incoming request
+    reqId: "req-e"
+    req: {
+      "method": "PATCH",
+      "url": "/admin/api/schedules/sch_01M6996XWDX7N13RAD2QWD",
+      "host": "localhost:80",
+      "remoteAddress": "127.0.0.1"
+    }
+[2026-10-31 23:28:20.444 +0800] WARN (65840): request rejected
+    reqId: "req-e"
+    code: "CFG-8501"
+    err: {
+      "type": "Object",
+      "message": "name 不能超过 128 个字符",
+      "stack":
+          ForgeError: name 不能超过 128 个字符
+              at Object.invalid (/Users/libo/projects/forge/packages/core/src/index.ts:184:55)
+              at assertValidInput (/Users/libo/projects/forge/apps/api/src/plugins/input-schema.ts:64:16)
+              at scheduleByIdRoute.schema (/Users/libo/projects/forge/apps/api/src/routes/admin/schedules.ts:139:5)
+              at Object.handler (/Users/libo/projects/forge/apps/api/src/routes/admin/schedules.ts:64:14)
+              at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      "code": "CFG-8501"
+    }
+[2026-10-31 23:28:20.444 +0800] INFO (65840): request completed
+    reqId: "req-e"
+    res: {
+      "statusCode": 400
+    }
+    responseTime: 1.0973339999999894
+[2026-10-31 23:28:20.445 +0800] INFO (65840): incoming request
+    reqId: "req-f"
+    req: {
+      "method": "POST",
+      "url": "/admin/api/users",
+      "host": "localhost:80",
+      "remoteAddress": "127.0.0.1"
+    }
+[2026-10-31 23:28:20.445 +0800] WARN (65840): request rejected
+    reqId: "req-f"
+    code: "AUTH-1001"
+    err: {
+      "type": "Object",
+      "message": "未登录或会话已过期",
+      "stack":
+          ForgeError: 未登录或会话已过期
+              at Object.unauthorized (/Users/libo/projects/forge/packages/core/src/index.ts:181:44)
+              at admin (/Users/libo/projects/forge/apps/api/src/plugins/http-helpers.ts:167:30)
+              at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+              at Object.<anonymous> (/Users/libo/projects/forge/apps/api/src/routes/admin/identity.ts:62:21)
+      "code": "AUTH-1001"
+    }
+[2026-10-31 23:28:20.445 +0800] INFO (65840): request completed
+    reqId: "req-f"
+    res: {
+      "statusCode": 401
+    }
+    responseTime: 0.3327499999999759
+[2026-10-31 23:28:20.445 +0800] INFO (65840): incoming request
+    reqId: "req-g"
+    req: {
+      "method": "POST",
+      "url": "/admin/api/approvals/01JNOTEXIST000000000000000/decide",
+      "host": "localhost:80",
+      "remoteAddress": "127.0.0.1"
+    }
+[2026-10-31 23:28:20.446 +0800] WARN (65840): request rejected
+    reqId: "req-g"
+    code: "RUN-7001"
+    err: {
+      "type": "Object",
+      "message": "审批不存在",
+      "stack":
+          ForgeError: 审批不存在
+              at Object.notFound (/Users/libo/projects/forge/packages/core/src/index.ts:183:36)
+              at Object.<anonymous> (/Users/libo/projects/forge/apps/api/src/routes/admin/runs.ts:96:90)
+              at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      "code": "RUN-7001"
+    }
+[2026-10-31 23:28:20.447 +0800] INFO (65840): request completed
+    reqId: "req-g"
+    res: {
+      "statusCode": 404
+    }
+    responseTime: 1.2085410000000252
+[2026-10-31 23:28:20.447 +0800] INFO (65840): incoming request
+    reqId: "req-h"
+    req: {
+      "method": "GET",
+      "url": "/admin/api/runs?limit=abc",
+      "host": "localhost:80",
+      "remoteAddress": "127.0.0.1"
+    }
+[2026-10-31 23:28:20.447 +0800] WARN (65840): request rejected
+    reqId: "req-h"
+    code: "CFG-8501"
+    err: {
+      "type": "Object",
+      "message": "limit 必须是 1-200 之间的整数",
+      "stack":
+          ForgeError: limit 必须是 1-200 之间的整数
+              at Object.invalid (/Users/libo/projects/forge/packages/core/src/index.ts:184:55)
+              at assertValidInput (/Users/libo/projects/forge/apps/api/src/plugins/input-schema.ts:64:16)
+              at Object.<anonymous> (/Users/libo/projects/forge/apps/api/src/routes/admin/runs.ts:20:5)
+              at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      "code": "CFG-8501"
+    }
+[2026-10-31 23:28:20.447 +0800] INFO (65840): request completed
+    reqId: "req-h"
+    res: {
+      "statusCode": 400
+    }
+    responseTime: 0.6638749999999618
+[2026-10-31 23:28:20.448 +0800] INFO (65840): incoming request
+    reqId: "req-i"
+    req: {
+      "method": "GET",
+      "url": "/admin/api/runs?limit=1.5",
+      "host": "localhost:80",
+      "remoteAddress": "127.0.0.1"
+    }
+[2026-10-31 23:28:20.448 +0800] WARN (65840): request rejected
+    reqId: "req-i"
+    code: "CFG-8501"
+    err: {
+      "type": "Object",
+      "message": "limit 必须是 1-200 之间的整数",
+      "stack":
+          ForgeError: limit 必须是 1-200 之间的整数
+              at Object.invalid (/Users/libo/projects/forge/packages/core/src/index.ts:184:55)
+              at assertValidInput (/Users/libo/projects/forge/apps/api/src/plugins/input-schema.ts:64:16)
+              at Object.<anonymous> (/Users/libo/projects/forge/apps/api/src/routes/admin/runs.ts:20:5)
+              at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      "code": "CFG-8501"
+    }
+[2026-10-31 23:28:20.448 +0800] INFO (65840): request completed
+    reqId: "req-i"
+    res: {
+      "statusCode": 400
+    }
+    responseTime: 0.8062499999999773
+[2026-10-31 23:28:20.448 +0800] INFO (65840): incoming request
+    reqId: "req-j"
+    req: {
+      "method": "GET",
+      "url": "/admin/api/runs?limit=-1",
+      "host": "localhost:80",
+      "remoteAddress": "127.0.0.1"
+    }
+[2026-10-31 23:28:20.449 +0800] WARN (65840): request rejected
+    reqId: "req-j"
+    code: "CFG-8501"
+    err: {
+      "type": "Object",
+      "message": "limit 必须是 1-200 之间的整数",
+      "stack":
+          ForgeError: limit 必须是 1-200 之间的整数
+              at Object.invalid (/Users/libo/projects/forge/packages/core/src/index.ts:184:55)
+              at assertValidInput (/Users/libo/projects/forge/apps/api/src/plugins/input-schema.ts:64:16)
+              at Object.<anonymous> (/Users/libo/projects/forge/apps/api/src/routes/admin/runs.ts:20:5)
+              at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      "code": "CFG-8501"
+    }
+[2026-10-31 23:28:20.449 +0800] INFO (65840): request completed
+    reqId: "req-j"
+    res: {
+      "statusCode": 400
+    }
+    responseTime: 0.6754999999999995
+[2026-10-31 23:28:20.449 +0800] INFO (65840): incoming request
+    reqId: "req-k"
+    req: {
+      "method": "GET",
+      "url": "/admin/api/runs?limit=10",
+      "host": "localhost:80",
+      "remoteAddress": "127.0.0.1"
+    }
+[2026-10-31 23:28:20.450 +0800] INFO (65840): request completed
+    reqId: "req-k"
+    res: {
+      "statusCode": 200
+    }
+    responseTime: 0.9703339999999798
+[2026-10-31 23:28:20.450 +0800] INFO (65840): incoming request
+    reqId: "req-l"
+    req: {
+      "method": "GET",
+      "url": "/admin/api/audit?limit=abc",
+      "host": "localhost:80",
+      "remoteAddress": "127.0.0.1"
+    }
+[2026-10-31 23:28:20.451 +0800] WARN (65840): request rejected
+    reqId: "req-l"
+    code: "CFG-8501"
+    err: {
+      "type": "Object",
+      "message": "limit 必须是 1-500 之间的整数",
+      "stack":
+          ForgeError: limit 必须是 1-500 之间的整数
+              at Object.invalid (/Users/libo/projects/forge/packages/core/src/index.ts:184:55)
+              at assertValidInput (/Users/libo/projects/forge/apps/api/src/plugins/input-schema.ts:64:16)
+              at Object.<anonymous> (/Users/libo/projects/forge/apps/api/src/routes/admin/identity.ts:137:5)
+              at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      "code": "CFG-8501"
+    }
+[2026-10-31 23:28:20.451 +0800] INFO (65840): request completed
+    reqId: "req-l"
+    res: {
+      "statusCode": 400
+    }
+    responseTime: 0.6392079999999964
+[2026-10-31 23:28:20.451 +0800] INFO (65840): incoming request
+    reqId: "req-m"
+    req: {
+      "method": "GET",
+      "url": "/admin/api/audit?limit=1.5",
+      "host": "localhost:80",
+      "remoteAddress": "127.0.0.1"
+    }
+[2026-10-31 23:28:20.451 +0800] WARN (65840): request rejected
+    reqId: "req-m"
+    code: "CFG-8501"
+    err: {
+      "type": "Object",
+      "message": "limit 必须是 1-500 之间的整数",
+      "stack":
+          ForgeError: limit 必须是 1-500 之间的整数
+              at Object.invalid (/Users/libo/projects/forge/packages/core/src/index.ts:184:55)
+              at assertValidInput (/Users/libo/projects/forge/apps/api/src/plugins/input-schema.ts:64:16)
+              at Object.<anonymous> (/Users/libo/projects/forge/apps/api/src/routes/admin/identity.ts:137:5)
+              at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      "code": "CFG-8501"
+    }
+[2026-10-31 23:28:20.451 +0800] INFO (65840): request completed
+    reqId: "req-m"
+    res: {
+      "statusCode": 400
+    }
+    responseTime: 0.45854200000002265
+[2026-10-31 23:28:20.451 +0800] INFO (65840): incoming request
+    reqId: "req-n"
+    req: {
+      "method": "GET",
+      "url": "/admin/api/audit?limit=-1",
+      "host": "localhost:80",
+      "remoteAddress": "127.0.0.1"
+    }
+[2026-10-31 23:28:20.452 +0800] WARN (65840): request rejected
+    reqId: "req-n"
+    code: "CFG-8501"
+    err: {
+      "type": "Object",
+      "message": "limit 必须是 1-500 之间的整数",
+      "stack":
+          ForgeError: limit 必须是 1-500 之间的整数
+              at Object.invalid (/Users/libo/projects/forge/packages/core/src/index.ts:184:55)
+              at assertValidInput (/Users/libo/projects/forge/apps/api/src/plugins/input-schema.ts:64:16)
+              at Object.<anonymous> (/Users/libo/projects/forge/apps/api/src/routes/admin/identity.ts:137:5)
+              at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      "code": "CFG-8501"
+    }
+[2026-10-31 23:28:20.452 +0800] INFO (65840): request completed
+    reqId: "req-n"
+    res: {
+      "statusCode": 400
+    }
+    responseTime: 0.5686669999999481
+[2026-10-31 23:28:20.452 +0800] INFO (65840): incoming request
+    reqId: "req-o"
+    req: {
+      "method": "GET",
+      "url": "/admin/api/audit?limit=10",
+      "host": "localhost:80",
+      "remoteAddress": "127.0.0.1"
+    }
+[2026-10-31 23:28:20.454 +0800] INFO (65840): request completed
+    reqId: "req-o"
+    res: {
+      "statusCode": 200
+    }
+    responseTime: 2.150166000000013
+[2026-10-31 23:28:20.454 +0800] INFO (65840): incoming request
+    reqId: "req-p"
+    req: {
+      "method": "GET",
+      "url": "/admin/api/runs?limit=0",
+      "host": "localhost:80",
+      "remoteAddress": "127.0.0.1"
+    }
+[2026-10-31 23:28:20.455 +0800] WARN (65840): request rejected
+    reqId: "req-p"
+    code: "CFG-8501"
+    err: {
+      "type": "Object",
+      "message": "limit 必须是 1-200 之间的整数",
+      "stack":
+          ForgeError: limit 必须是 1-200 之间的整数
+              at Object.invalid (/Users/libo/projects/forge/packages/core/src/index.ts:184:55)
+              at assertValidInput (/Users/libo/projects/forge/apps/api/src/plugins/input-schema.ts:64:16)
+              at Object.<anonymous> (/Users/libo/projects/forge/apps/api/src/routes/admin/runs.ts:20:5)
+              at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      "code": "CFG-8501"
+    }
+[2026-10-31 23:28:20.455 +0800] INFO (65840): request completed
+    reqId: "req-p"
+    res: {
+      "statusCode": 400
+    }
+    responseTime: 0.5386249999999677
+[2026-10-31 23:28:20.455 +0800] INFO (65840): incoming request
+    reqId: "req-q"
+    req: {
+      "method": "GET",
+      "url": "/admin/api/runs?limit=201",
+      "host": "localhost:80",
+      "remoteAddress": "127.0.0.1"
+    }
+[2026-10-31 23:28:20.455 +0800] WARN (65840): request rejected
+    reqId: "req-q"
+    code: "CFG-8501"
+    err: {
+      "type": "Object",
+      "message": "limit 必须是 1-200 之间的整数",
+      "stack":
+          ForgeError: limit 必须是 1-200 之间的整数
+              at Object.invalid (/Users/libo/projects/forge/packages/core/src/index.ts:184:55)
+              at assertValidInput (/Users/libo/projects/forge/apps/api/src/plugins/input-schema.ts:64:16)
+              at Object.<anonymous> (/Users/libo/projects/forge/apps/api/src/routes/admin/runs.ts:20:5)
+              at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      "code": "CFG-8501"
+    }
+[2026-10-31 23:28:20.456 +0800] INFO (65840): request completed
+    reqId: "req-q"
+    res: {
+      "statusCode": 400
+    }
+    responseTime: 0.5358749999999759
+[2026-10-31 23:28:20.456 +0800] INFO (65840): incoming request
+    reqId: "req-r"
+    req: {
+      "method": "GET",
+      "url": "/admin/api/runs?limit=",
+      "host": "localhost:80",
+      "remoteAddress": "127.0.0.1"
+    }
+[2026-10-31 23:28:20.456 +0800] WARN (65840): request rejected
+    reqId: "req-r"
+    code: "CFG-8501"
+    err: {
+      "type": "Object",
+      "message": "limit 必须是 1-200 之间的整数",
+      "stack":
+          ForgeError: limit 必须是 1-200 之间的整数
+              at Object.invalid (/Users/libo/projects/forge/packages/core/src/index.ts:184:55)
+              at assertValidInput (/Users/libo/projects/forge/apps/api/src/plugins/input-schema.ts:64:16)
+              at Object.<anonymous> (/Users/libo/projects/forge/apps/api/src/routes/admin/runs.ts:20:5)
+              at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      "code": "CFG-8501"
+    }
+[2026-10-31 23:28:20.456 +0800] INFO (65840): request completed
+    reqId: "req-r"
+    res: {
+      "statusCode": 400
+    }
+    responseTime: 0.6654159999999933
+[2026-10-31 23:28:20.456 +0800] INFO (65840): incoming request
+    reqId: "req-s"
+    req: {
+      "method": "GET",
+      "url": "/admin/api/runs?limit=1e2",
+      "host": "localhost:80",
+      "remoteAddress": "127.0.0.1"
+    }
+[2026-10-31 23:28:20.457 +0800] WARN (65840): request rejected
+    reqId: "req-s"
+    code: "CFG-8501"
+    err: {
+      "type": "Object",
+      "message": "limit 必须是 1-200 之间的整数",
+      "stack":
+          ForgeError: limit 必须是 1-200 之间的整数
+              at Object.invalid (/Users/libo/projects/forge/packages/core/src/index.ts:184:55)
+              at assertValidInput (/Users/libo/projects/forge/apps/api/src/plugins/input-schema.ts:64:16)
+              at Object.<anonymous> (/Users/libo/projects/forge/apps/api/src/routes/admin/runs.ts:20:5)
+              at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      "code": "CFG-8501"
+    }
+[2026-10-31 23:28:20.457 +0800] INFO (65840): request completed
+    reqId: "req-s"
+    res: {
+      "statusCode": 400
+    }
+    responseTime: 0.8012090000000285
+[2026-10-31 23:28:20.457 +0800] INFO (65840): incoming request
+    reqId: "req-t"
+    req: {
+      "method": "GET",
+      "url": "/admin/api/runs?limit=1",
+      "host": "localhost:80",
+      "remoteAddress": "127.0.0.1"
+    }
+[2026-10-31 23:28:20.458 +0800] INFO (65840): request completed
+    reqId: "req-t"
+    res: {
+      "statusCode": 200
+    }
+    responseTime: 0.6849589999999921
+[2026-10-31 23:28:20.458 +0800] INFO (65840): incoming request
+    reqId: "req-u"
+    req: {
+      "method": "GET",
+      "url": "/admin/api/runs?limit=200",
+      "host": "localhost:80",
+      "remoteAddress": "127.0.0.1"
+    }
+[2026-10-31 23:28:20.459 +0800] INFO (65840): request completed
+    reqId: "req-u"
+    res: {
+      "statusCode": 200
+    }
+    responseTime: 0.5939579999999864
+[2026-10-31 23:28:20.460 +0800] INFO (65840): incoming request
+    reqId: "req-v"
+    req: {
+      "method": "POST",
+      "url": "/admin/api/schedules/sch_01M6996XWDX7N13RAD2QWD/enable",
+      "host": "localhost:80",
+      "remoteAddress": "127.0.0.1"
+    }
+[2026-10-31 23:28:20.461 +0800] WARN (65840): request rejected
+    reqId: "req-v"
+    code: "CFG-8501"
+    err: {
+      "type": "Object",
+      "message": "只支持 5 段 cron 或 @yearly/@annually/@monthly/@weekly/@daily/@midnight/@hourly",
+      "stack":
+          ForgeError: 只支持 5 段 cron 或 @yearly/@annually/@monthly/@weekly/@daily/@midnight/@hourly
+              at Object.invalid (/Users/libo/projects/forge/packages/core/src/index.ts:184:55)
+              at assertScheduleTiming (/Users/libo/projects/forge/apps/api/src/plugins/input-schema.ts:102:50)
+              at scheduleByIdRoute.schema (/Users/libo/projects/forge/apps/api/src/routes/admin/schedules.ts:171:5)
+              at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      "code": "CFG-8501"
+    }
+[2026-10-31 23:28:20.462 +0800] INFO (65840): request completed
+    reqId: "req-v"
+    res: {
+      "statusCode": 400
+    }
+    responseTime: 1.7456250000000182
+[2026-10-31 23:28:20.463 +0800] INFO (65840): incoming request
+    reqId: "req-w"
+    req: {
+      "method": "POST",
+      "url": "/admin/api/schedules/sch_01M6996XWDX7N13RAD2QWD/enable",
+      "host": "localhost:80",
+      "remoteAddress": "127.0.0.1"
+    }
+[2026-10-31 23:28:20.464 +0800] WARN (65840): request rejected
+    reqId: "req-w"
+    code: "CFG-8501"
+    err: {
+      "type": "Object",
+      "message": "时区无效",
+      "stack":
+          ForgeError: 时区无效
+              at Object.invalid (/Users/libo/projects/forge/packages/core/src/index.ts:184:55)
+              at assertScheduleTiming (/Users/libo/projects/forge/apps/api/src/plugins/input-schema.ts:101:48)
+              at scheduleByIdRoute.schema (/Users/libo/projects/forge/apps/api/src/routes/admin/schedules.ts:171:5)
+              at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      "code": "CFG-8501"
+    }
+[2026-10-31 23:28:20.464 +0800] INFO (65840): request completed
+    reqId: "req-w"
+    res: {
+      "statusCode": 400
+    }
+    responseTime: 1.1249169999999822
+
+ Test Files  177 passed (177)
+      Tests  2168 passed (2168)
+   Start at  23:26:17
+   Duration  145.29s (transform 993ms, setup 0ms, import 17.09s, tests 118.09s, environment 6ms)
+

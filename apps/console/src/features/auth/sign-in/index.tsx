@@ -3,7 +3,7 @@ import { motion } from 'motion/react'
 import { useSearch } from '@tanstack/react-router'
 import { CircleAlert } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card'
+import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { AuthLayout } from '../auth-layout'
 import { UserAuthForm } from './components/user-auth-form'
 import { clearSsoErrorFromUrl, ssoErrorMessage } from './sso-error'
@@ -23,7 +23,6 @@ export function SignIn() {
           <CardHeader>
             {/* 页面唯一的 h1（a11y：登录页原来没有标题层级），样式与 CardTitle 一致 */}
             <h1 data-slot='card-title' className='text-xl leading-none font-semibold tracking-tight'>登录 Forge 控制台</h1>
-            <CardDescription>用管理员账号登录，管理 Agent、审批和开放 API。</CardDescription>
           </CardHeader>
           <CardContent className='grid gap-4'>
             {ssoMessage && (

@@ -13,6 +13,6 @@ export const SSO_FALLBACK_CODE = "SYS-9001";
 export const SSO_ERROR_CODES: ReadonlySet<string> = new Set([
   "HTP-4003",
   "SSO-1201", "SSO-1202", "SSO-1203", "SSO-1204", "SSO-1205", "SSO-1206",
-  "SSO-1207", "SSO-1208", "SSO-1209", "SSO-1210", "SSO-1211", "SSO-1212",
+  "SSO-1207", "SSO-1208", "SSO-1209", "SSO-1210", "SSO-1211", "SSO-1212", "SSO-1213",
   SSO_FALLBACK_CODE,
 ]);
